@@ -203,10 +203,12 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
     eventBus.emit('layout/menu/collapsed', { collapsed: !collapsed });
   };
 
+  // Dispatch is acceptance-only: it returns void and never throws, so the
+  // handler only hands the chain to the registry.
   const handleMenuItemClick = useCallback(
-    async (extensionId: string) => {
+    (extensionId: string) => {
       if (!mfeRegistry) return;
-      await mfeRegistry.executeActionsChain({
+      mfeRegistry.executeActionsChain({
         action: {
           type: FRONTX_ACTION_MOUNT_EXT,
           target: FRONTX_SCREEN_DOMAIN,

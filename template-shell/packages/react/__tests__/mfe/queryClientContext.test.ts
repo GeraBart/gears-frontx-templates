@@ -34,7 +34,7 @@ function makeScreenMountBridgeStub(): ChildMfeBridge {
   return {
     extDomainId: 'screen',
     extensionId: 'bridge',
-    executeActionsChain: vi.fn().mockResolvedValue(undefined),
+    executeActionsChain: vi.fn().mockReturnValue(undefined),
     subscribeToProperty: vi.fn().mockReturnValue(() => undefined),
     getProperty: vi.fn().mockReturnValue(undefined),
     registerActionHandler: vi.fn(),

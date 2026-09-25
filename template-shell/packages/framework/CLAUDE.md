@@ -138,7 +138,10 @@ const app = createGears FrontXApp(); // Full preset includes microfrontends()
 // Access MFE-enabled registry
 app.screensetsRegistry.registerDomain(screenDomain, containerProvider);
 await app.screensetsRegistry.registerExtension(homeExtension);
-await app.screensetsRegistry.executeActionsChain({
+
+// executeActionsChain is acceptance-only: it returns void, never throws,
+// and never yields a promise to await for the chain's own execution.
+app.screensetsRegistry.executeActionsChain({
   action: { type: Gears FrontX_ACTION_MOUNT_EXT, target: 'screen', payload: { subject: 'home' } }
 });
 
@@ -180,18 +183,18 @@ import {
   unregisterExtension,
 } from '@gears-frontx/framework';
 
+// loadExtension/mountExtension/unmountExtension are fire-and-forget: each
+// dispatches an actions chain through the acceptance-only registry surface
+// and returns nothing to await. Dispatch never throws.
+
 // Load extension code
-await loadExtension({ extensionId: 'home' });
+loadExtension('home');
 
 // Mount extension into domain
-await mountExtension({
-  extensionId: 'home',
-  domainId: 'screen',
-  container: document.getElementById('screen-container')!,
-});
+mountExtension('home');
 
 // Unmount extension from domain
-await unmountExtension({ extensionId: 'home', domainId: 'screen' });
+unmountExtension('home');
 
 // Register/unregister extensions dynamically
 registerExtension(homeExtension);
@@ -379,11 +382,7 @@ app.actions.navigateToScreen({ screensetId: 'demo', screenId: 'home' });
 
 **NEW**: Mount extension
 ```typescript
-await app.actions.mountExtension({
-  extensionId: 'home',
-  domainId: 'screen',
-  container: document.getElementById('screen-container')!,
-});
+app.actions.mountExtension('home');
 ```
 
 **OLD**: Register screenset

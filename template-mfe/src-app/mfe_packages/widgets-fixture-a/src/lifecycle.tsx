@@ -109,8 +109,10 @@ function WidgetAHome(): React.ReactElement {
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const lastPing = typeof search[LAST_PING_PARAM] === 'string' ? (search[LAST_PING_PARAM] as string) : null;
 
-  const handleMountHelloWorld = React.useCallback(async () => {
-    await bridge.executeActionsChain({
+  // Dispatch is acceptance-only: it returns void and never throws, so
+  // there is nothing to await or catch here.
+  const handleMountHelloWorld = React.useCallback(() => {
+    bridge.executeActionsChain({
       action: {
         type: FRONTX_ACTION_MOUNT_EXT,
         target: FRONTX_SCREEN_DOMAIN,

@@ -172,9 +172,11 @@ function MyComponent() {
   // Access MFE-enabled registry
   const extensions = app.screensetsRegistry.getRegisteredExtensions();
 
-  // Access MFE actions
-  await app.actions.loadExtension({ extensionId: 'home' });
-  await app.actions.mountExtension({ extensionId: 'home', domainId: 'screen', container });
+  // Access MFE actions — fire-and-forget: each dispatches an actions chain
+  // through the acceptance-only registry surface and returns nothing to
+  // await.
+  app.actions.loadExtension('home');
+  app.actions.mountExtension('home');
 }
 ```
 
@@ -265,10 +267,14 @@ import { Gears FrontX_ACTION_LOAD_EXT, Gears FrontX_SHARED_PROPERTY_THEME } from
 function MyExtension() {
   const bridge = useMfeBridge();
 
-  // Execute actions chain on parent
-  await bridge.executeActionsChain({
-    action: { type: Gears FrontX_ACTION_LOAD_EXT, target: 'screen', payload: { extensionId: 'other' } }
-  });
+  const handleLoad = () => {
+    // executeActionsChain is acceptance-only: it returns void, never
+    // throws, and never yields anything to await for the chain's own
+    // execution.
+    bridge.executeActionsChain({
+      action: { type: Gears FrontX_ACTION_LOAD_EXT, target: 'screen', payload: { extensionId: 'other' } }
+    });
+  };
 
   // Get shared property
   const theme = bridge.getProperty(Gears FrontX_SHARED_PROPERTY_THEME);
@@ -557,13 +563,11 @@ function MyComponent() {
   const app = useFrontX();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleNavigate = async () => {
+  const handleNavigate = () => {
     if (containerRef.current) {
-      await app.actions.mountExtension({
-        extensionId: 'home',
-        domainId: 'screen',
-        container: containerRef.current,
-      });
+      // Fire-and-forget: dispatches an actions chain through the
+      // acceptance-only registry surface and returns nothing to await.
+      app.actions.mountExtension('home');
     }
   };
 
