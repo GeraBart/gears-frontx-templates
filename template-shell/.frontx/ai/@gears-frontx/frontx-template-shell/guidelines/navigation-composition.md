@@ -49,6 +49,12 @@ mfeRegistry.executeActionsChain({
 });
 ```
 
+`executeActionsChain` is acceptance-only: it returns `void`, never throws, and
+yields nothing to await for the chain's own execution. A caller that genuinely
+needs to react to a chain's outcome expresses that dependency **inside the
+chain itself**, as a terminal action targeting the extension whose mount it
+depends on, via a `next` continuation — never by awaiting this call.
+
 Switching screens is still a mount action against a domain, not a direct route
 transition — but the shell now closes the loop between that action and the
 address bar. Each of the four base domains (`screen`, `sidebar`, `popup`,

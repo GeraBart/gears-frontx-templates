@@ -87,8 +87,10 @@ function MyExtension() {
   const bridge = useMfeBridge();
   const theme = useSharedProperty(Gears FrontX_SHARED_PROPERTY_THEME);
 
-  const handleAction = async () => {
-    await bridge.executeActionsChain({
+  // executeActionsChain is acceptance-only: it returns void, never throws,
+  // and never yields anything to await for the chain's own execution.
+  const handleAction = () => {
+    bridge.executeActionsChain({
       action: { type: Gears FrontX_ACTION_LOAD_EXT, target: 'screen', payload: { extensionId: 'other' } }
     });
   };

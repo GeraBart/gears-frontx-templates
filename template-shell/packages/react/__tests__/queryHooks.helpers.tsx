@@ -214,7 +214,7 @@ export function makeMockBridge(): ChildMfeBridge {
   return {
     extDomainId: 'gts.frontx.mfes.ext.domain.v1~test.isolation.v1',
     extensionId: 'isolation-test',
-    executeActionsChain: vi.fn().mockResolvedValue(undefined),
+    executeActionsChain: vi.fn().mockReturnValue(undefined),
     subscribeToProperty: vi.fn().mockReturnValue(() => undefined),
     getProperty: vi.fn().mockReturnValue(undefined),
     registerActionHandler: vi.fn(),

@@ -8,7 +8,6 @@
  * @packageDocumentation
  */
 
-// @cpt-algo:cpt-frontx-algo-framework-composition-mount-set-diff-dispatch:p1
 // @cpt-flow:cpt-frontx-flow-framework-composition-mfe-lifecycle:p1
 // @cpt-flow:cpt-frontx-flow-framework-composition-shared-property-broadcast:p1
 // @cpt-algo:cpt-frontx-algo-framework-composition-gts-validation:p1
@@ -17,20 +16,13 @@
 // @cpt-dod:cpt-frontx-dod-framework-composition-shared-property:p1
 
 import {
-  type ActionsChain,
   type MfeHandler,
   type TypeSystemPlugin,
 } from '@gears-frontx/mfes';
-// FRONTX_ACTION_* moved to @gears-frontx/gts-plugin — see base-domains.ts.
-import {
-  FRONTX_ACTION_MOUNT_EXT,
-  FRONTX_ACTION_UNMOUNT_EXT,
-} from '@gears-frontx/gts-plugin';
 import { mfeRegistryFactory } from '../../mfe/registry';
 import { entryAddressesSchema } from '../../mfe/entry-addresses-schema';
-import { getStore } from '@gears-frontx/state';
 import type { FrontXPlugin } from '../../types';
-import { mfeSlice, addExtensionMounted, removeExtensionMounted } from './slice';
+import { mfeSlice } from './slice';
 import { initMfeEffects } from './effects';
 import {
   loadExtension,
@@ -58,32 +50,6 @@ export interface MicrofrontendsConfig {
    * handlers manually via mfeRegistry API.
    */
   mfeHandlers?: MfeHandler[];
-}
-
-function collectLifecycleDomains(chain: ActionsChain): string[] {
-  const domains = new Set<string>();
-
-  const visit = (link: ActionsChain): void => {
-    const actionType = link.action?.type;
-    const domainId = link.action?.target;
-    if (
-      (actionType === FRONTX_ACTION_MOUNT_EXT || actionType === FRONTX_ACTION_UNMOUNT_EXT) &&
-      domainId
-    ) {
-      domains.add(domainId);
-    }
-
-    if (link.next) {
-      visit(link.next);
-    }
-
-    if (link.fallback) {
-      visit(link.fallback);
-    }
-  };
-
-  visit(chain);
-  return [...domains];
 }
 
 /**
@@ -138,59 +104,6 @@ export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
     typeSystem: config.typeSystem,
     mfeHandlers: config.mfeHandlers,
   });
-
-  /**
-   * Mount-set diff dispatch — `cpt-frontx-algo-framework-composition-mount-set-diff-dispatch`
-   *
-   * Algorithm:
-   * 1. Snapshot `before` per lifecycle domain from `registry.getMountedExtensions(domainId)`.
-   * 2. Await the chain in a try block; dispatch the diff in the finally block so both
-   *    success and failure paths reconcile the slice with the registry.
-   * 3. Snapshot `after` per lifecycle domain from `registry.getMountedExtensions(domainId)`.
-   * 4. Compute `added = after \ before` and `removed = before \ after` (set differences).
-   * 5. Dispatch one `addExtensionMounted` per element of `added` and one
-   *    `removeExtensionMounted` per element of `removed`.
-   *
-   * Idempotent reducers make this safe under unserialized concurrent chains for
-   * multi-mount domains: a duplicate `addExtensionMounted` is a no-op, and a
-   * duplicate `removeExtensionMounted` is a no-op — the slice converges to
-   * `registry.getMountedExtensions(domainId)` regardless of interleaving.
-   */
-  // @cpt-begin:cpt-frontx-algo-framework-composition-mount-set-diff-dispatch:p1:inst-1
-  const originalExecuteActionsChain = mfeRegistry.executeActionsChain.bind(mfeRegistry);
-  mfeRegistry.executeActionsChain = async (chain) => {
-    const lifecycleDomains = collectLifecycleDomains(chain);
-
-    // Step 1: snapshot pre-chain mount sets per domain
-    const beforeByDomain = new Map(
-      lifecycleDomains.map((domainId) => [domainId, new Set(mfeRegistry.getMountedExtensions(domainId))])
-    );
-
-    try {
-      await originalExecuteActionsChain(chain);
-    } finally {
-      // Steps 3-5: run on both success and failure so the slice stays in sync
-      // even when the chain records a failure internally.
-      if (lifecycleDomains.length > 0) {
-        const store = getStore();
-        for (const domainId of lifecycleDomains) {
-          const before = beforeByDomain.get(domainId)!;
-          const after = new Set(mfeRegistry.getMountedExtensions(domainId));
-
-          const added = [...after].filter((id) => !before.has(id));
-          const removed = [...before].filter((id) => !after.has(id));
-
-          for (const extensionId of added) {
-            store.dispatch(addExtensionMounted({ domainId, extensionId }));
-          }
-          for (const extensionId of removed) {
-            store.dispatch(removeExtensionMounted({ domainId, extensionId }));
-          }
-        }
-      }
-    }
-  };
-  // @cpt-end:cpt-frontx-algo-framework-composition-mount-set-diff-dispatch:p1:inst-1
 
   // Store cleanup functions in closure (encapsulated per plugin instance)
   let effectsCleanup: (() => void) | null = null;
