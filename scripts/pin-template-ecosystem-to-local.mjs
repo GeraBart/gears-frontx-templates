@@ -259,6 +259,20 @@ function readExistingOverrides(manifest) {
 }
 
 /**
+ * Sets `obj[key] = value` as an own, enumerable data property. Unlike a
+ * bracket assignment, `defineProperty` never walks the prototype chain, so a
+ * package name like `__proto__` becomes a plain key instead of rewiring the
+ * object's prototype.
+ *
+ * @param {object} obj
+ * @param {string} key
+ * @param {string} value
+ */
+function setOwnEntry(obj, key, value) {
+  Object.defineProperty(obj, key, { value, writable: true, enumerable: true, configurable: true });
+}
+
+/**
  * Writes every manifest a successful `planPinLocalization` names, and returns
  * one human-readable log line per substitution (dependency-field rewrites
  * first, then the root `overrides` merge, in the order the plan was built).
@@ -304,7 +318,7 @@ export function applyPinLocalization(manifestEdits, repoRoot) {
             'the manifest changed shape since it was planned against.',
         );
       }
-      /** @type {Record<string, string>} */ (fieldValue)[packageName] = fileSpec;
+      setOwnEntry(fieldValue, packageName, fileSpec);
       logLines.push(`${packageName} ${pinnedVersion} -> ${fileSpec} (${reportedFile} / ${field})`);
     }
 
@@ -312,7 +326,7 @@ export function applyPinLocalization(manifestEdits, repoRoot) {
       const existing = typeof manifest['overrides'] === 'object' && manifest['overrides'] !== null ? manifest['overrides'] : {};
       manifest['overrides'] = { ...existing };
       for (const { packageName, fileSpec } of overrides) {
-        /** @type {Record<string, string>} */ (manifest['overrides'])[packageName] = fileSpec;
+        setOwnEntry(manifest['overrides'], packageName, fileSpec);
         logLines.push(`${packageName} -> ${fileSpec} (${reportedFile} / overrides)`);
       }
     }
