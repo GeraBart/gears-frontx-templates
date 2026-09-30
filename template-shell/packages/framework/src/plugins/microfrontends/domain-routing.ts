@@ -9,7 +9,7 @@ import {
   type RouteSignal,
   type Transition,
 } from '@gears-frontx/routing';
-import { getExtensionRouteToken, type ActionsChain, type Extension, type MfeRegistry } from '@gears-frontx/mfes';
+import { getExtensionRouteToken, type ActionsChain, type ActionPayload, type Extension, type MfeRegistry } from '@gears-frontx/mfes';
 
 export interface DomainRouteStatus {
   readonly entries: number;
@@ -40,32 +40,49 @@ function extensionTokenOf(extension: Extension): ExtensionToken | undefined {
   return getExtensionRouteToken(extension) as ExtensionToken | undefined;
 }
 
-export interface DispatchResult {
-  /** False when the registry refused the chain synchronously (after #648, the only refusal a caller sees). */
-  readonly accepted: boolean;
-  /**
-   * Settles when the promise `executeActionsChain` returned settles — today it resolves even when
-   * the chain failed before reaching any handler (`DefaultMfeRegistry.executeActionsChain`). Absent
-   * when the call returned nothing (#648).
-   */
-  readonly settled?: Promise<void>;
+/**
+ * The private stamp a `DomainRouting` instance writes into a mount request's
+ * payload before dispatching it itself (`onTransition`'s restore dispatch,
+ * `withOpening`'s opening dispatch): which domain instance originated the
+ * request, and whether the request restores a URL-driven entry or opens a
+ * nested domain's own occupant. A payload with no stamp at all is
+ * programmatic — some chain, not this class, originated it.
+ *
+ * The field is undeclared in the `mount_ext` GTS schema (an open object
+ * type), so admission does not reject it; only this domain's own handler
+ * ever reads it, off the same payload it mounted with.
+ */
+interface RoutingOrigin {
+  readonly domainKey: string;
+  readonly kind: 'restore' | 'opening';
 }
 
-/** A thenable, without asserting one — `executeActionsChain`'s return value is `unknown` until checked. */
-function isThenable(value: unknown): value is PromiseLike<void> {
-  return typeof value === 'object' && value !== null && typeof (value as { then?: unknown }).then === 'function';
+/** Narrows `payload.routingOrigin` without asserting past what a caller could actually have put there. */
+function isRoutingOrigin(value: unknown): value is RoutingOrigin {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.domainKey === 'string' && (candidate.kind === 'restore' || candidate.kind === 'opening');
 }
 
-/** Today `executeActionsChain` returns a promise; after #648 it returns nothing and refuses synchronously. */
-export function dispatchChain(registry: MfeRegistry, chain: ActionsChain, label: string): DispatchResult {
+function readRoutingOrigin(payload: ActionPayload): RoutingOrigin | undefined {
+  const origin = (payload as Record<string, unknown>).routingOrigin;
+  return isRoutingOrigin(origin) ? origin : undefined;
+}
+
+/**
+ * Dispatch a mount/unmount action through the actions chain, fire-and-forget:
+ * `executeActionsChain` is acceptance-only (#648) — it validates and admits
+ * the chain synchronously, refuses on a synchronous throw, and yields
+ * nothing to await for the chain's own execution. Neither this class nor any
+ * of its callers tracks a dispatch's own settlement; a domain's handler
+ * reports back through `afterMount`/`afterUnmount`, called from inside the
+ * handler itself once its own mount/unmount work has settled.
+ */
+export function dispatchChain(registry: MfeRegistry, chain: ActionsChain, label: string): void {
   try {
-    const returned: unknown = registry.executeActionsChain(chain);
-    if (!isThenable(returned)) return { accepted: true };
-    const settled = Promise.resolve(returned).catch((error: unknown) => console.error(`[routing] ${label} failed`, error));
-    return { accepted: true, settled };
+    registry.executeActionsChain(chain);
   } catch (error) {
     console.error(`[routing] ${label} refused`, error);
-    return { accepted: false };
   }
 }
 
@@ -75,24 +92,36 @@ export function dispatchChain(registry: MfeRegistry, chain: ActionsChain, label:
  * the domain's own handlers perform (O5, O7), mount/unmount re-dispatched
  * through the actions chain for every transition the observer reports (O6),
  * and the entry address of each occupant. One instance per domain key (O4).
+ *
+ * A mount request this instance dispatches itself — the restore dispatch in
+ * `onTransition`, the opening dispatch in `withOpening` — carries a
+ * `routingOrigin` stamp naming this instance's own key and the request's
+ * kind. `afterMount` reads that stamp off the very payload the domain's
+ * handler mounted with: a restore never writes back (the URL already asked
+ * for it), an opening amends the enclosing entry's own history entry, and an
+ * unstamped (programmatic) request projects a fresh entry. A stamp naming a
+ * different domain key is a request this instance never issued — some other
+ * routing session's — and is ignored outright, with no write and no further
+ * dispatch.
+ *
+ * Ordering invariant `withOpening` and `afterMount`'s opening branch rely on:
+ * no programmatic mount of the same subject can execute before this domain's
+ * opening dispatch. `DefaultExtensionMounter.mount` is `async`; with no root
+ * attached yet it returns a *rejected promise*, not a synchronous throw — a
+ * request reaching the mounter before attach fails and takes its own
+ * fallback rather than becoming an in-flight mount a later request could
+ * join. Opening is itself dispatched synchronously inside the same attach
+ * callback that gives the mounter its root, strictly before any chain
+ * continuation gated on this domain's attachment can run. So restore and
+ * opening requests always reach the mounter first; a programmatic request
+ * for the same subject either joins one of them (inheriting its no-write or
+ * `replace` outcome) or arrives after both have already mounted, in which
+ * case it is a user's own open and correctly pushes its own entry.
  */
 export class DomainRouting {
   private release: (() => void) | undefined;
   private status: DomainRouteStatus = { entries: 0, unresolved: 0 };
   private readonly statusListeners = new Set<{ readonly callback: () => void }>();
-  private opening: ExtensionToken[] | undefined;
-  /** How many `withOpening` calls are currently in flight — the one whose own exit brings this back to zero is the one that flushes (N2, M1); it need not be the first one entered, since two windows can overlap without nesting. */
-  private openingDepth = 0;
-  /**
-   * Bumped by `stop()`. A `withOpening` call captures the epoch it entered
-   * under; if `stop()` runs while it is still pending, its own `finally`
-   * sees a stale epoch and skips both the depth decrement and the flush —
-   * `stop()` has already reset `openingDepth`/`opening` itself, so a late
-   * decrement would corrupt the count for whatever window opens next, and a
-   * late flush would write from a collection that is no longer this call's
-   * to flush (M1).
-   */
-  private openingEpoch = 0;
   private pendingOpen: ExtensionToken[] | undefined;
   private releasePending: (() => void) | undefined;
   /**
@@ -109,29 +138,14 @@ export class DomainRouting {
   private readonly lastOwnerByToken = new Map<ExtensionToken, string>();
   /**
    * Set by `stop()`, cleared by `start()`. Guards `afterMount`/`afterUnmount`
-   * against a call that arrives after this instance was told to stop — an
-   * in-flight mount (T7's `mountThroughChain`) that settles only after its
-   * Widgets Host itself unmounted, say. Without this, such a call would still
-   * write to history and, if it fell inside the opening window, open a fresh
-   * pending-write subscription that `stop()` already ran and will not run
-   * again to release.
+   * against a call that arrives after this instance was told to stop — a
+   * mount whose settlement is reported only after its own Widgets Host
+   * unmounted, say. Without this, such a call would still write to history
+   * and, if it opened a nested domain's window, open a fresh pending-write
+   * subscription that `stop()` already ran and will not run again to
+   * release.
    */
   private stopped = false;
-  /**
-   * A mount requested by this observer may finish after the URL has changed
-   * (or after this domain restarted). Its later `afterMount` is an
-   * acknowledgement, not a new user navigation, and must never project the
-   * old token back into history.
-   */
-  private lifecycleEpoch = 0;
-  /**
-   * Per-subject observer requests in dispatch order. A stop/start can have an
-   * old mount still pending while a new observer requests the same subject.
-   * `mfes` serializes a subject's lifecycle, so its callbacks arrive in this
-   * order too; retaining both records lets the old callback acknowledge only
-   * its own epoch instead of consuming the new observer's marker.
-   */
-  private readonly observerMounts = new Map<string, Array<{ readonly epoch: number }>>();
 
   constructor(private readonly options: DomainRoutingOptions) {}
 
@@ -144,52 +158,42 @@ export class DomainRouting {
    * Call from the domain's mount handler after its strategy's mount settled
    * and before the handler itself settles: the actions chain selects `next`
    * only on that settlement, so a chained step that depends on this entry
-   * (the widget's ping) cannot run before it is in the URL.
+   * (the widget's ping) cannot run before it is in the URL. `payload` is the
+   * same `ActionPayload` the handler mounted with — its `routingOrigin`
+   * stamp, if any, is this method's own instruction for what to do.
    *
-   * Idempotent for a repeat mount of the same extension: a 'multiple'-
-   * cardinality domain that already carries this token in the URL makes no
-   * second write here (the `!own.includes(token)` guard below) — this is
-   * what lets a caller merge a redundant mount request (URL restore, an
-   * auto-mount pass and a chain asking for the same subject at once) into
-   * one in-flight mount and still call this once each settles.
-   *
-   * Never called for an extension whose `afterUnmount` this instance has
-   * already dispatched-through for the same id without an intervening mount:
-   * `mfes` itself serializes mount/unmount per subject (a caller's own
-   * mount strategy is not idempotent, hence that caller's own in-flight
-   * tracking), so this class relies on that ordering rather than defending
-   * against it itself.
+   * A repeat mount of the same extension in a 'multiple'-cardinality domain
+   * that already carries this token in the URL makes no second write here
+   * (the `!own.includes(token)` guard below) — that lets a caller merge a
+   * redundant mount request (URL restore, an auto-mount pass and a chain
+   * asking for the same subject at once) into one physical mount and still
+   * call this once it settles.
    */
-  afterMount(extensionId: string): void {
-    const observerMount = this.takeObserverMount(extensionId);
-    if (observerMount) {
-      if (this.stopped || observerMount.epoch !== this.lifecycleEpoch) return;
-      const token = this.tokenOf(extensionId);
-      if (token === undefined) return;
-      // The transition observer dispatched this mount from the URL. If that
-      // entry disappeared before the handler completed, release a stale
-      // multiple-domain occupant instead of restoring the old URL. For a
-      // still-present entry there is likewise nothing to back-project.
-      if (
-        !this.ownEntries().includes(token) &&
-        this.options.unmountActionType !== undefined &&
-        (!this.options.enclosing || this.enclosingPresent(this.options.enclosing))
-      ) {
-        dispatchChain(
-          this.options.registry,
-          { action: { type: this.options.unmountActionType, target: this.options.domainId, payload: { subject: extensionId } } },
-          `unmount stale ${extensionId}`,
-        );
+  afterMount(payload: ActionPayload): void {
+    const origin = readRoutingOrigin(payload);
+    // Blocker 1: a stamp naming another domain instance's key is a request
+    // this instance never dispatched — a navigation-originated request for
+    // another routing session is never reinterpreted as this session's own.
+    if (origin && origin.domainKey !== this.options.domainKey) return;
+    if (this.stopped) return;
+    const token = this.tokenOf(payload.subject);
+    if (token === undefined) return;
+    if (origin?.kind === 'restore') {
+      // The URL asked for this mount; there is nothing to project back. If
+      // the entry was withdrawn while the mount was still settling, the
+      // removal loop in `onTransition` has already released the occupant.
+      return;
+    }
+    if (origin?.kind === 'opening') {
+      if (this.options.enclosing && !this.enclosingPresent(this.options.enclosing)) {
+        this.deferAsOpening([token]);
+      } else if (!this.ownEntries().includes(token)) {
+        // Amends the enclosing entry's own history entry rather than pushing a second one.
+        this.write({ added: [{ extension: token, params: [] }] }, 'replace');
       }
       return;
     }
-    if (this.stopped) return;
-    const token = this.tokenOf(extensionId);
-    if (token === undefined) return;
-    if (this.opening) {
-      if (!this.opening.includes(token)) this.opening.push(token);
-      return;
-    }
+    // Unstamped: a programmatic mount, this domain's own consumer opening it.
     if (this.options.enclosing && !this.enclosingPresent(this.options.enclosing)) {
       this.deferAsOpening([token]);
       return;
@@ -225,7 +229,6 @@ export class DomainRouting {
     // collection — otherwise a widget unmounted mid-window still gets written
     // once the window closes, since neither array is ever consulted against
     // the URL for a token it has not written yet.
-    this.opening = this.opening?.filter((t) => t !== token);
     if (this.pendingOpen) {
       const next = this.pendingOpen.filter((t) => t !== token);
       this.pendingOpen = next.length > 0 ? next : undefined;
@@ -239,39 +242,28 @@ export class DomainRouting {
   }
 
   /**
-   * Runs `fn` with this domain's writes collected instead of made one by
-   * one, and flushes what was collected once `fn` settles — whether it
-   * resolved or threw, since a step that never finishes (T7's
-   * `mountThroughChain`, bounded by its own timeout) must not leave this
-   * domain silently stuck "opening" forever. Replaces a `beginOpening`/
-   * `endOpening` pair a caller could otherwise unbalance by throwing between
-   * them.
-   *
-   * Nest-safe (N2) and overlap-safe (M1): a call made while another is
-   * already in progress — nested inside its `fn`, or merely overlapping it
-   * in time without nesting — shares the same `this.opening` collection
-   * rather than starting a fresh one. Only the call whose own settlement
-   * brings the depth back to zero flushes it: an early-settling call, nested
-   * or not, must not flush (and thereby lose) tokens a still-running call
-   * has not finished collecting; that is the last one out, not the first one
-   * in, so the flush is decided at exit against the post-decrement depth
-   * rather than at entry.
+   * Dispatches this domain's opening mounts — the ones fired once its own
+   * root (or its enclosing occupant's) has just attached — each stamped so
+   * its own `afterMount` amends the enclosing entry's history entry instead
+   * of pushing a second one. Fire-and-forget: `mfes` serializes each
+   * subject's own mount/unmount lifecycle, and this class relies on that
+   * ordering (see the class doc comment's ordering invariant) rather than
+   * awaiting anything here.
    */
-  async withOpening<T>(fn: () => T | Promise<T>): Promise<T> {
-    const epoch = this.openingEpoch;
-    if (this.openingDepth === 0) this.opening = [];
-    this.openingDepth += 1;
-    try {
-      return await fn();
-    } finally {
-      if (epoch === this.openingEpoch) {
-        this.openingDepth -= 1;
-        if (this.openingDepth === 0) {
-          const collected = this.opening ?? [];
-          this.opening = undefined;
-          if (!this.stopped && collected.length > 0) this.deferAsOpening(collected);
-        }
-      }
+  withOpening(extensionIds: readonly string[]): void {
+    if (this.stopped) return;
+    for (const subject of extensionIds) {
+      dispatchChain(
+        this.options.registry,
+        {
+          action: {
+            type: this.options.mountActionType,
+            target: this.options.domainId,
+            payload: { subject, routingOrigin: { domainKey: this.options.domainKey, kind: 'opening' } },
+          },
+        },
+        `mount ${subject}`,
+      );
     }
   }
 
@@ -279,7 +271,6 @@ export class DomainRouting {
   start(): void {
     if (this.release) return;
     this.stopped = false;
-    this.lifecycleEpoch += 1;
     this.release = this.options.signal.createObserver<string>(this.options.domainKey, this.source(), (t) => this.onTransition(t));
   }
 
@@ -287,13 +278,6 @@ export class DomainRouting {
     this.stopped = true;
     this.release?.();
     this.release = undefined;
-    // Bumping the epoch is what makes a `withOpening` call already in flight
-    // recognize, in its own `finally`, that the window it entered no longer
-    // exists (M1) — depth and the collection are reset right here rather than
-    // left for that call to unwind on its own schedule.
-    this.openingEpoch += 1;
-    this.openingDepth = 0;
-    this.opening = undefined;
     this.pendingOpen = undefined;
     this.releasePending?.();
     this.releasePending = undefined;
@@ -457,21 +441,18 @@ export class DomainRouting {
           `unmount ${priorOwner}`,
         );
       }
-      if (mounted.has(owner) || this.hasObserverMountInEpoch(owner)) continue; // an echo or an in-flight observer mount
-      const observerMount = { epoch: this.lifecycleEpoch };
-      this.addObserverMount(owner, observerMount);
-      const result = dispatchChain(
+      if (mounted.has(owner)) continue; // an echo of this domain's own back-projection
+      dispatchChain(
         this.options.registry,
-        { action: { type: this.options.mountActionType, target: this.options.domainId, payload: { subject: owner } } },
+        {
+          action: {
+            type: this.options.mountActionType,
+            target: this.options.domainId,
+            payload: { subject: owner, routingOrigin: { domainKey: this.options.domainKey, kind: 'restore' } },
+          },
+        },
         `mount ${owner}`,
       );
-      if (!result.accepted) {
-        this.removeObserverMount(owner, observerMount);
-      } else if (result.settled) {
-        void result.settled.finally(() => {
-          this.removeObserverMount(owner, observerMount);
-        });
-      }
     }
     // With the enclosing entry gone, this is the enclosing occupant being removed (Back/Forward):
     // DefaultExtensionMounter.detach() unmounts this domain's occupants; a second unmount would race it.
@@ -482,7 +463,13 @@ export class DomainRouting {
       this.lastOwnerByToken.delete(token);
       if (unmountType === undefined || suppressRemovals) continue;
       const owner = this.ownerOf(token);
-      if (owner && mounted.has(owner)) {
+      // Dispatched whether or not `owner` is already mounted: a URL-driven
+      // mount for this same token can still be settling when its entry is
+      // withdrawn, and that mount holds no marker of its own to consult here
+      // any more — the receiving domain (queued, concurrent, or not yet
+      // mounted at all) is what decides how its own unmount lands against
+      // that in-flight or future mount (R2).
+      if (owner) {
         dispatchChain(this.options.registry, { action: { type: unmountType, target: this.options.domainId, payload: { subject: owner } } }, `unmount ${owner}`);
       }
     }
@@ -491,30 +478,5 @@ export class DomainRouting {
       unresolved: transition.entries.filter((e) => !e.resolution.resolved).length,
     };
     this.notifyStatusListeners();
-  }
-
-  private addObserverMount(extensionId: string, observerMount: { readonly epoch: number }): void {
-    this.observerMounts.set(extensionId, [...(this.observerMounts.get(extensionId) ?? []), observerMount]);
-  }
-
-  private takeObserverMount(extensionId: string): { readonly epoch: number } | undefined {
-    const mounts = this.observerMounts.get(extensionId);
-    if (!mounts || mounts.length === 0) return undefined;
-    const [observerMount, ...remaining] = mounts;
-    if (remaining.length === 0) this.observerMounts.delete(extensionId);
-    else this.observerMounts.set(extensionId, remaining);
-    return observerMount;
-  }
-
-  private hasObserverMountInEpoch(extensionId: string): boolean {
-    return this.observerMounts.get(extensionId)?.some((observerMount) => observerMount.epoch === this.lifecycleEpoch) ?? false;
-  }
-
-  private removeObserverMount(extensionId: string, observerMount: { readonly epoch: number }): void {
-    const mounts = this.observerMounts.get(extensionId);
-    if (!mounts) return;
-    const remaining = mounts.filter((candidate) => candidate !== observerMount);
-    if (remaining.length === 0) this.observerMounts.delete(extensionId);
-    else this.observerMounts.set(extensionId, remaining);
   }
 }

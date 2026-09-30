@@ -144,7 +144,7 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
         const payload = p as ActionPayload;
         await this.strategy.mount(payload);
         // Before this handler settles, so a chained `next` sees the entry in the URL (D3).
-        this.routing.afterMount(payload.subject);
+        this.routing.afterMount(payload);
       }),
     );
     // The host chrome a mounted screen may drive. The one thing neither the
@@ -199,7 +199,7 @@ class OptionalDomainImpl extends ExtensionDomainImplementation {
       ActionHandler.fromFunction(async (_t, p) => {
         const payload = p as ActionPayload;
         await this.strategy.mount(payload);
-        this.routing.afterMount(payload.subject);
+        this.routing.afterMount(payload);
       }),
     );
     ctx.registerHandler(

@@ -58,5 +58,4 @@ export {
   rootDomainKeyOf,
   type DomainRouteStatus,
   type DomainRoutingOptions,
-  type DispatchResult,
 } from './microfrontends';

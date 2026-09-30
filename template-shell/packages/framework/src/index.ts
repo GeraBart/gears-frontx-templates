@@ -96,7 +96,6 @@ export {
   rootDomainKeyOf,
   type DomainRouteStatus,
   type DomainRoutingOptions,
-  type DispatchResult,
 } from './plugins';
 
 // MFE Type Constants (solution-specific GTS type ids, app-layer owned)

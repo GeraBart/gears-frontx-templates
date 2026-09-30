@@ -62,10 +62,17 @@ address bar. Each of the four base domains (`screen`, `sidebar`, `popup`,
 `@gears-frontx/framework`), created alongside the domain and started
 once the screen slot attaches (`MfeScreenContainer`'s `onAttached` calls
 `routing.start()`; `onDetached` calls `routing.stop()`). After a domain's mount
-handler settles, it calls that domain's `afterMount(extensionId)`, which
-back-projects the extension's token into the URL for that domain's key — so a
-menu click now leaves a real entry in the address bar, and browser
-back/forward and bookmarking work against it. The same `DomainRouting` also
+handler settles, it calls that domain's `afterMount(payload)`, passing the
+same `ActionPayload` the handler mounted with. A mount restored from the URL
+carries a `routingOrigin` stamp naming the domain instance that dispatched it;
+`afterMount` writes nothing back for such a payload — the URL already asked
+for that entry. A programmatic mount (one this instance never dispatched
+itself) carries no stamp, and back-projects the extension's token into the URL
+for that domain's key — so a menu click leaves a real entry in the address
+bar, and browser back/forward and bookmarking work against it. A nested
+domain's own opening mounts (dispatched once its enclosing occupant's slot
+attaches) carry a stamp too, and amend the enclosing entry's own history entry
+by `replace` rather than pushing a second one. The same `DomainRouting` also
 runs the other direction: on every history transition it resolves each
 entry's token to a registered extension and dispatches the corresponding
 mount (or, for a resolution swap on a `multiple`-cardinality domain, an

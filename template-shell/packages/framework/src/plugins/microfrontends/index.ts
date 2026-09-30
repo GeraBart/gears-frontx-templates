@@ -202,7 +202,6 @@ export {
   dispatchChain,
   type DomainRouteStatus,
   type DomainRoutingOptions,
-  type DispatchResult,
 } from './domain-routing';
 export { buildEntryAddresses, readEntryAddress, rootDomainKeyOf } from './entry-address';
 

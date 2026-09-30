@@ -62,10 +62,13 @@ import {
   gtsPlugin,
   ExtensionDomainSlot,
   MfeHandlerMF,
+  FRONTX_ACTION_MOUNT_EXT,
+  dispatchChain,
   type ChildMfeBridge,
   type MfeEntryLifecycle,
   type MfeEntryMF,
   type MfManifest,
+  type MfeRegistry,
 } from '@gears-frontx/react';
 import { bootstrapWidgetsRuntime, type WidgetsRoutingHolder } from './lifecycle-widgets-host';
 
@@ -95,6 +98,33 @@ let mountCalls: string[] = [];
 let mountedRoots = new Map<string, Element | ShadowRoot>();
 
 /**
+ * Resolved by the test lifecycle's own `mount()` below, the instant the real
+ * mount pipeline reaches it — the deterministic settlement signal this test
+ * needs, since dispatching a mount is fire-and-forget and `WidgetsDomainImpl`
+ * exposes nothing to await, so the helper awaits the lifecycle mount callback.
+ * `awaitMount` must be called BEFORE
+ * `dispatchMountAndAwait`'s own dispatch, so the resolver is already
+ * registered when the synchronous prologue inside the mediator's dispatch
+ * reaches this lifecycle's `mount()` — no sleep, no poll.
+ */
+const mountResolvers = new Map<string, () => void>();
+
+function awaitMount(extensionId: string): Promise<void> {
+  return new Promise((resolve) => mountResolvers.set(extensionId, resolve));
+}
+
+/** Dispatches a real `mount_ext` for `extensionId` and resolves once this test's own lifecycle `mount()` ran for it. */
+function dispatchMountAndAwait(registry: MfeRegistry, extensionId: string): Promise<void> {
+  const settled = awaitMount(extensionId);
+  dispatchChain(
+    registry,
+    { action: { type: FRONTX_ACTION_MOUNT_EXT, target: WIDGETS_DOMAIN_ID, payload: { subject: extensionId } } },
+    `mount ${extensionId}`,
+  );
+  return settled;
+}
+
+/**
  * Subclasses the REAL `MfeHandlerMF` (real `handledBaseTypeId`, real
  * `bridgeFactory` inherited unmodified via `super()`) and overrides only the
  * module-federation network `load()` — see this file's own doc comment.
@@ -108,6 +138,8 @@ class TestMfeHandlerMF extends MfeHandlerMF {
         const marker = document.createElement('div');
         marker.setAttribute('data-widget-mounted', extensionId);
         container.appendChild(marker);
+        mountResolvers.get(extensionId)?.();
+        mountResolvers.delete(extensionId);
       },
       unmount(_container: Element | ShadowRoot) {
         // no-op: this test asserts on `mountCalls` and real DOM markers only.
@@ -242,6 +274,7 @@ async function attachRealSlot(registry: unknown): Promise<{ root: Root; containe
 afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
+  mountResolvers.clear();
 });
 
 describe('WidgetsDomainImpl — real registry remount (RM-LIVE2 D2)', () => {
@@ -262,7 +295,7 @@ describe('WidgetsDomainImpl — real registry remount (RM-LIVE2 D2)', () => {
 
     // --- First entry into Widgets Host: real slot attaches, auto-mount pass runs ---------
     const first = await attachRealSlot(registry);
-    await Promise.allSettled(WIDGET_IDS.map((id) => holder.impl!.mountThroughChain(id, 5000)));
+    await Promise.allSettled(WIDGET_IDS.map((id) => dispatchMountAndAwait(registry, id)));
 
     expect(new Set(mountCalls)).toEqual(new Set(WIDGET_IDS));
     expect(mountCalls).toHaveLength(3);
@@ -280,7 +313,7 @@ describe('WidgetsDomainImpl — real registry remount (RM-LIVE2 D2)', () => {
 
     // --- Second entry into Widgets Host (back/forward within the same page) -------------
     const second = await attachRealSlot(registry);
-    await Promise.allSettled(WIDGET_IDS.map((id) => holder.impl!.mountThroughChain(id, 5000)));
+    await Promise.allSettled(WIDGET_IDS.map((id) => dispatchMountAndAwait(registry, id)));
 
     // On d7382ed (no `releaseAll()`), `WidgetsDomainImpl.mount()`'s "already
     // mounted" early-return (fed by `registry.getMountedExtensions()`, never

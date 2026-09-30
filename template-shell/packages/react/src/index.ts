@@ -444,7 +444,6 @@ export {
 export type {
   DomainRouteStatus,
   DomainRoutingOptions,
-  DispatchResult,
 } from '@gears-frontx/framework';
 
 // MFE Types
