@@ -126,8 +126,8 @@ export interface WidgetsRoutingHolder {
 
 class WidgetsDomainImpl extends ExtensionDomainImplementation {
   private readonly strategy: ConcurrentMountStrategy;
+  /** Registers this domain's own physical mount work — see `releaseAll`'s doc comment for why teardown awaits it. Not chain tracking: `mfes`'s own mount-ext prologue already joins concurrent requests for the same subject before this handler runs twice. */
   private readonly inFlight = new Map<string, Promise<void>>();
-  private readonly waiters = new Map<string, Array<() => void>>();
 
   constructor(ctx: DomainContext, hooks: ContainerHooks, private readonly registry: MfeRegistry, private readonly holder: WidgetsRoutingHolder) {
     super();
@@ -142,33 +142,6 @@ class WidgetsDomainImpl extends ExtensionDomainImplementation {
         this.holder.routing?.afterUnmount(payload.subject);
       }),
     );
-  }
-
-  /**
-   * Dispatch a mount through the actions chain and learn when it settled. Settles on the first of:
-   * this domain's handler settling for `subject`; a synchronous refusal; the promise
-   * executeActionsChain returned (today it resolves even when the chain failed before any
-   * handler); the domain's own action timeout. After #648 there is no promise — the other three remain.
-   */
-  mountThroughChain(subject: string, timeoutMs: number): Promise<void> {
-    const settled = new Promise<void>((resolve) => this.waiters.set(subject, [...(this.waiters.get(subject) ?? []), resolve]));
-    const timer = setTimeout(() => {
-      // Only this wait gives up: the handler keeps running. If it still settles later, its
-      // afterMount runs after endOpening() and makes a separate push of its own (a second history
-      // entry) — the warning is what marks that case in the live run.
-      console.warn(`[demo-mfe widgets-host] mount of ${subject} did not settle within ${timeoutMs}ms`);
-      this.settle(subject);
-    }, timeoutMs);
-    void settled.then(() => clearTimeout(timer));
-    const result = dispatchChain(this.registry, { action: { type: FRONTX_ACTION_MOUNT_EXT, target: WIDGETS_DOMAIN_ID, payload: { subject } } }, `mount ${subject}`);
-    if (!result.accepted) this.settle(subject);
-    else void result.settled?.then(() => this.settle(subject));
-    return settled;
-  }
-
-  private settle(subject: string): void {
-    for (const resolve of this.waiters.get(subject) ?? []) resolve();
-    this.waiters.delete(subject);
   }
 
   /**
@@ -195,24 +168,15 @@ class WidgetsDomainImpl extends ExtensionDomainImplementation {
     }
   }
 
-  /** ConcurrentMountStrategy is not idempotent: a URL restore, the auto-mount pass and a chain may ask at once. */
   private mount(payload: ActionPayload): Promise<void> {
     const subject = payload.subject;
-    const pending = this.inFlight.get(subject);
-    if (pending) return pending;
-    if (this.registry.getMountedExtensions(WIDGETS_DOMAIN_ID).includes(subject)) {
-      this.holder.routing?.afterMount(subject);
-      this.settle(subject);
-      return Promise.resolve();
-    }
     const work = (async () => {
       try {
         await this.strategy.mount(payload);
         // Before this handler settles: the chain's next step (the ping) needs the widget's entry in the URL.
-        this.holder.routing?.afterMount(subject);
+        this.holder.routing?.afterMount(payload);
       } finally {
         this.inFlight.delete(subject);
-        this.settle(subject);
       }
     })();
     this.inFlight.set(subject, work);
@@ -438,8 +402,10 @@ function widgetsNavigation(): { history: NavigationHistory; signal: RouteSignal 
  * so on a remount the factory — and therefore `WidgetsDomainImpl`'s own
  * `holder.impl = this` assignment — never runs again. A fresh
  * `{ routing: undefined, impl: undefined }` object per `mount()` would leave
- * that remount's holder with no `impl` at all, and `mountThroughChain` would
- * throw reading `undefined`. Keeping the SAME object across every mount, and
+ * that remount's holder with no `impl` at all, and `unmount()`'s own
+ * `widgetsHolder.impl?.releaseAll()` call would silently skip releasing every
+ * mounted widget instead of tearing them down. Keeping the SAME object across
+ * every mount, and
  * only resetting its `routing` field (never `impl`, which belongs to the
  * domain implementation instance and outlives any one mount), is what lets a
  * remount still reach the original `WidgetsDomainImpl`.
@@ -531,20 +497,21 @@ interface WidgetsHostScreenProps {
    * Awaiting this signal too — not just `bootstrap` — is what closes that
    * second race.
    *
-   * This component deliberately delays calling it until AFTER its own
-   * auto-mount-on-attach pass (below) has settled for every extension
-   * currently registered on this domain — not the instant `attach()`
-   * returns. `ExtensionDomainSlot` only renders once this component's own
-   * `ready` state flips true, and its root-attach effect runs on a LATER
-   * React commit than the microtask that resolves `mount()`'s own promise
-   * and immediately drives a chain's `next` continuation. If that
-   * continuation dispatched a `mount_ext` for this domain before
-   * `DefaultExtensionMounter` had a root attached, it would throw "no root
-   * attached for domain ...". Deferring this signal until after the
-   * auto-mount pass settles means any later `mount_ext` for an extension
-   * this pass already mounted lands on the cheap, safe
-   * `mountState === 'mounted'` early-return in `mountExtension` instead of
-   * racing the root-attach timing a second time.
+   * Called synchronously at the end of `handleAttached`, once this domain's
+   * own opening mounts have been dispatched (or deferred behind the
+   * enclosing entry) — not awaited, since `mfes` serializes each subject's
+   * mount/unmount and this component relies on that ordering rather than on
+   * any settlement of its own. `ExtensionDomainSlot` only renders once this
+   * component's own `ready` state flips true, and its root-attach effect
+   * runs on a LATER React commit than the microtask that resolves
+   * `mount()`'s own promise and immediately drives a chain's `next`
+   * continuation. If that continuation dispatched a `mount_ext` for this
+   * domain before `DefaultExtensionMounter` had a root attached, it would
+   * reject with "no root attached for domain ...". Calling this signal only
+   * after the opening dispatch closes that race: any later `mount_ext` for
+   * an extension the opening dispatch already mounted lands on the cheap,
+   * safe `mountState === 'mounted'` early-return in `mountExtension` instead
+   * of racing the root-attach timing a second time.
    */
   readonly onDomainAttached: () => void;
 }
@@ -613,23 +580,17 @@ function WidgetsHostScreen({
       routing.start();
     }
     const ids = registry.getExtensionsForDomain(WIDGETS_DOMAIN_ID).map((e) => e.id);
-    const autoMount = (): Promise<void> =>
-      Promise.allSettled(ids.map((id) => holder.impl!.mountThroughChain(id, domain.defaultActionTimeout))).then(() => undefined);
-    void (routing ? routing.withOpening(autoMount) : autoMount())
-      .then(() => {
-        onDomainAttached(); // mount() resolves only now — after the opening write is made or deferred
-      })
-      .catch((err: unknown) => {
-        // Q4: without this catch, a rejection here (e.g. `withOpening` itself
-        // throwing) would leave `onDomainAttached` uncalled forever — `mount()`
-        // awaits the promise `onDomainAttached` resolves (`domainAttachedPromise`)
-        // alongside `bootstrapPromise`, so a silently-hung gating pass would hang
-        // the whole extension mount. Resolving anyway is the same "best effort,
-        // do not block mounting" stance `bootstrapWidgetsRuntime`'s per-extension
-        // registration loop already takes.
-        console.error('[demo-mfe widgets-host] opening/auto-mount pass failed:', err);
-        onDomainAttached();
-      });
+    if (routing) {
+      routing.withOpening(ids);
+    } else {
+      // No entry address for this mount (a standalone render, no host): there is
+      // no routing instance to stamp these, so each auto-mount dispatches plain,
+      // same as any other unstamped programmatic mount.
+      for (const id of ids) {
+        dispatchChain(registry, { action: { type: FRONTX_ACTION_MOUNT_EXT, target: WIDGETS_DOMAIN_ID, payload: { subject: id } } }, `mount ${id}`);
+      }
+    }
+    onDomainAttached(); // mount() resolves once the opening dispatch is made or deferred
   };
 
   if (error) {
@@ -660,11 +621,10 @@ function WidgetsHostScreen({
       return entry?.actions?.includes(WIDGET_PING_ACTION_TYPE) ?? false;
     });
 
-  // #648: `executeActionsChain` is no longer guaranteed to return a promise (it can refuse
-  // synchronously and return nothing), so an unconditional `.catch()` on its result would
-  // throw `undefined.catch` even though the chain ran. `dispatchChain` already normalizes all
-  // three shapes (sync throw, `undefined`, a promise) — same helper `mountThroughChain` above
-  // uses, rather than a second bespoke adapter for the same problem.
+  // #648: `executeActionsChain` is acceptance-only — it can refuse synchronously
+  // and returns nothing to await — so an unconditional `.catch()` on its result
+  // would throw `undefined.catch` even though the chain ran. `dispatchChain`
+  // is the one place that refusal is handled, fire-and-forget.
   const handlePing = (extensionId: string): void => {
     dispatchChain(
       registry,

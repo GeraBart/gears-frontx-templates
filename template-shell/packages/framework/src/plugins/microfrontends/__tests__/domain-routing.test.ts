@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { composeDomainKey, createRouteSignal, type DomainKey, type ExtensionToken } from '@gears-frontx/routing';
 import type { Extension, MfeRegistry } from '@gears-frontx/mfes';
+import { GtsPlugin } from '@gears-frontx/gts-plugin';
 import { DomainRouting, dispatchChain, type DomainRoutingOptions } from '../domain-routing';
 import { fakeNavigation } from './fake-navigation';
 
@@ -11,7 +12,7 @@ const W = composeDomainKey(SCREEN, 'widgets-host' as ExtensionToken, 'widgets');
 const ext = (id: string, route?: string): Extension => ({ id, domain: 'dom', entry: 'e', ...(route ? { route } : {}) }) as Extension;
 
 function fakeRegistry(extensions: Extension[], mounted: string[] = []) {
-  const executeActionsChain = vi.fn((_chain: unknown) => Promise.resolve());
+  const executeActionsChain = vi.fn((_chain: unknown) => undefined);
   const registry = {
     getExtension: (id: string) => extensions.find((e) => e.id === id),
     getExtensionsForDomain: () => extensions,
@@ -38,6 +39,12 @@ function setup(initial: string, extensions: Extension[], over: Partial<DomainRou
   return { history, signal, routing, ...reg };
 }
 
+/** The payload the fake registry captured for the first (or only) `executeActionsChain` call of type `MOUNT`. */
+function mountPayload(executeActionsChain: ReturnType<typeof fakeRegistry>['executeActionsChain'], nth = 0): { subject: string; [k: string]: unknown } {
+  const calls = executeActionsChain.mock.calls.filter(([chain]) => (chain as { action: { type: string } }).action.type === MOUNT);
+  return (calls[nth][0] as { action: { payload: { subject: string; [k: string]: unknown } } }).action.payload;
+}
+
 const HELLO = ext('ext.hello', '/hello-world');
 const HOST = ext('ext.host', '/widgets-host');
 const ALPHA = ext('ext.alpha', '/widget-alpha');
@@ -52,19 +59,19 @@ const nested = {
 describe('single-occupant back-projection', () => {
   it('opens with one push', () => {
     const { history, routing } = setup('/', [HELLO]);
-    routing.afterMount('ext.hello');
+    routing.afterMount({ subject: 'ext.hello' });
     expect(history.writes).toEqual([{ kind: 'push', path: '/?screen=hello-world' }]);
   });
 
   it('writes nothing when the URL already carries that state', () => {
     const { history, routing } = setup('/?screen=hello-world', [HELLO]);
-    routing.afterMount('ext.hello');
+    routing.afterMount({ subject: 'ext.hello' });
     expect(history.writes).toEqual([]);
   });
 
   it('switches with one push, resets the old subtree, keeps other keys and foreign segments (foreign untouched)', () => {
     const { history, routing } = setup('/?screen=hello-world&screen.hello-world.tabs=a&sidebar=nav&utm_source=x', [HELLO, HOST]);
-    routing.afterMount('ext.host');
+    routing.afterMount({ subject: 'ext.host' });
     expect(history.writes).toHaveLength(1);
     expect(history.writes[0].kind).toBe('push');
     const search = new URL(history.writes[0].path, 'http://t').search;
@@ -92,8 +99,8 @@ describe('single-occupant back-projection', () => {
 
   it('never projects an extension without a single-segment route', () => {
     const { history, routing } = setup('/', [ext('ext.deep', '/a/b'), ext('ext.none')]);
-    routing.afterMount('ext.deep');
-    routing.afterMount('ext.none');
+    routing.afterMount({ subject: 'ext.deep' });
+    routing.afterMount({ subject: 'ext.none' });
     expect(history.writes).toEqual([]);
     expect(routing.entryAddressFor('ext.deep')).toBeUndefined();
   });
@@ -103,32 +110,43 @@ describe('single-occupant back-projection', () => {
     expect(routing.entryAddressFor('ext.hello')).toEqual({ domainKey: SCREEN, extension: 'hello-world' });
   });
 
-  it('cleans up a stray duplicate entry for a single-occupant domain (self-heal)', () => {
+  it('cleans up a stray duplicate entry for a single-occupant domain (self-heal, unstamped only)', () => {
     // Two entries under the same single-cardinality domain key — never produced
     // by this class's own writes, only by a malformed or hand-built URL.
     const { history, routing } = setup('/?screen=hello-world&screen=widgets-host', [HELLO, HOST]);
-    routing.afterMount('ext.hello');
+    routing.afterMount({ subject: 'ext.hello' });
     expect(history.writes).toEqual([{ kind: 'replace', path: '/?screen=hello-world' }]);
   });
 
-  it('does not dispatch an unmount when a single-occupant domain switches directly to a new occupant', () => {
+  it('a restore- or opening-stamped call never self-heals, even over the same stray duplicate', () => {
+    const { history, routing } = setup('/?screen=hello-world&screen=widgets-host', [HELLO, HOST]);
+    routing.afterMount({ subject: 'ext.hello', routingOrigin: { domainKey: SCREEN, kind: 'restore' } });
+    expect(history.writes).toEqual([]);
+  });
+
+  it('does not dispatch an unmount when a single-occupant domain switches directly to a new occupant (R2)', () => {
     const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO, HOST], { unmountActionType: UNMOUNT }, ['ext.hello']);
     routing.start(); // the initial-report round, already echoing the mounted 'ext.hello'
     executeActionsChain.mockClear();
     history.set('/?screen=widgets-host');
     expect(executeActionsChain).toHaveBeenCalledTimes(1);
-    expect(executeActionsChain).toHaveBeenCalledWith({ action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.host' } } });
+    expect(executeActionsChain).toHaveBeenCalledWith({
+      action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.host', routingOrigin: { domainKey: SCREEN, kind: 'restore' } } },
+    });
   });
 });
 
-describe('nested domain opening window (deferred opening write)', () => {
-  it('collects the three auto-mounted widgets into one replace once the enclosing entry appears', async () => {
-    const { history, routing } = setup('/?screen=hello-world', [ALPHA, BETA, WIDGET], nested);
-    await routing.withOpening(() => {
-      routing.afterMount('ext.alpha');
-      routing.afterMount('ext.beta');
-      routing.afterMount('ext.widget');
-    });
+describe('nested domain opening (stamped dispatch, deferred write)', () => {
+  it('opening gives one history entry: dispatches stamped mounts, defers while the enclosing entry is absent, amends it by replace once it appears', () => {
+    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [ALPHA, BETA, WIDGET], nested);
+    routing.withOpening(['ext.alpha', 'ext.beta', 'ext.widget']);
+    const payloads = executeActionsChain.mock.calls.map(([chain]) => (chain as { action: { payload: unknown } }).action.payload);
+    expect(payloads).toEqual([
+      { subject: 'ext.alpha', routingOrigin: { domainKey: W, kind: 'opening' } },
+      { subject: 'ext.beta', routingOrigin: { domainKey: W, kind: 'opening' } },
+      { subject: 'ext.widget', routingOrigin: { domainKey: W, kind: 'opening' } },
+    ]);
+    for (const payload of payloads) routing.afterMount(payload as { subject: string });
     expect(history.writes).toEqual([]); // enclosing entry not in the URL yet
     history.push('/?screen=widgets-host'); // the shell's own back-projection
     expect(history.writes).toEqual([
@@ -138,21 +156,24 @@ describe('nested domain opening window (deferred opening write)', () => {
         path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha&screen.widgets-host.widgets=widget-beta&screen.widgets-host.widgets=widget',
       },
     ]);
-    expect(history.subscriberCount()).toBe(0); // the pending-write subscription released right after that one write (F1)
-    history.push('/?screen=widgets-host&x=1');
-    expect(history.writes).toHaveLength(3); // subscription released after the one write
+    expect(history.subscriberCount()).toBe(0); // the pending-write subscription released right after that one write
   });
 
-  it('writes the missing widgets immediately with one replace when the enclosing entry is already there', async () => {
-    const { history, routing } = setup(
+  it('writes each missing widget immediately by its own replace when the enclosing entry is already there — no batching once it is present', () => {
+    const { history, routing, executeActionsChain } = setup(
       '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha;route;last-ping=2026-09-23T10:15:30.000Z',
       [ALPHA, BETA, WIDGET],
       nested,
     );
-    await routing.withOpening(() => {
-      for (const id of ['ext.alpha', 'ext.beta', 'ext.widget']) routing.afterMount(id);
-    });
+    routing.withOpening(['ext.alpha', 'ext.beta', 'ext.widget']);
+    for (const [chain] of executeActionsChain.mock.calls) routing.afterMount((chain as { action: { payload: { subject: string } } }).action.payload);
+    // 'ext.alpha' is already in the URL (no write); 'ext.beta' and 'ext.widget' each amend it in turn —
+    // only the deferred (enclosing-absent) path in `deferAsOpening`/`flushOpening` batches into one write.
     expect(history.writes).toEqual([
+      {
+        kind: 'replace',
+        path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha;route;last-ping=2026-09-23T10:15:30.000Z&screen.widgets-host.widgets=widget-beta',
+      },
       {
         kind: 'replace',
         path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha;route;last-ping=2026-09-23T10:15:30.000Z&screen.widgets-host.widgets=widget-beta&screen.widgets-host.widgets=widget',
@@ -160,40 +181,21 @@ describe('nested domain opening window (deferred opening write)', () => {
     ]);
   });
 
-  it('writes nothing at all when the URL already carries every widget (reload)', async () => {
+  it('writes nothing at all when the URL already carries every widget (reload)', () => {
     const url =
       '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha&screen.widgets-host.widgets=widget-beta&screen.widgets-host.widgets=widget';
-    const { history, routing } = setup(url, [ALPHA, BETA, WIDGET], nested);
-    await routing.withOpening(() => {
-      for (const id of ['ext.alpha', 'ext.beta', 'ext.widget']) routing.afterMount(id);
-    });
+    const { history, routing, executeActionsChain } = setup(url, [ALPHA, BETA, WIDGET], nested);
+    routing.withOpening(['ext.alpha', 'ext.beta', 'ext.widget']);
+    for (const [chain] of executeActionsChain.mock.calls) routing.afterMount((chain as { action: { payload: { subject: string } } }).action.payload);
     expect(history.writes).toEqual([]);
   });
 
-  it('drops a pending opening write on stop', async () => {
-    const { history, routing } = setup('/?screen=hello-world', [ALPHA], nested);
-    await routing.withOpening(() => {
-      routing.afterMount('ext.alpha');
-    });
-    routing.stop();
-    history.push('/?screen=widgets-host');
-    expect(history.writes).toHaveLength(1);
-    expect(history.subscriberCount()).toBe(0);
-  });
-
-  it('after the window, adds a widget with one push', () => {
-    const { history, routing } = setup('/?screen=widgets-host', [ALPHA], nested);
-    routing.afterMount('ext.alpha');
-    expect(history.writes).toEqual([{ kind: 'push', path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha' }]);
-  });
-
-  it('does not bring back a widget unmounted during the opening window (C1)', async () => {
-    const { history, routing } = setup('/?screen=hello-world', [ALPHA, BETA], nested);
-    await routing.withOpening(() => {
-      routing.afterMount('ext.alpha');
-      routing.afterMount('ext.beta');
-      routing.afterUnmount('ext.beta'); // unmounted again before the window closes
-    });
+  it('does not bring back a widget unmounted during the opening window (C1)', () => {
+    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [ALPHA, BETA], nested);
+    routing.withOpening(['ext.alpha', 'ext.beta']);
+    routing.afterMount(mountPayload(executeActionsChain, 0));
+    routing.afterMount(mountPayload(executeActionsChain, 1));
+    routing.afterUnmount('ext.beta'); // unmounted again before the enclosing entry appears
     history.push('/?screen=widgets-host');
     expect(history.writes).toEqual([
       { kind: 'push', path: '/?screen=widgets-host' },
@@ -201,173 +203,129 @@ describe('nested domain opening window (deferred opening write)', () => {
     ]);
   });
 
-  it('drops a pending widget unmounted before the enclosing entry appears (C1, pendingOpen)', async () => {
-    const { history, routing } = setup('/?screen=hello-world', [ALPHA], nested);
-    await routing.withOpening(() => {
-      routing.afterMount('ext.alpha');
-    });
+  it('drops a pending widget unmounted before the enclosing entry appears (C1, pendingOpen)', () => {
+    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [ALPHA], nested);
+    routing.withOpening(['ext.alpha']);
+    routing.afterMount(mountPayload(executeActionsChain));
     routing.afterUnmount('ext.alpha'); // unmounted while still waiting for the enclosing entry
     history.push('/?screen=widgets-host');
     expect(history.writes).toEqual([{ kind: 'push', path: '/?screen=widgets-host' }]); // no replace at all
     expect(history.subscriberCount()).toBe(0); // the now-empty pending write dropped its subscription too
   });
 
-  it('flushes collected writes and rethrows when fn throws inside the opening window (C3)', async () => {
-    const { history, routing } = setup('/?screen=widgets-host', [ALPHA], nested);
-    await expect(
-      routing.withOpening(() => {
-        routing.afterMount('ext.alpha');
-        throw new Error('boom');
-      }),
-    ).rejects.toThrow('boom');
+  it('with the enclosing entry already present, adds a widget with one replace — never a second push', () => {
+    const { history, routing, executeActionsChain } = setup('/?screen=widgets-host', [ALPHA], nested);
+    routing.withOpening(['ext.alpha']);
+    routing.afterMount(mountPayload(executeActionsChain));
     expect(history.writes).toEqual([{ kind: 'replace', path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha' }]);
   });
 
-  it('nests safely: an inner withOpening call shares the outer collection and only the outermost close flushes it, into one replace (N2)', async () => {
-    const { history, routing } = setup('/?screen=widgets-host', [ALPHA, BETA], nested);
-    await routing.withOpening(async () => {
-      routing.afterMount('ext.alpha');
-      await routing.withOpening(() => {
-        routing.afterMount('ext.beta');
-      });
-      // The inner call already settled here — its own flush must not have
-      // fired yet, and 'alpha' (collected by the still-open outer call)
-      // must not have been dropped.
-    });
-    expect(history.writes).toEqual([
-      {
-        kind: 'replace',
-        path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha&screen.widgets-host.widgets=widget-beta',
-      },
-    ]);
+  it('after the opening window has finished, a programmatic (unstamped) mount adds a widget with its own push — a user opening it', () => {
+    const { history, routing } = setup('/?screen=widgets-host', [ALPHA], nested);
+    routing.afterMount({ subject: 'ext.alpha' });
+    expect(history.writes).toEqual([{ kind: 'push', path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha' }]);
   });
 
-  it('flushes overlapping non-nested windows together when the later one settles, not the earlier one (M1)', async () => {
-    const { history, routing } = setup('/?screen=widgets-host', [ALPHA, BETA], nested);
-    let releaseA: () => void = () => {};
-    let releaseB: () => void = () => {};
-    const pendingA = new Promise<void>((resolve) => {
-      releaseA = resolve;
-    });
-    const pendingB = new Promise<void>((resolve) => {
-      releaseB = resolve;
-    });
-    // A and B are not nested — B starts (and B's `afterMount` runs) while A's
-    // own `fn` is still pending, but neither call is made from inside the
-    // other's `fn`.
-    const a = routing.withOpening(async () => {
-      routing.afterMount('ext.alpha');
-      await pendingA;
-    });
-    const b = routing.withOpening(async () => {
-      routing.afterMount('ext.beta');
-      await pendingB;
-    });
-    releaseA();
-    await a; // A settles first — its own exit must not flush; B is still open
-    expect(history.writes).toEqual([]);
-    releaseB();
-    await b; // B's exit brings the depth back to zero — everything goes out together
-    expect(history.writes).toEqual([
-      {
-        kind: 'replace',
-        path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha&screen.widgets-host.widgets=widget-beta',
-      },
-    ]);
+  it('drops a pending opening write on stop', () => {
+    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [ALPHA], nested);
+    routing.withOpening(['ext.alpha']);
+    routing.afterMount(mountPayload(executeActionsChain));
+    routing.stop();
+    history.push('/?screen=widgets-host');
+    expect(history.writes).toHaveLength(1);
+    expect(history.subscriberCount()).toBe(0);
   });
 
-  it('a stop/start cycle during a pending window still lets a later window collect into one replace (M1)', async () => {
-    const { history, routing } = setup('/?screen=widgets-host', [ALPHA, BETA, WIDGET], nested);
-    let releaseStale: () => void = () => {};
-    const pendingStale = new Promise<void>((resolve) => {
-      releaseStale = resolve;
-    });
-    const stale = routing.withOpening(async () => {
-      routing.afterMount('ext.alpha');
-      await pendingStale;
-    });
-    routing.stop(); // bumps the epoch and resets depth/collection out from under `stale`
-    routing.start();
-    await routing.withOpening(() => {
-      routing.afterMount('ext.beta'); // a fresh, later window under the new epoch
-    });
-    expect(history.writes).toEqual([{ kind: 'replace', path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-beta' }]);
-    releaseStale();
-    await stale; // the stale call's own finally must neither decrement the new epoch's depth nor flush again
-    expect(history.writes).toEqual([{ kind: 'replace', path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-beta' }]);
-    // The assertion above only shows `stale`'s settlement produced no write
-    // of its own — it would still pass if `stale`'s `finally` had silently
-    // decremented `openingDepth` (or the epoch it captured was never bumped
-    // in the first place, making the guard above a no-op) without a flush,
-    // since that corruption is invisible until something opens next. Prove
-    // it did not: a genuinely fresh window opened now must still collect
-    // cleanly into exactly one further replace, not a second, unbatched
-    // write forced out immediately because `this.opening` was left `undefined`
-    // while `openingDepth` sat below zero.
-    await routing.withOpening(() => {
-      routing.afterMount('ext.widget');
-    });
-    expect(history.writes).toEqual([
-      { kind: 'replace', path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-beta' },
-      {
-        kind: 'replace',
-        path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-beta&screen.widgets-host.widgets=widget',
-      },
-    ]);
-  });
-
-  it('ignores a late afterMount/afterUnmount after stop, without opening a new subscription (C2)', () => {
+  it('no write before stop: a late unstamped afterMount call after stop() writes nothing and opens no subscription (C2)', () => {
     const { history, routing } = setup('/?screen=hello-world', [ALPHA], nested);
     routing.stop(); // stop already ran (e.g. Widgets Host itself unmounted)
-    routing.afterMount('ext.alpha'); // an in-flight mount settling late
+    routing.afterMount({ subject: 'ext.alpha' }); // an in-flight mount settling late
     expect(history.writes).toEqual([]);
     expect(history.subscriberCount()).toBe(0);
     history.push('/?screen=widgets-host'); // even once the enclosing entry lands, nothing fires
     expect(history.writes).toEqual([{ kind: 'push', path: '/?screen=widgets-host' }]);
     expect(history.subscriberCount()).toBe(0);
   });
+
+  it('withOpening dispatches nothing once stopped', () => {
+    const { routing, executeActionsChain } = setup('/?screen=hello-world', [ALPHA], nested);
+    routing.stop();
+    routing.withOpening(['ext.alpha']);
+    expect(executeActionsChain).not.toHaveBeenCalled();
+  });
+});
+
+describe('routing origin stamp', () => {
+  it('ignores a payload stamped with a different domain key: no write, no dispatch (blocker 1)', () => {
+    const { history, routing, executeActionsChain } = setup('/', [HELLO]);
+    routing.afterMount({ subject: 'ext.hello', routingOrigin: { domainKey: 'sidebar', kind: 'restore' } });
+    expect(history.writes).toEqual([]);
+    expect(executeActionsChain).not.toHaveBeenCalled();
+  });
+
+  it('a restore dispatch that is never acknowledged leaves nothing to leak into a later, unrelated programmatic mount', () => {
+    const { history, routing } = setup('/?screen=hello-world', [HELLO, HOST]);
+    routing.start(); // dispatches — and, in this fake registry, never gets an afterMount callback for — a restore mount of ext.hello
+    routing.afterMount({ subject: 'ext.host' }); // an independent, unstamped programmatic mount
+    expect(history.writes).toEqual([{ kind: 'push', path: '/?screen=widgets-host' }]);
+  });
+
+  it('a queued restore withdrawn before its turn settles with no write; the removal loop already dispatched its own unmount, whether or not the occupant was mounted', () => {
+    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO], { unmountActionType: UNMOUNT });
+    routing.start();
+    const restorePayload = mountPayload(executeActionsChain);
+    executeActionsChain.mockClear();
+    history.set('/'); // the entry is withdrawn while the restore mount above is still (hypothetically) settling
+    expect(executeActionsChain).toHaveBeenCalledTimes(1);
+    expect(executeActionsChain).toHaveBeenCalledWith({ action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.hello' } } });
+    routing.afterMount(restorePayload); // the withdrawn restore's own late settlement
+    expect(history.writes).toEqual([]);
+  });
+});
+
+describe('GTS admission (real gts-plugin schema)', () => {
+  it('a stamped mount_ext action passes validation against the real schema', () => {
+    const plugin = new GtsPlugin();
+    const mountExtActionId = plugin.resolveMountExtActionId();
+    // Each instance segment needs the GTS grammar's full vendor.package.namespace.type.version
+    // token count (5 tokens) — a shorter, made-up suffix fails id parsing before schema
+    // resolution even runs, independent of anything this test is actually checking.
+    const entryId = 'gts.frontx.mfes.mfe.entry.v1~frontx.test.fixture.entry.v1';
+    const domainId = 'gts.frontx.mfes.ext.domain.v1~frontx.test.fixture.domain.v1';
+    const extensionId = 'gts.frontx.mfes.ext.extension.v1~frontx.test.fixture.ext.v1';
+    plugin.register({ id: entryId, requiredProperties: [], actions: [], domainActions: [] });
+    plugin.register({
+      id: domainId,
+      sharedProperties: [],
+      actions: [mountExtActionId],
+      extensionsActions: [],
+      defaultActionTimeout: 5000,
+      lifecycleStages: [],
+      extensionsLifecycleStages: [],
+    });
+    plugin.register({ id: extensionId, domain: domainId, entry: entryId });
+    expect(() =>
+      plugin.register({
+        type: mountExtActionId,
+        target: domainId,
+        payload: { subject: extensionId, routingOrigin: { domainKey: 'screen', kind: 'restore' } },
+      }),
+    ).not.toThrow();
+  });
 });
 
 describe('observation', () => {
-  it("start() is idempotent: a second call does not create a second observer or double-dispatch", () => {
+  it('a second start() creates no second observer and dispatches nothing twice', () => {
     const { routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO]);
     routing.start();
     routing.start();
     expect(executeActionsChain).toHaveBeenCalledTimes(1);
-    expect(executeActionsChain).toHaveBeenCalledWith({ action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello' } } });
-  });
-
-  it('does not dispatch the same URL-restored mount twice while its first chain is still in flight', () => {
-    let settleMount!: () => void;
-    const pendingMount = new Promise<void>((resolve) => {
-      settleMount = resolve;
-    });
-    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO]);
-    executeActionsChain.mockImplementation(() => pendingMount);
-
-    routing.start();
-    history.set('/');
-    history.set('/?screen=hello-world');
-
-    expect(executeActionsChain).toHaveBeenCalledTimes(1);
-    settleMount();
-  });
-
-  it('releases a late URL-restored mount when Back removes a single-domain entry', () => {
-    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO], { unmountActionType: UNMOUNT });
-
-    routing.start();
-    executeActionsChain.mockClear();
-    history.set('/');
-    routing.afterMount('ext.hello');
-
-    expect(history.writes).toEqual([]);
     expect(executeActionsChain).toHaveBeenCalledWith({
-      action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.hello' } },
+      action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello', routingOrigin: { domainKey: SCREEN, kind: 'restore' } } },
     });
   });
 
-  it('does not re-project a late observer-originated mount after Back, and releases the stale multiple-domain occupant', () => {
+  it('does not re-project a late observer-originated mount in a multiple-cardinality domain after Back, and releases the stale occupant via the removal loop', () => {
     const { history, routing, executeActionsChain } = setup(
       '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha',
       [ALPHA],
@@ -375,83 +333,14 @@ describe('observation', () => {
     );
 
     routing.start();
-    history.set('/?screen=widgets-host');
-    routing.afterMount('ext.alpha');
+    const restorePayload = mountPayload(executeActionsChain);
+    history.set('/?screen=widgets-host'); // the removal loop unmounts ext.alpha whether or not it was mounted
 
-    expect(history.writes).toEqual([]);
     expect(executeActionsChain).toHaveBeenCalledWith({
       action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.alpha' } },
     });
-  });
-
-  it('does not let a pre-stop mount callback write into a later start cycle', () => {
-    const { history, routing } = setup('/?screen=hello-world', [HELLO]);
-    routing.start();
-    routing.stop();
-    history.set('/');
-    routing.start();
-
-    routing.afterMount('ext.hello');
-
+    routing.afterMount(restorePayload); // the withdrawn restore's own late settlement
     expect(history.writes).toEqual([]);
-  });
-
-  it('clears a callback that settles while stopped so a later observer can restore that route', () => {
-    const { routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO]);
-    routing.start();
-    routing.stop();
-    routing.afterMount('ext.hello');
-    executeActionsChain.mockClear();
-
-    routing.start();
-
-    expect(executeActionsChain).toHaveBeenCalledWith({
-      action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello' } },
-    });
-  });
-
-  it('re-dispatches a URL-restored mount after stop/start when the old mount is still pending', () => {
-    let settleOldMount!: () => void;
-    const oldMount = new Promise<void>((resolve) => {
-      settleOldMount = resolve;
-    });
-    const { routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO]);
-    executeActionsChain.mockImplementation(() => oldMount);
-
-    routing.start();
-    routing.stop();
-    executeActionsChain.mockClear();
-    routing.start();
-
-    expect(executeActionsChain).toHaveBeenCalledWith({
-      action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello' } },
-    });
-    settleOldMount();
-  });
-
-  it('keeps a fresh observer marker when an older lifecycle callback settles after restart', () => {
-    let settleOldMount!: () => void;
-    const oldMount = new Promise<void>((resolve) => {
-      settleOldMount = resolve;
-    });
-    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO], { unmountActionType: UNMOUNT });
-    executeActionsChain.mockImplementation(() => oldMount);
-
-    routing.start();
-    routing.stop();
-    routing.start();
-    executeActionsChain.mockClear();
-    history.set('/');
-
-    routing.afterMount('ext.hello'); // the pre-stop request: acknowledgement only
-    expect(executeActionsChain).not.toHaveBeenCalled();
-    routing.afterMount('ext.hello'); // the current observer request: stale occupant release
-
-    expect(history.writes).toEqual([]);
-    expect(executeActionsChain).toHaveBeenCalledWith({
-      action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.hello' } },
-    });
-    settleOldMount();
   });
 
   it('does not dispatch for an echo of its own back-projection', () => {
@@ -459,7 +348,7 @@ describe('observation', () => {
     const { history, routing, executeActionsChain } = setup('/', [HELLO], {}, mounted);
     routing.start();
     mounted.push('ext.hello');
-    routing.afterMount('ext.hello');
+    routing.afterMount({ subject: 'ext.hello' });
     expect(history.writes).toHaveLength(1);
     expect(executeActionsChain).not.toHaveBeenCalled();
   });
@@ -486,7 +375,7 @@ describe('observation', () => {
   it('survives an executeActionsChain that returns nothing or throws synchronously (#648)', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const a = setup('/?screen=hello-world', [HELLO]);
-    a.executeActionsChain.mockImplementation(() => undefined as unknown as Promise<void>);
+    a.executeActionsChain.mockImplementation(() => undefined);
     expect(() => a.routing.start()).not.toThrow();
     const b = setup('/?screen=hello-world', [HELLO]);
     b.executeActionsChain.mockImplementation(() => {
@@ -511,7 +400,9 @@ describe('observation', () => {
     extensions.push(ext('ext.hello2', '/hello-world'));
     history.set('/?screen=hello-world'); // same URL entry, different registered owner
     expect(executeActionsChain).toHaveBeenCalledWith({ action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.hello' } } });
-    expect(executeActionsChain).toHaveBeenCalledWith({ action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello2' } } });
+    expect(executeActionsChain).toHaveBeenCalledWith({
+      action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello2', routingOrigin: { domainKey: SCREEN, kind: 'restore' } } },
+    });
   });
 
   it('re-dispatches a mount but does NOT unmount the prior owner on a resolutionChanged swap in a single-occupant domain (N1)', () => {
@@ -526,7 +417,9 @@ describe('observation', () => {
     extensions.length = 0;
     extensions.push(ext('ext.hello2', '/hello-world'));
     history.set('/?screen=hello-world'); // same URL entry, different registered owner
-    expect(executeActionsChain).toHaveBeenCalledWith({ action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello2' } } });
+    expect(executeActionsChain).toHaveBeenCalledWith({
+      action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello2', routingOrigin: { domainKey: SCREEN, kind: 'restore' } } },
+    });
     expect(executeActionsChain).not.toHaveBeenCalledWith({ action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.hello' } } });
   });
 
@@ -632,33 +525,14 @@ describe('status', () => {
 });
 
 describe('dispatchChain', () => {
-  it('returns accepted:false without a settled promise when the registry refuses synchronously', () => {
+  it('is fire-and-forget: it does not throw and logs a synchronous refusal', () => {
     const { registry, executeActionsChain } = fakeRegistry([]);
     executeActionsChain.mockImplementation(() => {
       throw new Error('refused');
     });
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const result = dispatchChain(registry, { action: { type: MOUNT, target: 'dom', payload: { subject: 'x' } } }, 'mount x');
-    expect(result).toEqual({ accepted: false });
+    expect(dispatchChain(registry, { action: { type: MOUNT, target: 'dom', payload: { subject: 'x' } } }, 'mount x')).toBeUndefined();
+    expect(errors).toHaveBeenCalledWith('[routing] mount x refused', expect.any(Error));
     errors.mockRestore();
-  });
-
-  it('returns accepted:true with a settled promise that resolves even when the chain promise rejects', async () => {
-    const { registry, executeActionsChain } = fakeRegistry([]);
-    executeActionsChain.mockImplementation(() => Promise.reject(new Error('failed')));
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const result = dispatchChain(registry, { action: { type: MOUNT, target: 'dom', payload: { subject: 'x' } } }, 'mount x');
-    expect(result.accepted).toBe(true);
-    expect(result.settled).toBeInstanceOf(Promise);
-    await expect(result.settled).resolves.toBeUndefined();
-    expect(errors).toHaveBeenCalled();
-    errors.mockRestore();
-  });
-
-  it('returns accepted:true without a settled promise when the registry returns nothing (#648)', () => {
-    const { registry, executeActionsChain } = fakeRegistry([]);
-    executeActionsChain.mockImplementation(() => undefined as unknown as Promise<void>);
-    const result = dispatchChain(registry, { action: { type: MOUNT, target: 'dom', payload: { subject: 'x' } } }, 'mount x');
-    expect(result).toEqual({ accepted: true });
   });
 });
