@@ -375,6 +375,22 @@ export interface ThemeRegistry {
  */
 export interface FrontXAppRuntimeExtensions {
   readonly __frontxPluginExtensible?: never;
+  /**
+   * The narrow, app-facing router handle (ADR 0036, "The navigation
+   * facade") that this app's `microfrontends()` plugin publishes — present
+   * only when that plugin was used. This is `FrameworkRouter.asHandle()`'s
+   * return value, never the concrete `FrameworkRouter` instance: the class
+   * implementing the runtime's router port
+   * (`cpt-frontx-adr-extension-routing-port`) stays internal to this
+   * package and is not reachable from this (or any) app object. Authored
+   * directly here, not through a `declare module` augmentation from the
+   * plugin's own file: a relative augmentation compiles fine inside this
+   * package's own source but `tsup`'s declaration bundling does not rewrite
+   * it to the bundled output's own internal module graph, so it would
+   * otherwise emit an orphaned augmentation in the published
+   * `dist/index.d.ts` that never applies for an external consumer.
+   */
+  readonly mfeRouter?: import('./plugins/microfrontends/router').MfeRouterHandle;
 }
 
 /**

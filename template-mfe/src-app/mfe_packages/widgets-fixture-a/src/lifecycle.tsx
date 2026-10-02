@@ -21,25 +21,24 @@ import {
   effects,
   queryCacheShared,
   mock,
+  microfrontends,
+  gtsPlugin,
   ActionHandler,
   ThemeAwareReactLifecycle,
+  ExtensionRouter,
   FRONTX_ACTION_MOUNT_EXT,
   FRONTX_SCREEN_DOMAIN,
   type ChildMfeBridge,
   type MfeEntryLifecycle,
+  type MfeRegistry,
 } from '@gears-frontx/react';
-import { resolveNavigationHistory } from '@gears-frontx/routing';
 import {
-  adaptProviderHistory,
-  createProviderRouter,
   createRootRoute,
   createRoute,
-  EngineProvider,
   Outlet,
   useSearch,
-  type AnyRouter,
+  type AnyRoute,
 } from '@gears-frontx/routing-tanstack';
-import { readEntryAddress } from '@gears-frontx/react';
 
 const PING_ACTION_TYPE =
   'gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~';
@@ -70,9 +69,22 @@ function generateRandomHex(): string {
 // instances backed by the same entry path get distinct module evaluations.
 const randomHex = generateRandomHex();
 
-/** One mount of one extension: just its router. */
+/**
+ * One mount of one extension: its own route tree and registry (what
+ * `<ExtensionRouter>` renders this mount's router from — ADR 0036, D5), and
+ * the navigation facade `PingHandler` writes the ping through. Not the
+ * router instance itself: `ExtensionRouter` builds and owns that internally
+ * now, so this module never imports `createProviderRouter`/`EngineProvider`
+ * directly.
+ */
 interface MountSession {
-  readonly router: AnyRouter;
+  readonly routeTree: AnyRoute;
+  readonly registry: MfeRegistry;
+  readonly navigation: {
+    navigate(path: string): void;
+    replace(path: string): void;
+    location(): { pathname: string; search: string };
+  };
 }
 
 // Keyed by `bridge.extensionId` (stable across a remount of the same
@@ -149,13 +161,28 @@ function WidgetANotFound(): React.ReactElement {
   return <p data-testid="widget-a-not-found">widget-a has no such page</p>;
 }
 
-function createSession(bridge: ChildMfeBridge): MountSession {
+/**
+ * Builds a throwaway `microfrontends()`-bearing app, synchronously — this
+ * function is always called from `mount()` below, so this call lands
+ * strictly inside the ambient mounting-bridge rendezvous window
+ * `DefaultMountManager` opens around that call (mirroring
+ * `lifecycle-widgets-host.tsx`'s own `createWidgetsHostApp()`; `fixtureApp`,
+ * built once at module-evaluation time for the theme/query-cache context
+ * `ThemeAwareReactLifecycle` needs, is never used for routing for exactly
+ * that reason — see that file's own doc comment for why a registry wanting
+ * to adopt an inbound bridge must be built inside the mount window). Its own
+ * injected `FrameworkRouter` (ADR 0036, D14) is what `<ExtensionRouter>`
+ * (rendered from `session.registry`) builds this mount's own route tree
+ * over, and what `navigation()` gives `PingHandler` below as its
+ * extension-local facade.
+ */
+function createSession(): MountSession {
   const rootRoute = createRootRoute({ component: WidgetARoot, notFoundComponent: WidgetANotFound });
   const routeTree = rootRoute.addChildren([
     createRoute({ getParentRoute: () => rootRoute, path: '/', component: WidgetAHome }),
   ]);
-  const history = adaptProviderHistory(resolveNavigationHistory(), readEntryAddress(bridge));
-  return { router: createProviderRouter(routeTree, history) };
+  const app = createFrontX().use(microfrontends({ typeSystem: gtsPlugin })).build();
+  return { routeTree, registry: app.mfeRegistry!, navigation: app.mfeRouter!.navigation() };
 }
 
 class PingHandler extends ActionHandler {
@@ -168,27 +195,23 @@ class PingHandler extends ActionHandler {
     if (!session) throw new Error(`[widget-a ${this.instanceId}] ping while not mounted`);
     const lastPing = new Date().toISOString();
     console.info(`[widget-a ${this.instanceId}] ping ${actionTypeId} ${LAST_PING_PARAM}=${lastPing}`);
-    // Safe to write immediately, before `EngineProvider`'s own mount effect
-    // has attached this session's router to the shared history: the
-    // composed source's `write` (`composed-history-source.ts`) calls
-    // `backProjectEntries` against the shared `NavigationHistory` directly —
-    // it never checks or waits on the adapter's attach state. Once
-    // `attachAdaptedHistory` does run, `attachToNavigationHistory`
-    // (`history-adaptation.ts`) re-reads `source.readParams()` before
-    // subscribing, so it resyncs to whatever this write already landed
-    // rather than missing it.
+    // D21: each runtime reads AND writes only its own entry's parameters —
+    // `location()` reads this occupant's OWN current pathname/search (never
+    // a sibling's, never the composed page's), so merging `LAST_PING_PARAM`
+    // into it preserves any other search param a caller outside this
+    // widget's own render tree already set, instead of overwriting the
+    // whole query string from scratch.
     try {
-      // The whole parameter list is replaced, not merged, so carry the other search params forward.
-      await session.router.navigate({
-        to: '.',
-        search: (previous: Record<string, unknown>) => ({ ...previous, [LAST_PING_PARAM]: lastPing }),
-        replace: true,
-      });
+      const { pathname, search } = session.navigation.location();
+      const params = new URLSearchParams(search);
+      params.set(LAST_PING_PARAM, lastPing);
+      session.navigation.replace(`${pathname || '/'}?${params.toString()}`);
     } catch (err) {
       // A silent failure here would leave the host believing the ping landed: surface it.
-      console.error(`[widget-a ${this.instanceId}] ping navigate() failed:`, err);
+      console.error(`[widget-a ${this.instanceId}] ping navigation failed:`, err);
       throw err;
     }
+    return Promise.resolve();
   }
 }
 
@@ -202,7 +225,7 @@ class WidgetAMount extends ThemeAwareReactLifecycle {
     const session = sessions.get(bridge.extensionId)!;
     return (
       <SessionContext.Provider value={{ session, bridge }}>
-        <EngineProvider router={session.router} />
+        <ExtensionRouter registry={session.registry} routeTree={session.routeTree} />
       </SessionContext.Provider>
     );
   }
@@ -223,7 +246,7 @@ class WidgetsFixtureALifecycle implements MfeEntryLifecycle<ChildMfeBridge> {
 
   mount(container: Element | ShadowRoot, bridge: ChildMfeBridge): void {
     console.info(`[widget-a ${bridge.extensionId}] mount randomHex=${randomHex}`);
-    const session = createSession(bridge);
+    const session = createSession();
     sessions.set(bridge.extensionId, session);
     const tree = new WidgetAMount();
     this.mounts.set(container, { tree, extensionId: bridge.extensionId, session });

@@ -8,6 +8,7 @@ import type {
 } from '@gears-frontx/framework';
 import { FrontXProvider } from '../FrontXProvider';
 import { hasFrontXQueryClientActivator, resolveFrontXQueryClient } from '../queryClient';
+import { collectDomainTeardowns } from './domainTeardownCollector';
 
 /**
  * Marks every node `adoptHostStylesIntoShadowRoot` puts into a shadow root, so
@@ -157,11 +158,25 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
     );
   }
 
-  unmount(_container: Element | ShadowRoot): void {
-    if (this.root) {
-      this.root.unmount();
-      this.root = null;
-    }
+  /**
+   * `Root.unmount()` itself is synchronous, but a nested `ExtensionDomainSlot`
+   * mounted anywhere in this root's own tree cannot make ITS cleanup
+   * synchronous too — its mounter's own `detach()` awaits per-extension
+   * unmounts. Collecting whatever that cleanup fire-and-forgets (through
+   * `domainTeardownCollector`, scoped to this one `Root.unmount()` call) and
+   * awaiting it here is what makes this method's own returned promise settle
+   * only once every nested domain this root owns has actually finished
+   * tearing down — never before. A root with no routed nested domain
+   * collects nothing, and this resolves exactly as before (a microtask after
+   * the synchronous unmount, same observable timing `void | Promise<void>`
+   * already allows).
+   */
+  async unmount(_container: Element | ShadowRoot): Promise<void> {
+    if (!this.root) return;
+    const root = this.root;
+    this.root = null;
+    const pendingTeardowns = collectDomainTeardowns(() => root.unmount());
+    await Promise.all(pendingTeardowns);
   }
 
   /**
