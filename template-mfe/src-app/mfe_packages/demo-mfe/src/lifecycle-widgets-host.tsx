@@ -63,7 +63,6 @@ import {
   languageSchema,
   extensionScreenSchema,
 } from '@gears-frontx/frontx-template-shell';
-import { routedScreen } from './shared/routedScreen';
 
 const WIDGETS_DOMAIN_ID =
   'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
@@ -669,7 +668,7 @@ class DemoMfeWidgetsHostLifecycle extends ThemeAwareReactLifecycle {
   // needs no release step of its own: `detach()` already leaves the
   // registry's mount-set consistent for the NEXT mount's auto-mount pass.
 
-  protected renderContent(bridge: ChildMfeBridge): React.ReactNode {
+  protected renderContent(): React.ReactNode {
     if (!this.widgetsApp || !this.bootstrapPromise || !this.domainAttachedPromise) {
       throw new Error(
         'demo-mfe widgets-host: renderContent() called before mount() constructed the nested app.',
@@ -681,13 +680,12 @@ class DemoMfeWidgetsHostLifecycle extends ThemeAwareReactLifecycle {
         'demo-mfe widgets-host: nested app has no mfeRegistry.',
       );
     }
-    return routedScreen(
+    return (
       <WidgetsHostScreen
         bootstrap={this.bootstrapPromise}
         registry={registry}
         onDomainAttached={this.onDomainAttached}
-      />,
-      bridge,
+      />
     );
   }
 }

@@ -26,8 +26,7 @@
  * exercised, not stubbed around.
  *
  * Deliberately stops one level below `DemoMfeWidgetsHostLifecycle.mount()`/
- * `unmount()` themselves: driving those needs `WidgetsHostScreen` rendered
- * inside `routedScreen()`'s `EngineProvider` (`@gears-frontx/routing-tanstack`),
+ * `unmount()` themselves: driving those needs `WidgetsHostScreen` rendered,
  * which in this exact combination (real `microfrontends()` registry + real
  * `ExtensionDomainSlot`, as opposed to every other lifecycle test's `FakeRegistry`
  * + mocked slot) never committed a first render in this vitest/jsdom
@@ -268,7 +267,7 @@ function fakeManifestResponse() {
   };
 }
 
-/** Renders a fresh, real `ExtensionDomainSlot` bound to `registry` into a fresh container and resolves once its real `mounter.attach(root)` has run — mirrors `WidgetsHostScreen`'s own slot, without the unrelated `EngineProvider`/router tree around it (see this file's doc comment). */
+/** Renders a fresh, real `ExtensionDomainSlot` bound to `registry` into a fresh container and resolves once its real `mounter.attach(root)` has run — mirrors `WidgetsHostScreen`'s own slot, without the rest of `WidgetsHostScreen` around it (see this file's doc comment). */
 async function attachRealSlot(registry: unknown): Promise<{ root: Root; container: HTMLDivElement }> {
   const container = document.createElement('div');
   document.body.appendChild(container);

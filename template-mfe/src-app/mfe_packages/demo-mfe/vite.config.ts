@@ -9,15 +9,6 @@ const sharedDeps = [
   'react',
   'react-dom',
   '@gears-frontx/react',
-  // Shared alongside @gears-frontx/react rather than left to inline: this
-  // MFE imports routing-tanstack directly (routedScreen.tsx's
-  // createRootRoute), and ExtensionRouter (@gears-frontx/react) builds the
-  // router over that same route tree. Without a shared entry, esbuild/
-  // rollup each mint their own copy of @tanstack/react-router — harmless
-  // while no screen here calls a context-reading hook, but a route
-  // component that starts calling one (e.g. useSearch) would hit the same
-  // null-context crash widgets-fixture-a did.
-  '@gears-frontx/routing-tanstack',
   '@gears-frontx/framework',
   '@gears-frontx/state',
   '@gears-frontx/mfes',
