@@ -260,7 +260,7 @@ function fakeManifestResponse() {
         manifest: FIXTURE_B_MANIFEST,
         domains: [],
         entries: [FIXTURE_B_ENTRY],
-        extensions: [extension(GAMMA_ID, FIXTURE_B_ENTRY.id, 'widget')],
+        extensions: [extension(GAMMA_ID, FIXTURE_B_ENTRY.id, 'widget-b')],
         schemas: [],
       },
     ],
