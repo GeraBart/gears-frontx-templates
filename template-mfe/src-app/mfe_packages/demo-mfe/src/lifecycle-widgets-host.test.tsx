@@ -30,10 +30,9 @@ type Chain = { action: { type: string; target: string; payload?: { subject?: str
  * tested dispatch/mounter machinery, OR into the real `FrameworkRouter`
  * (`lifecycle-widgets-host.remount.test.tsx` and `router.test.ts` cover the
  * real router's own route-admission and URL-back-projection behaviour —
- * Global Constraints, not re-tested here). `ExtensionDomainSlot` and
- * `ExtensionRouter` are both faked below (the real ones — starting/stopping
+ * Global Constraints, not re-tested here). `ExtensionDomainSlot` is faked below (the real one — starting/stopping
  * a routed domain's own observer, and mass-releasing every mounted
- * extension on detach — are Global Constraints, covered by
+ * extension on detach — is a Global Constraint, covered by
  * `ExtensionDomainSlot`'s own suite and `mfes`'s own `DefaultExtensionMounter`
  * suite; `lifecycle-widgets-host.remount.test.tsx` exercises them for real
  * together): this file is about `WidgetsHostScreen`'s and `WidgetsDomainImpl`'s
@@ -238,28 +237,6 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
       }, [onAttached]);
       return <div ref={ref} data-testid="widgets-domain-slot" />;
     },
-    // Building/rendering a route tree over a real `FrameworkRouter`'s
-    // adapted history is Global Constraints here (covered by
-    // `router.test.ts` and the routing package's own suite) — this fake
-    // renders the root route's own `component` directly, matching the
-    // `@gears-frontx/routing-tanstack` `EngineProvider` fake below.
-    ExtensionRouter: ({ routeTree }: { routeTree: { component: () => React.ReactNode } }) => <>{routeTree.component()}</>,
-  };
-});
-
-/**
- * `renderContent()` wraps its own output in `./shared/routedScreen.tsx`,
- * which renders `<ExtensionRouter>` (`@gears-frontx/react`, faked above) —
- * real TanStack routing is Global Constraints for THIS file (it belongs to
- * `router.test.ts` and the routing package's own suite), so `createRootRoute`
- * here just returns its own options object, matching the `ExtensionRouter`
- * fake's own `routeTree.component()` read.
- */
-vi.mock('@gears-frontx/routing-tanstack', async (importOriginal) => {
-  const real = await importOriginal<Record<string, unknown>>();
-  return {
-    ...real,
-    createRootRoute: (opts: { component: () => React.ReactNode }) => opts,
   };
 });
 
