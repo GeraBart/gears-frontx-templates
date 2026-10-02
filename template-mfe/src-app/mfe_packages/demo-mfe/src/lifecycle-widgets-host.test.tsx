@@ -16,7 +16,7 @@ const WIDGET_IDS = [ALPHA_ID, BETA_ID, GAMMA_ID];
 const ROUTE_OF: Record<string, string> = {
   [ALPHA_ID]: 'widget-alpha',
   [BETA_ID]: 'widget-beta',
-  [GAMMA_ID]: 'widget',
+  [GAMMA_ID]: 'widget-b',
 };
 
 type FakeExtension = { id: string; domain: string; entry: string; route: string };
