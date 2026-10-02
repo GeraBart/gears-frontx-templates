@@ -47,7 +47,7 @@ with a thrown registration error, not a silent skip):
 | Field | Required | Meaning |
 |---|---|---|
 | `label` | yes | menu item text. A raw display string — there is no i18n key for menu labels today, so the label renders identically in every language |
-| `route` | yes | route path (e.g. `/widgets-host`). Schema-required, but the current shell mounts by action and does not consume it — do not expect deep links; still, keep it unique and stable |
+| `route` | yes | route token (e.g. `/widgets-host`), one leading `/` stripped before use. The shell's own injected router reads this to admit the extension as a deep-linkable occupant of the screen domain and to reflect its mount/unmount into the URL — keep it unique within the domain and stable across releases |
 | `icon` | no | Iconify name with prefix (e.g. `lucide:user`); omitted = no icon |
 | `order` | no | sort key across the whole menu, lower = earlier; omitted = `999` (last) |
 

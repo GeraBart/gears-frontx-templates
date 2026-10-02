@@ -20,7 +20,7 @@ vi.mock('@gears-frontx/routing-tanstack', async (importOriginal) => {
   return { ...actual, adaptProviderHistory: vi.fn(actual.adaptProviderHistory) };
 });
 
-/** A bridge whose host broadcast no entry-addresses shared property — `readEntryAddress` returns `undefined` for it. */
+/** A bridge for an extension with no host-supplied occupant value (ADR 0036) — the fake router's `adaptProviderHistory` call below receives `undefined` for it, matching a standalone mount with no host. */
 function bridgeWithoutProperties(): TestBridge {
   return createMfeBridgeFixture({ extDomainId: 'demo-domain', extensionId: 'hello-instance' }).bridge;
 }
@@ -44,21 +44,69 @@ async function mountHelloWorld(bridge: TestBridge): Promise<object> {
 const superMountSpy = vi.fn();
 const fetchUserSpy = vi.fn();
 
-vi.mock('@gears-frontx/react', () => ({
-  ActionHandler: class ActionHandler {
-    static {
-      void 0;
-    }
-  },
-  ThemeAwareReactLifecycle: class ThemeAwareReactLifecycle {
-    constructor(public readonly app: TestApp) {}
+// `routedScreen.tsx` builds its own throwaway `createFrontX().use(microfrontends(...)).build()`
+// per call now (ADR 0036) to reach its own `FrameworkRouter` — these tests
+// call `renderContent(bridge)` directly, bypassing the real `mfes` mount
+// pipeline entirely, so there is no real ambient bridge for that router to
+// adopt. The fake below gives every call a router whose `adaptHistory()`
+// behaves exactly as the real one does with no occupant value: standalone,
+// scoped to the page's own address — matching what every one of these
+// screens' own tests already expects (no host, no entry address).
+vi.mock('@gears-frontx/react', async () => {
+  const { adaptProviderHistory, EngineProvider } =
+    await import('@gears-frontx/routing-tanstack') as typeof import('@gears-frontx/routing-tanstack');
+  // A minimal `NavigationHistory` reading/writing the real `window.location`
+  // directly — this package does not depend on `@gears-frontx/routing`
+  // itself (MFE packages keep `routing-tanstack` only), and these tests
+  // never need more than the browser's own address to drive a standalone
+  // `adaptProviderHistory` the way these screens would see with no host.
+  const windowHistory = {
+    get location() {
+      return { path: window.location.pathname, search: window.location.search, hash: window.location.hash, position: 0 };
+    },
+    subscribe: () => () => {},
+    push: (path: string) => window.history.pushState(null, '', path),
+    replace: (path: string) => window.history.replaceState(null, '', path),
+    go: (delta: number) => window.history.go(delta),
+  };
+  const fakeFrameworkRouter = {
+    navigation: () => ({ navigate: () => {}, replace: () => {} }),
+  };
+  // `mfeRegistry` is an opaque token here, never read for its own shape —
+  // `ExtensionRouter` is faked below rather than exercised for real, so
+  // nothing ever calls `buildExtensionHistory` against it.
+  const fakeMfeRegistry = {};
+  const fakeAppBuilder = {
+    use: () => fakeAppBuilder,
+    build: () => ({ mfeRegistry: fakeMfeRegistry, mfeRouter: fakeFrameworkRouter }),
+  };
+  return {
+    ActionHandler: class ActionHandler {
+      static {
+        void 0;
+      }
+    },
+    ThemeAwareReactLifecycle: class ThemeAwareReactLifecycle {
+      constructor(public readonly app: TestApp) {}
 
-    mount(container: Element | ShadowRoot, bridge: TestBridge): void {
-      superMountSpy(container, bridge);
-    }
-  },
-  readEntryAddress: () => undefined,
-}));
+      mount(container: Element | ShadowRoot, bridge: TestBridge): void {
+        superMountSpy(container, bridge);
+      }
+    },
+    createFrontX: () => fakeAppBuilder,
+    microfrontends: () => ({}),
+    gtsPlugin: {},
+    // Real `ExtensionRouter` reaches a real `FrameworkRouter` through
+    // `buildExtensionHistory` (framework-internal) — standing in for it
+    // here, scoped to `routeTree`/`history` alone: the same
+    // `adaptProviderHistory(windowHistory, undefined)` the real router
+    // would hand back for a standalone mount (no host, no entry address),
+    // which is what every one of these screens' own tests already expect.
+    ExtensionRouter: ({ routeTree }: { routeTree: import('@gears-frontx/routing-tanstack').AnyRoute }) => (
+      <EngineProvider routeTree={routeTree} history={adaptProviderHistory(windowHistory, undefined)} />
+    ),
+  };
+});
 
 vi.mock('./init', () => ({
   mfeApp: { id: 'demo-mfe-app' },

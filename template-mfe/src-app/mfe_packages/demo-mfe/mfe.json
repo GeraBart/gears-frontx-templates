@@ -4,7 +4,9 @@
     {
       "$id": "gts://gts.frontx.mfes.comm.action.v1~frontx.demo.action.refresh_profile.v1~",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$comment": "Self-contained and closed: re-declares every property action.v1 would otherwise provide and rejects any undeclared field, on itself and on its own payload.",
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "type": {
           "x-gts-ref": "/$id"
@@ -13,7 +15,8 @@
           "x-gts-ref": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.profile.v1"
         },
         "payload": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": false
         },
         "timeout": {
           "type": "number",
@@ -34,9 +37,7 @@
     {
       "id": "gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1",
       "route": "widgets",
-      "sharedProperties": [
-        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~"
-      ],
+      "sharedProperties": [],
       "actions": [
         "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~",
         "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~",

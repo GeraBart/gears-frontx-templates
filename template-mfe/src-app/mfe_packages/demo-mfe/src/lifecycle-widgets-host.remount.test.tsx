@@ -1,27 +1,29 @@
 /**
- * Regression test for RM-LIVE2 D2 (issue constructorfabric/gears-frontx#638
+ * Regression coverage for RM-LIVE2 D2 (issue constructorfabric/gears-frontx#638
  * ledger, row "LIVE2", found by the live browser run): a second entry into
  * Widgets Host within the same page (back/forward, or a fresh in-app Back
- * after leaving) never mounted any widget DOM again — the widget content
- * area stayed permanently blank, with no new mount console line, no matter
- * how long you waited.
+ * after leaving) must mount widget DOM again, not leave the widget content
+ * area permanently blank.
  *
- * `lifecycle-widgets-host.test.tsx`'s own `FakeRegistry` cannot reproduce
+ * `lifecycle-widgets-host.test.tsx`'s own `FakeRegistry` cannot exercise
  * this: its mocked `ExtensionDomainSlot` never calls anything resembling
  * `mounter.detach()` on cleanup at all (no `return () => {...}` in its
- * effect), so the exact real-world defect — `DefaultExtensionMounter.detach()`
- * tearing down each occupant's DOM without ever calling `removeMountedExtension`
- * — has nothing to interact with there (the same class of gap the RM-LIVE1
- * regression test's own doc comment calls out for that fake's stub
- * `typeSystem`). This file instead drives the REAL nested app the way
- * production code does: the REAL `bootstrapWidgetsRuntime` against a REAL
- * `createFrontX().use(microfrontends(...))` app (real `MfeRegistry`, real
- * `DefaultExtensionMounter`, real `ConcurrentMountStrategy`), the REAL
- * `ExtensionDomainSlot` react binding, and the REAL `WidgetsDomainImpl`
- * (`holder.impl`, reached only through `bootstrapWidgetsRuntime`'s exported
- * surface — the class itself is not exported, matching production's own
- * encapsulation) — so the real attach/detach/mounted-set bookkeeping this
- * bug lives in is actually exercised, not stubbed around.
+ * effect), so the real release path this test proves — a real
+ * `ExtensionDomainSlot` unmount running `mfes`'s own
+ * `DefaultExtensionMounter.detach()`, which mass-releases every mounted
+ * extension through the SAME shared releaser a strategy's own `unmount()`
+ * uses and clears `getMountedExtensions()` for each one — has nothing to
+ * interact with there (the same class of gap the RM-LIVE1 regression test's
+ * own doc comment calls out for that fake's stub `typeSystem`). This file
+ * instead drives the REAL nested app the way production code does: the REAL
+ * `bootstrapWidgetsRuntime` against a REAL `createFrontX().use(microfrontends(...))`
+ * app (real `MfeRegistry`, real `DefaultExtensionMounter`, real
+ * `ConcurrentMountStrategy`), the REAL `ExtensionDomainSlot` react binding,
+ * and the REAL `WidgetsDomainImpl` (`holder.impl`, reached only through
+ * `bootstrapWidgetsRuntime`'s exported surface — the class itself is not
+ * exported, matching production's own encapsulation) — so the real
+ * attach/detach/mounted-set bookkeeping this regression covers is actually
+ * exercised, not stubbed around.
  *
  * Deliberately stops one level below `DemoMfeWidgetsHostLifecycle.mount()`/
  * `unmount()` themselves: driving those needs `WidgetsHostScreen` rendered
@@ -33,18 +35,19 @@
  * `bootstrapWidgetsRuntime` (resolves immediately on its own, see
  * `lifecycle-widgets-host.gts-order.test.ts`) and a standalone real
  * `ExtensionDomainSlot` (attaches immediately on its own) as two working
- * halves that do not compose here. `WidgetsDomainImpl.mountThroughChain` and
- * `releaseAll` are the exact two methods `WidgetsHostScreen`'s own
- * `handleAttached` (auto-mount) and `DemoMfeWidgetsHostLifecycle.unmount()`
- * call — driving them directly against the real registry/slot is a faithful
+ * halves that do not compose here. Dispatching a real `mount_ext` chain and
+ * unmounting a real `ExtensionDomainSlot` are the exact two operations
+ * `WidgetsHostScreen`'s own `handleAttached` (auto-mount) and
+ * `DemoMfeWidgetsHostLifecycle.unmount()` (via `super.unmount()`) drive —
+ * exercising them directly against the real registry/slot is a faithful
  * proxy for "mount host -> unmount host -> mount host again" without that
  * unrelated render path.
  *
  * The one piece left unreal is `MfeHandlerMF`'s own module-federation network
  * load (fetching a remote's `remoteEntry.js` and evaluating a blob module):
  * infeasible under jsdom without a real dev server, and orthogonal to this
- * bug — D2 lives entirely in the mounter/registry bookkeeping ABOVE that
- * load, never inside it. `TestMfeHandlerMF` below subclasses the REAL
+ * regression — D2 lives entirely in the mounter/registry bookkeeping ABOVE
+ * that load, never inside it. `TestMfeHandlerMF` below subclasses the REAL
  * `MfeHandlerMF` (same `handledBaseTypeId`, same real `bridgeFactory`, so
  * handler resolution and bridge creation stay real) and overrides only
  * `load()` to resolve immediately to a small lifecycle that stamps a
@@ -63,7 +66,6 @@ import {
   ExtensionDomainSlot,
   MfeHandlerMF,
   FRONTX_ACTION_MOUNT_EXT,
-  dispatchChain,
   type ChildMfeBridge,
   type MfeEntryLifecycle,
   type MfeEntryMF,
@@ -74,8 +76,6 @@ import { bootstrapWidgetsRuntime, type WidgetsRoutingHolder } from './lifecycle-
 
 const FRONTX_MFE_ENTRY_MF = 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~';
 const WIDGETS_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
-const ENTRY_ADDRESSES =
-  'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~';
 
 const ALPHA_ID = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_alpha.v1';
 const BETA_ID = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_beta.v1';
@@ -110,17 +110,31 @@ let mountedRoots = new Map<string, Element | ShadowRoot>();
 const mountResolvers = new Map<string, () => void>();
 
 function awaitMount(extensionId: string): Promise<void> {
+  // `ExtensionDomainSlot` starts this domain's own router observer itself on
+  // attach (ADR 0036, D10/D11) — on the SECOND `attachRealSlot` below, that
+  // observer's own initial diff restores every extension the (still-live —
+  // `mfes`'s own mass-release on detach dispatches no `unmount_ext` action,
+  // so the router never reports a departure for it; `ExtensionMounter.detach()`'s
+  // own doc comment) URL already names, through the SAME real mount
+  // pipeline this helper awaits, in the same synchronous
+  // window `attachRealSlot`'s own `root.render` runs in — strictly BEFORE
+  // this helper's caller gets to register its own resolver. `mountedRoots`
+  // already carrying this id is that restoration having already landed, so
+  // there is nothing further to await.
+  if (mountedRoots.has(extensionId)) return Promise.resolve();
   return new Promise((resolve) => mountResolvers.set(extensionId, resolve));
 }
 
-/** Dispatches a real `mount_ext` for `extensionId` and resolves once this test's own lifecycle `mount()` ran for it. */
+/** Dispatches a real `mount_ext` for `extensionId` and resolves once this test's own lifecycle `mount()` ran for it (or had already, per `awaitMount`'s own doc comment). */
 function dispatchMountAndAwait(registry: MfeRegistry, extensionId: string): Promise<void> {
   const settled = awaitMount(extensionId);
-  dispatchChain(
-    registry,
-    { action: { type: FRONTX_ACTION_MOUNT_EXT, target: WIDGETS_DOMAIN_ID, payload: { subject: extensionId } } },
-    `mount ${extensionId}`,
-  );
+  try {
+    registry.executeActionsChain({
+      action: { type: FRONTX_ACTION_MOUNT_EXT, target: WIDGETS_DOMAIN_ID, payload: { subject: extensionId } },
+    });
+  } catch (error) {
+    console.error(`mount ${extensionId} refused`, error);
+  }
   return settled;
 }
 
@@ -182,7 +196,7 @@ const EXPOSE_ASSETS = { js: { sync: ['assets/lifecycle.js'], async: [] }, css: {
 const WIDGETS_DOMAIN = {
   id: WIDGETS_DOMAIN_ID,
   route: 'widgets',
-  sharedProperties: [ENTRY_ADDRESSES],
+  sharedProperties: [],
   actions: [
     'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
     'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
@@ -278,7 +292,7 @@ afterEach(() => {
 });
 
 describe('WidgetsDomainImpl — real registry remount (RM-LIVE2 D2)', () => {
-  it('mounts real widget DOM again on a second entry, after releaseAll() released the prior occupants (release on unmount)', async () => {
+  it('mounts real widget DOM again on a second entry, after the real domain slot\'s own unmount released the prior occupants', async () => {
     mountCalls = [];
     mountedRoots = new Map();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeManifestResponse()));
@@ -290,7 +304,7 @@ describe('WidgetsDomainImpl — real registry remount (RM-LIVE2 D2)', () => {
       .use(mockPlugin())
       .build();
     const registry = app.mfeRegistry!;
-    const holder: WidgetsRoutingHolder = { routing: undefined, impl: undefined };
+    const holder: WidgetsRoutingHolder = { impl: undefined };
     await bootstrapWidgetsRuntime(app, holder);
 
     // --- First entry into Widgets Host: real slot attaches, auto-mount pass runs ---------
@@ -303,24 +317,25 @@ describe('WidgetsDomainImpl — real registry remount (RM-LIVE2 D2)', () => {
       expect(mountedRoots.get(id)!.querySelectorAll(`[data-widget-mounted="${id}"]`)).toHaveLength(1);
     }
 
-    // --- Leave Widgets Host: release occupants (the fix), THEN the slot's own real detach ---
-    // Mirrors `DemoMfeWidgetsHostLifecycle.unmount()`'s own order exactly:
-    // release through the registry's real bookkeeping before the slot's
-    // cleanup effect runs its own (registry-bookkeeping-incomplete) mass
-    // unmount below.
-    await holder.impl!.releaseAll();
+    // --- Leave Widgets Host: the real slot's own cleanup effect releases every occupant ---
+    // `ExtensionDomainSlot`'s own cleanup calls the real per-domain mounter's
+    // `detach()` (`mfes`), which mass-releases every currently-mounted
+    // extension through the SAME shared releaser a strategy's own
+    // `unmount()` uses — clearing `getMountedExtensions()` for each one, so
+    // the NEXT mount's auto-mount pass does not find them already "mounted".
+    // No release step of this host's own is needed or exercised here.
     first.root.unmount();
 
     // --- Second entry into Widgets Host (back/forward within the same page) -------------
     const second = await attachRealSlot(registry);
     await Promise.allSettled(WIDGET_IDS.map((id) => dispatchMountAndAwait(registry, id)));
 
-    // On d7382ed (no `releaseAll()`), `WidgetsDomainImpl.mount()`'s "already
-    // mounted" early-return (fed by `registry.getMountedExtensions()`, never
-    // cleared by the real `ExtensionDomainSlot`'s own detach) short-circuits
-    // every one of these three mounts: `mountCalls` stays at 3 (not 6) and no
-    // marker ever lands in `second.container` — exactly the permanent blank
-    // the live run found.
+    // Were `getMountedExtensions()` left stale by the first entry's own
+    // teardown, `mfes`'s own mount-ext prologue would early-return every one
+    // of these three mounts as "already mounted": `mountCalls` would stay at
+    // 3 (not 6) and no marker would ever land in `second.container` — the
+    // permanent blank the live run found. `ExtensionDomainSlot`'s real
+    // `detach()` above is what prevents that.
     expect(mountCalls).toHaveLength(6);
     for (const id of WIDGET_IDS) {
       expect(mountedRoots.get(id)!.querySelectorAll(`[data-widget-mounted="${id}"]`)).toHaveLength(1);
