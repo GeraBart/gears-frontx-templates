@@ -585,6 +585,106 @@ describe('FrameworkRouter — observer-driven restoration (Back after leaving)',
   });
 });
 
+describe('FrameworkRouter — re-presenting a held domain', () => {
+  it('keeps the running observer, status listeners and release path when the same router registers the domain again', async () => {
+    const route = freshRoute();
+    const router = buildRouter();
+    const registry = new FakeRegistry();
+    router.attachRegistry(registry as unknown as MfeRegistry);
+    router.registerDomain(domain('domA', route));
+    routersToRelease.push({ router, domainId: 'domA' });
+    registry.register(extension('extA', 'domA', 'alpha'));
+
+    router.startDomain('domA');
+    const listener = vi.fn();
+    router.subscribeDomainStatus('domA', listener);
+
+    router.registerDomain(domain('domA', route));
+    // A second observer would only appear here if the re-registration had
+    // dropped the first one's state.
+    router.startDomain('domA');
+
+    const dispatched = registry.nextDispatch();
+    const notificationsBefore = listener.mock.calls.length;
+    resolveNavigationHistory().push(`/?${route}=alpha`);
+    await dispatched;
+
+    const mounts = registry.executeActionsChain.mock.calls.filter(([c]: [Chain]) => c.action.type === MOUNT);
+    expect(mounts).toHaveLength(1);
+    expect(listener.mock.calls.length).toBeGreaterThan(notificationsBefore);
+
+    // `stopDomain` reaches the one observer the router holds: nothing is left observing.
+    router.stopDomain('domA');
+    const dispatchCallsAfterStop = registry.executeActionsChain.mock.calls.length;
+    registry.mounted.delete('extA');
+    resolveNavigationHistory().push('/?unrelated=1');
+    resolveNavigationHistory().push(`/?${route}=alpha`);
+    expect(registry.executeActionsChain.mock.calls.length).toBe(dispatchCallsAfterStop);
+  });
+
+  it('releases the prior state and frees the old route when the same router presents the domain on a different route', async () => {
+    const oldRoute = freshRoute();
+    const newRoute = freshRoute();
+    const router = buildRouter();
+    const registry = new FakeRegistry();
+    router.attachRegistry(registry as unknown as MfeRegistry);
+    router.registerDomain(domain('domA', oldRoute));
+    routersToRelease.push({ router, domainId: 'domA' });
+    registry.register(extension('extA', 'domA', 'alpha'));
+    router.startDomain('domA');
+
+    // Control: the observer on the old route is live and dispatches.
+    const mountDispatched = registry.nextDispatch();
+    resolveNavigationHistory().push(`/?${oldRoute}=alpha`);
+    await mountDispatched;
+    const unmountDispatched = registry.nextDispatch();
+    resolveNavigationHistory().push('/?unrelated=1');
+    await unmountDispatched;
+
+    router.registerDomain(domain('domA', newRoute));
+
+    // The old observer is released: the old route's entry dispatches nothing.
+    const dispatchCallsAfterMove = registry.executeActionsChain.mock.calls.length;
+    resolveNavigationHistory().push(`/?${oldRoute}=alpha`);
+    expect(registry.executeActionsChain.mock.calls.length).toBe(dispatchCallsAfterMove);
+
+    // The old route is free for another domain; the new route is held.
+    const otherRouter = buildRouter();
+    otherRouter.attachRegistry(new FakeRegistry() as unknown as MfeRegistry);
+    expect(() => otherRouter.registerDomain(domain('domC', oldRoute))).not.toThrow();
+    routersToRelease.push({ router: otherRouter, domainId: 'domC' });
+    expect(() => otherRouter.registerDomain(domain('domD', newRoute))).toThrow(/already used/);
+  });
+
+  it('refreshes the mount and unmount action types from the re-presented declaration', async () => {
+    const route = freshRoute();
+    const router = buildRouter();
+    const registry = new FakeRegistry();
+    router.attachRegistry(registry as unknown as MfeRegistry);
+    // First presentation declares no public unmount action (Exclusive domain).
+    router.registerDomain({ id: 'domA', route, actions: [MOUNT] } as unknown as ExtensionDomain);
+    routersToRelease.push({ router, domainId: 'domA' });
+    registry.register(extension('extA', 'domA', 'alpha'));
+    registry.mounted.add('extA');
+    router.startDomain('domA');
+
+    resolveNavigationHistory().push(`/?${route}=alpha`);
+    resolveNavigationHistory().push('/?unrelated=1');
+    expect(registry.executeActionsChain).not.toHaveBeenCalled();
+
+    // Re-presented with an unmount action: leaving the entry unmounts.
+    router.registerDomain(domain('domA', route));
+    resolveNavigationHistory().push(`/?${route}=alpha`);
+    const unmountDispatched = registry.nextDispatch();
+    resolveNavigationHistory().push('/?unrelated=2');
+    await unmountDispatched;
+
+    const unmounts = registry.executeActionsChain.mock.calls.filter(([c]: [Chain]) => c.action.type === UNMOUNT);
+    expect(unmounts).toHaveLength(1);
+    expect(unmounts[0]![0].action.payload?.subject).toBe('extA');
+  });
+});
+
 describe('FrameworkRouter — unregistration', () => {
   it('writes nothing to the URL when an extension or a domain is unregistered', () => {
     const route = freshRoute();

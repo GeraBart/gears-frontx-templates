@@ -17,7 +17,6 @@
 // ============================================================================
 
 export { createFrontX } from './createFrontX';
-export { createFrontXApp, type FrontXAppConfig } from './createFrontXApp';
 
 // ============================================================================
 // Plugin Exports

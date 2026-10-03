@@ -192,9 +192,10 @@ class FakeThemeAwareReactLifecycle {
     const renderContent = (this as unknown as { renderContent: (b: ChildMfeBridge) => React.ReactNode }).renderContent;
     this.root.render(<>{renderContent.call(this, bridge)}</>);
   }
-  unmount(_container: Element | ShadowRoot): void {
+  unmount(_container: Element | ShadowRoot): Promise<void> {
     this.root?.unmount();
     this.root = null;
+    return Promise.resolve();
   }
 }
 
@@ -203,30 +204,43 @@ class FakeThemeAwareReactLifecycle {
  * fired, in order — declared through `vi.hoisted` so it exists before the
  * hoisted `vi.mock` factory closes over it.
  */
-const { attachedCallbacks } = vi.hoisted(() => ({
+const { attachedCallbacks, createFrontXSpy, buildSpy } = vi.hoisted(() => ({
   attachedCallbacks: [] as Array<() => void>,
+  /** Counts `createFrontX()` and `build()` calls per module copy: a runtime builds exactly one app. */
+  createFrontXSpy: vi.fn(),
+  buildSpy: vi.fn(),
 }));
 
 vi.mock('@gears-frontx/react', async (importOriginal) => {
   const real = await importOriginal<Record<string, unknown>>();
   const builder = {
     use: () => builder,
-    build: () => ({
-      mfeRegistry: fakeRegistry,
-      // `app.mfeRouter` in production narrows to the navigation facade
-      // alone (ADR 0036, D10) — nothing under test here reads it; starting/
-      // stopping this domain's own observer is `ExtensionDomainSlot`'s own
-      // internal concern (its own suite, Global Constraints here).
-      mfeRouter: fakeRouter,
-      themeRegistry: { getCurrent: () => undefined },
-      i18nRegistry: { getLanguage: () => null },
-    }),
+    build: () => {
+      buildSpy();
+      return {
+        // The app is built once at module evaluation, so the registry is read
+        // when asked for, not captured.
+        get mfeRegistry() {
+          return fakeRegistry;
+        },
+        // `app.mfeRouter` in production narrows to the navigation facade
+        // alone (ADR 0036, D10) — nothing under test here reads it; starting/
+        // stopping this domain's own observer is `ExtensionDomainSlot`'s own
+        // internal concern (its own suite, Global Constraints here).
+        mfeRouter: fakeRouter,
+        themeRegistry: { getCurrent: () => undefined },
+        i18nRegistry: { getLanguage: () => null },
+      };
+    },
   };
   return {
     ...real,
     ConcurrentMountStrategy: FakeConcurrentMountStrategy,
     ThemeAwareReactLifecycle: FakeThemeAwareReactLifecycle,
-    createFrontX: () => builder,
+    createFrontX: () => {
+      createFrontXSpy();
+      return builder;
+    },
     ExtensionDomainSlot: ({ onAttached }: { onAttached?: (root: Element) => void }) => {
       const ref = React.useRef<HTMLDivElement | null>(null);
       React.useEffect(() => {
@@ -277,6 +291,8 @@ beforeEach(() => {
   fakeRegistry = new FakeRegistry();
   fakeRouter = { navigation: vi.fn(() => ({ navigate: vi.fn(), replace: vi.fn() })) };
   attachedCallbacks.length = 0;
+  createFrontXSpy.mockClear();
+  buildSpy.mockClear();
   mountGate = undefined;
   pendingMounts = [];
 });
@@ -357,6 +373,17 @@ describe('demo-mfe widgets-host lifecycle', () => {
     }
   });
 
+  it('builds one nested app per module copy and reuses it across mount, unmount and remount', async () => {
+    for (let i = 0; i < 3; i += 1) {
+      const { lifecycle, container } = await mount(fakeBridge(), { keepModule: i > 0 });
+      mountedInstances.pop();
+      await lifecycle.unmount(container);
+    }
+
+    expect(createFrontXSpy).toHaveBeenCalledTimes(1);
+    expect(buildSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('mount() resolves even when a widget chain returns no promise (#648)', async () => {
     fakeRegistry = new FakeRegistry();
     for (const id of WIDGET_IDS) {
@@ -415,7 +442,7 @@ describe('demo-mfe widgets-host lifecycle', () => {
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(`ping ${ALPHA_ID}`), expect.any(Error));
   });
 
-  it('rebinds impl to the already-registered domain after an HMR reload, when the nested registry is cached (HMR + cached registry)', async () => {
+  it('rebinds impl to the already-registered domain on a remount, when the nested registry is cached (remount + cached registry)', async () => {
     const WIDGETS_HOLDER_KEY = Symbol.for('@gears-frontx/demo-mfe/widgets-host-holder/v1');
 
     const registry = new FakeRegistry();
@@ -429,12 +456,11 @@ describe('demo-mfe widgets-host lifecycle', () => {
     });
     expect(new Set(registry.getMountedExtensions(WIDGETS_DOMAIN_ID))).toEqual(new Set(WIDGET_IDS));
 
-    // Simulate an HMR update of THIS module without touching `registry`:
-    // `vi.resetModules()` (inside `mount()`, `keepModule` defaults to false)
-    // clears vitest's module cache, so the next `import('./lifecycle-widgets-host')`
-    // re-runs the module's own top-level code — exactly what a real HMR
-    // reload does to its bindings. `fakeRegistry` is deliberately left
-    // pointing at the SAME instance (unlike every other test's `beforeEach`).
+    // Remount against the SAME `registry`: `vi.resetModules()` (inside
+    // `mount()`, `keepModule` defaults to false) clears vitest's module cache,
+    // so the next `import('./lifecycle-widgets-host')` re-runs the module's
+    // own top-level code with fresh bindings. `fakeRegistry` is deliberately
+    // left pointing at the SAME instance (unlike every other test's `beforeEach`).
     await mount(fakeBridge());
     await act(async () => {
       await Promise.all(pendingMounts);

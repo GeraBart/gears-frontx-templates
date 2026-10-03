@@ -17,10 +17,13 @@
 
 import {
   type MfeHandler,
+  type MfeRegistry,
   type TypeSystemPlugin,
 } from '@gears-frontx/mfes';
 import { mfeRegistryFactory } from '../../mfe/registry';
-import type { FrontXPlugin } from '../../types';
+import { eventBus } from '@gears-frontx/state';
+import type { ChangeThemePayload, FrontXApp, FrontXPlugin, SetLanguagePayload } from '../../types';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '../../mfe/constants';
 import { mfeSlice } from './slice';
 import { initMfeEffects } from './effects';
 import { FrameworkRouter } from './router';
@@ -31,7 +34,9 @@ import {
   registerExtension,
   unregisterExtension,
   setMfeRegistry,
+  bindMfeRegistryInitializer,
 } from './actions';
+
 /**
  * Configuration for the microfrontends plugin.
  */
@@ -55,10 +60,8 @@ export interface MicrofrontendsConfig {
 /**
  * Module-scoped singleton, mirroring `mfeRegistryFactory`'s own cache
  * (`src/mfe/registry.ts`): one `FrameworkRouter` per loaded copy of this
- * module, reused across every `microfrontends()` call so a second call in
- * this copy — an HMR reload, a remount that rebuilds the app against the
- * same cached registry — presents the identical router object the factory's
- * own config-identity check requires.
+ * module, so every `microfrontends()` call in this copy presents the
+ * identical router object the factory's own config-identity check requires.
  */
 let sharedRouter: FrameworkRouter | undefined;
 function sharedFrameworkRouter(typeSystem: TypeSystemPlugin): FrameworkRouter {
@@ -70,12 +73,12 @@ function sharedFrameworkRouter(typeSystem: TypeSystemPlugin): FrameworkRouter {
  * Microfrontends plugin factory.
  *
  * Enables MFE capabilities in FrontX applications. Optionally accepts MFE handlers
- * for registration at plugin initialization.
+ * for registration with the registry.
  *
  * **Key Principles:**
  * - Optional mfeHandlers config for handler registration
  * - NO static domain registration - domains are registered at runtime
- * - Builds mfeRegistry with provided TypeSystemPlugin at plugin initialization
+ * - Builds mfeRegistry lazily, on first read of `app.mfeRegistry`, with the provided TypeSystemPlugin
  * - Same TypeSystemPlugin instance is propagated throughout
  * - Integrates MFE lifecycle with Flux data flow (actions, effects, slice)
  *
@@ -108,28 +111,60 @@ function sharedFrameworkRouter(typeSystem: TypeSystemPlugin): FrameworkRouter {
 // @cpt-begin:cpt-frontx-dod-framework-composition-mfe-plugin:p1:inst-1
 export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
   // The framework router implementing the runtime's router port
-  // (`cpt-frontx-adr-extension-routing-port`) — injected into every registry
-  // this plugin builds, shell and every MFE's own `createFrontX()` alike
-  // (D14). Reused across repeated `microfrontends()` calls in this same
-  // loaded copy — `mfeRegistryFactory`'s own cache compares a second build's
-  // router by identity (`cpt-frontx-dod-mfe-registry-router-configuration`),
-  // so a host that calls this plugin more than once against the same cached
-  // registry (an HMR reload, a remount) must keep getting the SAME router
-  // object, not a fresh one, or that second build throws a configuration
-  // mismatch. The registry is this router's own consumer-side wiring, so it
-  // is (re-)attached immediately below, before any domain or extension
-  // registers (see `FrameworkRouter.attachRegistry`'s own doc comment) —
-  // harmless to repeat against the same cached registry.
+  // (`cpt-frontx-adr-extension-routing-port`) — injected into the registry
+  // this plugin builds. `mfeRegistryFactory`'s own cache compares a repeated
+  // build's router by identity (`cpt-frontx-dod-mfe-registry-router-configuration`),
+  // so every `microfrontends()` call in this loaded copy shares one router.
   const router = sharedFrameworkRouter(config.typeSystem);
-  // Build the MfeRegistry instance with provided TypeSystemPlugin and optional handlers
-  // This registry handles all MFE lifecycle: domains, extensions, actions, etc.
-  // TypeSystemPlugin binding happens here at application wiring level.
-  const mfeRegistry = mfeRegistryFactory.build({
-    typeSystem: config.typeSystem,
-    mfeHandlers: config.mfeHandlers,
-    router,
-  });
-  router.attachRegistry(mfeRegistry);
+
+  // The registry is built lazily, exactly once, by `initializeRegistry`. A
+  // nested runtime (an MFE extension's own bundle copy) must build its
+  // registry inside its first mount window so the host links it; building it
+  // at `build()` time would happen outside any window and make it a root. Every
+  // consumer — the `app.mfeRegistry` accessor, lifecycle actions, effects and
+  // `ThemeAwareReactLifecycle.mount` — goes through this one initializer, so
+  // reading the registry is what materializes it.
+  // The router is this registry's consumer-side wiring, attached right after
+  // the build and before any domain or extension registers (see
+  // `FrameworkRouter.attachRegistry`).
+  let registry: MfeRegistry | undefined;
+  let builtApp: FrontXApp | undefined;
+  const subscriptions: Array<{ unsubscribe: () => void }> = [];
+
+  // The registry starts from the current theme and language when it is built;
+  // later changes are forwarded below, only once it exists.
+  const applyCurrentState = (built: MfeRegistry, app: FrontXApp): void => {
+    try {
+      const theme = app.themeRegistry?.getCurrent();
+      if (theme) {
+        built.setTheme(theme.variables);
+        built.updateSharedProperty(FRONTX_SHARED_PROPERTY_THEME, theme.id);
+      }
+      const language = app.i18nRegistry?.getLanguage();
+      if (language) {
+        built.updateSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, language);
+      }
+    } catch (error) {
+      console.error('[Gears FrontX] Failed to apply current theme/language to the MFE registry', error);
+    }
+  };
+
+  const initializeRegistry = (): MfeRegistry => {
+    if (!registry) {
+      const built = mfeRegistryFactory.build({
+        typeSystem: config.typeSystem,
+        mfeHandlers: config.mfeHandlers,
+        router,
+      });
+      router.attachRegistry(built);
+      setMfeRegistry(built);
+      registry = built;
+      if (builtApp) {
+        applyCurrentState(built, builtApp);
+      }
+    }
+    return registry;
+  };
 
   // Store cleanup functions in closure (encapsulated per plugin instance)
   let effectsCleanup: (() => void) | null = null;
@@ -140,9 +175,12 @@ export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
 
     provides: {
       registries: {
-        // Expose the MFE-enabled MfeRegistry
-        // This registry has registerDomain(), registerExtension(), etc.
-        mfeRegistry,
+        // The MFE-enabled MfeRegistry (registerDomain(), registerExtension(), …)
+        // as a getter: the first read builds it. Aggregation and app
+        // construction copy it by property descriptor so it stays lazy.
+        get mfeRegistry(): MfeRegistry {
+          return initializeRegistry();
+        },
       },
       // `app.mfeRouter` — the module-augmentation surface (see
       // `FrontXAppRuntimeExtensions`) exposing only `navigation()`, the
@@ -171,12 +209,40 @@ export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
       },
     },
 
-    onInit(): void {
-      // Wire the registry reference into actions module
-      setMfeRegistry(mfeRegistry);
+    onInit(app): void {
+      builtApp = app;
+      // Lifecycle actions materialize the registry through the initializer.
+      bindMfeRegistryInitializer(initializeRegistry);
 
       // Initialize effects and store cleanup references
-      effectsCleanup = initMfeEffects(mfeRegistry);
+      effectsCleanup = initMfeEffects(initializeRegistry);
+
+      // Forward later theme/language changes to the registry, only if it has
+      // been built (a registry built later starts from the current values).
+      subscriptions.push(
+        eventBus.on('theme/changed', (payload: ChangeThemePayload) => {
+          if (!registry) return;
+          try {
+            const themeConfig = app.themeRegistry?.get(payload.themeId);
+            if (themeConfig) {
+              registry.setTheme(themeConfig.variables);
+            }
+            registry.updateSharedProperty(FRONTX_SHARED_PROPERTY_THEME, payload.themeId);
+          } catch (error) {
+            console.error('[Gears FrontX] Failed to propagate theme to MFE domains', error);
+            eventBus.emit('theme/propagation/failed', { themeId: payload.themeId, error });
+          }
+        }),
+        eventBus.on('i18n/language/changed', (payload: SetLanguagePayload) => {
+          if (!registry) return;
+          try {
+            registry.updateSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, payload.language);
+          } catch (error) {
+            console.error('[Gears FrontX] Failed to propagate language to MFE domains', error);
+            eventBus.emit('i18n/propagation/failed', { language: payload.language, error });
+          }
+        })
+      );
 
       // Plugin is now initialized
       // TypeSystemPlugin: bound to mfeRegistry
@@ -195,6 +261,7 @@ export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
         effectsCleanup();
         effectsCleanup = null;
       }
+      subscriptions.splice(0).forEach((subscription) => subscription.unsubscribe());
     },
   };
 }

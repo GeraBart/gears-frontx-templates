@@ -8,26 +8,37 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { createFrontX } from '../../../src/createFrontX';
-import { effects } from '../../../src/plugins/effects';
-import {
-  microfrontends,
-  loadExtension,
-  mountExtension,
-  unmountExtension,
-  MfeEvents,
-  selectExtensionState,
-  selectExtensionError,
-} from '../../../src/plugins/microfrontends';
-import { eventBus, resetStore } from '@gears-frontx/state';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import {
   type Extension,
   type MfeRegistry,
 } from '@gears-frontx/mfes';
-import { FRONTX_ACTION_UNMOUNT_EXT } from '@gears-frontx/gts-plugin';
-import { gtsPlugin } from '@gears-frontx/gts-plugin';
 import type { FrontXApp } from '../../../src/types';
+
+// One app per runtime: every test loads its own module copy.
+let createFrontX: typeof import('../../../src/createFrontX')['createFrontX'];
+let effects: typeof import('../../../src/plugins/effects')['effects'];
+let microfrontends: typeof import('../../../src/plugins/microfrontends')['microfrontends'];
+let loadExtension: typeof import('../../../src/plugins/microfrontends')['loadExtension'];
+let mountExtension: typeof import('../../../src/plugins/microfrontends')['mountExtension'];
+let unmountExtension: typeof import('../../../src/plugins/microfrontends')['unmountExtension'];
+let MfeEvents: typeof import('../../../src/plugins/microfrontends')['MfeEvents'];
+let selectExtensionState: typeof import('../../../src/plugins/microfrontends')['selectExtensionState'];
+let selectExtensionError: typeof import('../../../src/plugins/microfrontends')['selectExtensionError'];
+let eventBus: typeof import('@gears-frontx/state')['eventBus'];
+let resetStore: typeof import('@gears-frontx/state')['resetStore'];
+let FRONTX_ACTION_UNMOUNT_EXT: typeof import('@gears-frontx/gts-plugin')['FRONTX_ACTION_UNMOUNT_EXT'];
+let gtsPlugin: typeof import('@gears-frontx/gts-plugin')['gtsPlugin'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ createFrontX } = await import('../../../src/createFrontX'));
+  ({ effects } = await import('../../../src/plugins/effects'));
+  ({ microfrontends, loadExtension, mountExtension, unmountExtension, MfeEvents, selectExtensionState, selectExtensionError } = await import('../../../src/plugins/microfrontends'));
+  ({ eventBus, resetStore } = await import('@gears-frontx/state'));
+  ({ FRONTX_ACTION_UNMOUNT_EXT } = await import('@gears-frontx/gts-plugin'));
+  ({ gtsPlugin } = await import('@gears-frontx/gts-plugin'));
+});
 
 describe('microfrontends plugin - Phase 13', () => {
   let apps: FrontXApp[] = [];

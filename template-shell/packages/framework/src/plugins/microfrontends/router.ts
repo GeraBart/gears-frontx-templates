@@ -127,8 +127,9 @@ export interface MfeRouterHandle {
 interface RoutedDomainState {
   readonly domainId: string;
   readonly domainKey: DomainKey;
-  readonly mountActionType: string;
-  readonly unmountActionType: string | undefined;
+  /** Derived from the domain's declared actions; refreshed when the same router re-presents the domain (see `registerDomain`). */
+  mountActionType: string;
+  unmountActionType: string | undefined;
   readonly tokens: Set<ExtensionToken>;
   readonly statusListeners: Set<() => void>;
   release: ReleaseFunction | undefined;
@@ -497,8 +498,10 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
           `[router] domain route "${route}" is already registered for domain "${domain.id}" by a distinct router instance`,
         );
       }
-      // Same owner re-presenting its own unchanged declaration — fall through
-      // and recompute this domain's state below, exactly as a first registration would.
+      // Same owner re-presenting a domain it already holds: its running
+      // observer, extension tokens, status listeners and pending write belong
+      // to the existing state, so that state stays and only the
+      // declaration-derived fields below are refreshed.
     }
     const typeSystem = this.options.typeSystem;
     const mountActionType =
@@ -506,18 +509,30 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
       typeSystem.resolveMountExtActionId();
     const unmountActionType = domain.actions.find((a) => typeSystem.isTypeOf(a, typeSystem.resolveUnmountExtActionId()));
     this.routedRoutes.set(route, { domainId: domain.id, ownerId: this.instanceId });
-    this.domainsById.set(domain.id, {
-      domainId: domain.id,
-      domainKey: route as DomainKey,
-      mountActionType,
-      unmountActionType,
-      tokens: new Set(),
-      statusListeners: new Set(),
-      release: undefined,
-      status: NO_DOMAIN_STATUS,
-      pendingWrite: undefined,
-      pendingVerb: undefined,
-    });
+    let existing = this.domainsById.get(domain.id);
+    if (existing && existing.domainKey !== route) {
+      // The domain moved to a different route: nothing of the old state
+      // applies to the new key, so it is released rather than reused.
+      this.releaseDomain(domain.id);
+      existing = undefined;
+    }
+    if (existing) {
+      existing.mountActionType = mountActionType;
+      existing.unmountActionType = unmountActionType;
+    } else {
+      this.domainsById.set(domain.id, {
+        domainId: domain.id,
+        domainKey: route as DomainKey,
+        mountActionType,
+        unmountActionType,
+        tokens: new Set(),
+        statusListeners: new Set(),
+        release: undefined,
+        status: NO_DOMAIN_STATUS,
+        pendingWrite: undefined,
+        pendingVerb: undefined,
+      });
+    }
     const enclosing = this.ownEntryAddress();
     if (enclosing) {
       const key = ownerKey(enclosing);
