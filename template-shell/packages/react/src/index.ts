@@ -115,7 +115,6 @@ export type {
 export {
   // Core
   createFrontX,
-  createFrontXApp,
   presets,
 
   // Backward compatibility constants

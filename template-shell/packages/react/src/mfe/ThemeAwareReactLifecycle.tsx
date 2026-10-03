@@ -139,6 +139,10 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
   constructor(private readonly app: FrontXApp) { }
 
   mount(container: Element | ShadowRoot, bridge: ChildMfeBridge, mountContext?: MfeMountContext): void {
+    // Must stay the first statement: this read builds the runtime's registry
+    // inside the mount window so the host links it.
+    void this.app.mfeRegistry;
+
     if (container instanceof ShadowRoot) {
       this.adoptHostStylesIntoShadowRoot(container);
     }
@@ -176,7 +180,12 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
     const root = this.root;
     this.root = null;
     const pendingTeardowns = collectDomainTeardowns(() => root.unmount());
-    await Promise.all(pendingTeardowns);
+    // Waits for EVERY nested teardown to settle before reporting the first
+    // failure: `Promise.all` would reject as soon as one fails and let the
+    // caller proceed (e.g. destroy the app) while the others still run.
+    const settled = await Promise.allSettled(pendingTeardowns);
+    const failed = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failed) throw failed.reason;
   }
 
   /**

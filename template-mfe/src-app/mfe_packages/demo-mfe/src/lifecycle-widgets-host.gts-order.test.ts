@@ -19,7 +19,7 @@
  * `mount()` — so a minimal registry double (real `typeSystem`, faked
  * `registerDomain`/`registerExtension` bookkeeping) exercises the exact
  * registration-order contract under test without needing a full
- * `createWidgetsHostApp()` / module-federation-loaded `mfes` registry.
+ * real app built with `createFrontX()` / module-federation-loaded `mfes` registry.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GtsPlugin } from '@gears-frontx/gts-plugin';

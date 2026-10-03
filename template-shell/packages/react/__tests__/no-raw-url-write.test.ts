@@ -40,6 +40,13 @@ afterEach(() => {
   window.history.replaceState(null, '', '/');
 });
 
+/** A runtime builds one app, so every test that builds one loads its own copy of the framework. */
+async function buildMfeApp() {
+  vi.resetModules();
+  const fresh = await import('@gears-frontx/framework');
+  return fresh.createFrontX().use(fresh.microfrontends({ typeSystem: fresh.gtsPlugin })).build();
+}
+
 /** Own-key, enumerable members of `value`, one level deep — enough to catch a flattened re-export of `window.history` itself or a bound `pushState`/`replaceState`. */
 function ownMemberNames(value: unknown): string[] {
   if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return [];
@@ -114,8 +121,8 @@ describe('AC8.3 — no exported surface writes the raw URL', () => {
     expect((reactPkg as Record<string, unknown>).FrameworkRouter).toBeUndefined();
   });
 
-  it('app.mfeRouter exposes only the navigation facade — no RouterPort member, attachRegistry, domain-lifecycle/status call, or anything else that would yield the router instance or an occupant value', () => {
-    const app = framework.createFrontX().use(framework.microfrontends({ typeSystem: framework.gtsPlugin })).build();
+  it('app.mfeRouter exposes only the navigation facade — no RouterPort member, attachRegistry, domain-lifecycle/status call, or anything else that would yield the router instance or an occupant value', async () => {
+    const app = await buildMfeApp();
     try {
       const router = app.mfeRouter;
       expect(router).toBeDefined();
@@ -147,8 +154,8 @@ describe('AC8.3 — no exported surface writes the raw URL', () => {
     }
   });
 
-  it('app.mfeRouter.navigation() exposes exactly {location, navigate, replace} — no router, occupant value, or raw history', () => {
-    const app = framework.createFrontX().use(framework.microfrontends({ typeSystem: framework.gtsPlugin })).build();
+  it('app.mfeRouter.navigation() exposes exactly {location, navigate, replace} — no router, occupant value, or raw history', async () => {
+    const app = await buildMfeApp();
     try {
       const facade = app.mfeRouter!.navigation();
       expect(Object.keys(facade).sort()).toEqual(['location', 'navigate', 'replace']);
