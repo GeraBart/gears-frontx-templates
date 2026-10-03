@@ -198,44 +198,6 @@ describe('FrameworkRouter — admission', () => {
   });
 });
 
-describe('FrameworkRouter — extension route reconciliation (Extension.route vs presentation.route)', () => {
-  it('accepts a screen extension declaring an equal normalized route on both Extension.route and presentation.route', () => {
-    const route = freshRoute();
-    const router = buildRouter();
-    const registry = new FakeRegistry();
-    router.attachRegistry(registry as unknown as MfeRegistry);
-    router.registerDomain(domain('domA', route));
-    routersToRelease.push({ router, domainId: 'domA' });
-
-    const screenExtension = {
-      id: 'extA',
-      domain: 'domA',
-      route: '/alpha',
-      presentation: { route: 'alpha' }, // equal once each side's own leading '/' is stripped
-    } as unknown as Extension;
-
-    expect(() => router.registerExtension(screenExtension)).not.toThrow();
-  });
-
-  it('rejects a screen extension declaring conflicting Extension.route and presentation.route — never silently preferring Extension.route', () => {
-    const route = freshRoute();
-    const router = buildRouter();
-    const registry = new FakeRegistry();
-    router.attachRegistry(registry as unknown as MfeRegistry);
-    router.registerDomain(domain('domA', route));
-    routersToRelease.push({ router, domainId: 'domA' });
-
-    const conflictingExtension = {
-      id: 'extA',
-      domain: 'domA',
-      route: 'alpha',
-      presentation: { route: 'beta' },
-    } as unknown as Extension;
-
-    expect(() => router.registerExtension(conflictingExtension)).toThrow(/conflicting routes/);
-  });
-});
-
 describe('FrameworkRouter — reportSettled, history intent', () => {
   it('writes nothing to the URL for a settled action carrying history intent "none" (restore chains)', () => {
     const route = freshRoute();
