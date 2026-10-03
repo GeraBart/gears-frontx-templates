@@ -23,7 +23,8 @@ const screenExtension = (
   id,
   domain: 'screen-domain',
   entry: `${id}.entry`,
-  presentation: { label, route, order },
+  route,
+  presentation: { label, order },
 });
 
 /**

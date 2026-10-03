@@ -249,33 +249,12 @@ function ownerKey(address: EntryAddress): string {
 
 // ---------------------------------------------------------------------------
 // Extension route extraction — the router's own: the runtime keeps no
-// routing grammar itself, so this reads an extension's own declared `route`,
-// or (for a screen extension) `presentation.route`, each with one leading
-// `/` stripped.
+// routing grammar itself, so this reads an extension's own declared `route`
+// with one leading `/` stripped.
 // ---------------------------------------------------------------------------
 
-function normalizedRoute(raw: string | undefined): string | undefined {
-  return raw === undefined ? undefined : raw.replace(/^\//, '');
-}
-
-/**
- * An extension's own route, normalized. `mfes` does not own route identity
- * (it validates neither `Extension.route` nor `presentation.route` against
- * each other), so when a screen extension declares BOTH, the framework
- * router is the one place that reconciles them: an equal normalized value
- * is accepted (either declaration may have been the one authored), a
- * conflicting one is rejected — never silently preferring `Extension.route`.
- */
 function extensionRouteOf(extension: Extension): string | undefined {
-  const presentation = (extension as { presentation?: { route?: string } }).presentation;
-  const ownRoute = normalizedRoute(extension.route);
-  const presentationRoute = normalizedRoute(presentation?.route);
-  if (ownRoute !== undefined && presentationRoute !== undefined && ownRoute !== presentationRoute) {
-    throw new Error(
-      `[router] extension "${extension.id}" declares conflicting routes: Extension.route "${ownRoute}" vs presentation.route "${presentationRoute}"`,
-    );
-  }
-  return ownRoute ?? presentationRoute;
+  return extension.route?.replace(/^\//, '');
 }
 
 function extensionTokenOf(extension: Extension): ExtensionToken | undefined {

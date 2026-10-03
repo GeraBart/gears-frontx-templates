@@ -39,9 +39,9 @@ const PROFILE_EXTENSION = {
   id: PROFILE_EXTENSION_ID,
   domain: SCREEN_DOMAIN_ID,
   entry: PROFILE_ENTRY_ID,
+  route: '/profile',
   presentation: {
     label: 'Profile',
-    route: '/profile',
   },
 } as unknown as Extension;
 

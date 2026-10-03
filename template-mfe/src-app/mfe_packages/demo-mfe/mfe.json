@@ -120,10 +120,10 @@
       "id": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.widgets.host.screen.v1",
       "domain": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1",
       "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.widgets_host.v1",
+      "route": "/widgets-host",
       "presentation": {
         "label": "Widgets Host",
         "icon": "lucide:layout-grid",
-        "route": "/widgets-host",
         "order": 200
       }
     },
@@ -131,10 +131,10 @@
       "id": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.helloworld.v1",
       "domain": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1",
       "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.helloworld.v1",
+      "route": "/hello-world",
       "presentation": {
         "label": "Hello World",
         "icon": "lucide:globe",
-        "route": "/hello-world",
         "order": 10
       }
     },
@@ -142,10 +142,10 @@
       "id": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.profile.v1",
       "domain": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1",
       "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.profile.v1",
+      "route": "/profile",
       "presentation": {
         "label": "Profile",
         "icon": "lucide:user",
-        "route": "/profile",
         "order": 20
       }
     },
@@ -153,10 +153,10 @@
       "id": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.theme.v1",
       "domain": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1",
       "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.theme.v1",
+      "route": "/current-theme",
       "presentation": {
         "label": "Current Theme",
         "icon": "lucide:palette",
-        "route": "/current-theme",
         "order": 30
       }
     },
@@ -164,10 +164,10 @@
       "id": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.uikit.v1",
       "domain": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1",
       "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.uikit.v1",
+      "route": "/uikit-elements",
       "presentation": {
         "label": "UIKit Elements",
         "icon": "lucide:component",
-        "route": "/uikit-elements",
         "order": 40
       }
     }
