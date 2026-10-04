@@ -23,33 +23,7 @@ import {
   screenDomain,
   FRONTX_SCREEN_DOMAIN,
 } from '@gears-frontx/react';
-import { bootstrapMFE } from './bootstrap';
-
-/**
- * The in-flight/settled `bootstrapMFE` call, hoisted to module scope rather
- * than component-instance state (a ref or `useState`). A REAL remount — this
- * component unmounting and a later, distinct instance mounting, as opposed to
- * a re-render, which reuses the same instance — starts with fresh instance
- * state every time, so a guard living there would not see that bootstrap
- * already ran and would re-invoke `bootstrapMFE`, re-registering every domain
- * and extension a second time on the same `mfeRegistry`. Reusing this
- * module-scoped promise means a second mount observes the same bootstrap
- * outcome instead of triggering a second one.
- *
- * Deliberately never cleared on rejection: a `bootstrapMFE` failure can
- * leave some domains/extensions registered and others not (it is not
- * transactional), so retrying from that partial state would not be a safe
- * repeat of the first attempt — there is no isolated "nothing happened yet"
- * state to roll back to. The effect below still logs the rejection every
- * time it re-runs against this same promise, but it never re-invokes
- * `bootstrapMFE`.
- *
- * Also never keyed on `app`: the effect below only checks whether this
- * promise already exists, not which `app` it was created for, so a change
- * of `app` across a re-render (as opposed to a real remount) still
- * resolves against whatever registry the first call bootstrapped.
- */
-let bootstrapPromise: ReturnType<typeof bootstrapMFE> | undefined;
+import { bootstrapOnce } from './bootstrapOnce';
 
 export function MfeScreenContainer() {
   const app = useFrontX();
@@ -58,11 +32,8 @@ export function MfeScreenContainer() {
   const status = useDomainRouteStatus(bootstrapped ? app.mfeRegistry : undefined, FRONTX_SCREEN_DOMAIN);
 
   useEffect(() => {
-    if (!bootstrapPromise) {
-      bootstrapPromise = bootstrapMFE(app);
-    }
     let cancelled = false;
-    bootstrapPromise
+    bootstrapOnce(app)
       .then(() => {
         if (!cancelled) setBootstrapped(true);
       })

@@ -39,7 +39,7 @@ class WidgetsFixtureBLifecycle extends ThemeAwareReactLifecycle {
     return (
       <div
         data-fixture-id="widgets-fixture-b"
-        className="m-2 rounded-lg border-2 border-emerald-500 bg-emerald-50 p-4 text-emerald-900"
+        className="m-2 rounded-lg border-2 border-muted-foreground bg-muted p-4 text-foreground"
       >
         <strong>Widget B (fixture-b)</strong>
         <p className="mt-1 text-sm">

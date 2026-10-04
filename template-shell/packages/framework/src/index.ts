@@ -90,7 +90,7 @@ export {
   // The app-facing router handle type (ADR 0036) — `FrameworkRouter` itself
   // stays internal to this package, never exported. The framework-internal
   // reach-through functions (`buildExtensionHistory`, `startRoutedDomain`,
-  // `stopRoutedDomain`, `teardownRoutedDomain`, `routedDomainStatus`,
+  // `stopRoutedDomain`, `routedDomainStatus`,
   // `subscribeRoutedDomainStatus`) are NOT part of this public entry — see
   // `./internal.ts` (D5/D10: MFE-reachable surface carries only
   // `app.mfeRouter`'s navigation facade).

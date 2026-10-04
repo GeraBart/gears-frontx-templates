@@ -182,7 +182,6 @@ describe('AC8.3 — no exported surface writes the raw URL', () => {
         'buildExtensionHistory',
         'startRoutedDomain',
         'stopRoutedDomain',
-        'teardownRoutedDomain',
         'routedDomainStatus',
         'subscribeRoutedDomainStatus',
       ]) {

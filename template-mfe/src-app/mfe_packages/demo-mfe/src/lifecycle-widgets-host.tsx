@@ -114,26 +114,11 @@ class WidgetsContainerHooks implements ContainerHooks {
   }
 }
 
-/**
- * This implementation, read at call time: the nested registry may outlive
- * one mount. Exported so `bootstrapWidgetsRuntime` (below) is callable from a
- * test without a full `mount()` cycle — see
- * `lifecycle-widgets-host.gts-order.test.ts`. URL sync for this domain is
- * not this holder's concern: the nested app's own injected
- * `FrameworkRouter` (`app.mfeRouter`) reflects every settled mount/unmount
- * automatically (ADR 0036) — the host screen in `lifecycle-widgets-host.tsx` only starts/stops that
- * router's observer for this domain from its own slot's attach/detach.
- */
-export interface WidgetsRoutingHolder {
-  impl: WidgetsDomainImpl | undefined;
-}
-
 class WidgetsDomainImpl extends ExtensionDomainImplementation {
   private readonly strategy: ConcurrentMountStrategy;
 
-  constructor(ctx: DomainContext, hooks: ContainerHooks, holder: WidgetsRoutingHolder) {
+  constructor(ctx: DomainContext, hooks: ContainerHooks) {
     super();
-    holder.impl = this;
     this.strategy = new ConcurrentMountStrategy(ctx.mounter, hooks);
     ctx.registerHandler(FRONTX_ACTION_MOUNT_EXT, ActionHandler.fromFunction((_t, p) => this.strategy.mount(p as ActionPayload)));
     ctx.registerHandler(
@@ -150,11 +135,8 @@ class WidgetsDomainImpl extends ExtensionDomainImplementation {
 }
 
 class WidgetsDomainFactory extends ExtensionDomainImplementationFactory {
-  constructor(private readonly holder: WidgetsRoutingHolder) {
-    super();
-  }
   build(ctx: DomainContext): WidgetsDomainImpl {
-    return new WidgetsDomainImpl(ctx, new WidgetsContainerHooks(), this.holder);
+    return new WidgetsDomainImpl(ctx, new WidgetsContainerHooks());
   }
 }
 
@@ -188,12 +170,12 @@ class WidgetsDomainFactory extends ExtensionDomainImplementationFactory {
  * Returns the located widgets domain declaration so the caller can read its
  * `route` and `defaultActionTimeout` without a second manifest walk.
  *
- * Exported test-only (see `WidgetsRoutingHolder`'s doc comment): production
- * code reaches this only through `DemoMfeWidgetsHostLifecycle.mount()`.
+ * Exported for tests so they can run it without a full `mount()` cycle:
+ * production code reaches this only through
+ * `DemoMfeWidgetsHostLifecycle.mount()`.
  */
 export async function bootstrapWidgetsRuntime(
   app: FrontXApp,
-  holder: WidgetsRoutingHolder,
 ): Promise<ExtensionDomain> {
   const registry = app.mfeRegistry;
   if (!registry) {
@@ -273,7 +255,7 @@ export async function bootstrapWidgetsRuntime(
   // would either throw or duplicate the registration. Each registration runs
   // only for an entity the registry does not already hold.
   if (!registry.getDomain(WIDGETS_DOMAIN_ID)) {
-    registry.registerDomain(widgetsDomain, new WidgetsDomainFactory(holder));
+    registry.registerDomain(widgetsDomain, new WidgetsDomainFactory());
   }
 
   for (const config of manifests) {
@@ -296,35 +278,6 @@ export async function bootstrapWidgetsRuntime(
 
   return widgetsDomain;
 }
-
-/**
- * Module-level singleton, not a per-mount instance field: `bootstrapWidgetsRuntime`
- * guards `registerDomain` against a cached nested registry, so on a remount
- * the factory, and therefore `WidgetsDomainImpl`'s own `holder.impl = this`
- * assignment, never runs again. A fresh `{ impl: undefined }` object per
- * `mount()` would leave that remount's holder with no `impl` at all, breaking
- * the one thing `holder.impl` exists for: a test driving
- * `bootstrapWidgetsRuntime` directly (`WidgetsRoutingHolder`'s own doc
- * comment) reaching the SAME, real `WidgetsDomainImpl` instance across a
- * remount, not a stale or absent one. Keeping the SAME object across every
- * mount is what lets a remount still reach the original `WidgetsDomainImpl`.
- *
- * The holder is also keyed on `globalThis`, the SAME mechanism
- * `@gears-frontx/routing`'s own `resolveNavigationHistory()` uses to survive
- * a module-identity break (`src/history/singleton.ts`'s
- * `NAVIGATION_HISTORY_KEY`): a second evaluation of this module in the same
- * realm, against a nested `MfeRegistry` that already holds the widgets
- * domain, receives the holder the first evaluation populated instead of
- * starting `{ impl: undefined }` with no factory run left to fill it. A
- * plain `const` here would not survive that. The realm object itself is
- * never torn down, so the slot is reachable from every module instance,
- * which is what lets a test reproduce a second evaluation with
- * `vi.resetModules()`.
- */
-const WIDGETS_HOLDER_KEY = Symbol.for('@gears-frontx/demo-mfe/widgets-host-holder/v1');
-const realm = globalThis as Record<symbol, WidgetsRoutingHolder | undefined>;
-const widgetsHolder: WidgetsRoutingHolder = realm[WIDGETS_HOLDER_KEY] ?? { impl: undefined };
-realm[WIDGETS_HOLDER_KEY] = widgetsHolder;
 
 interface WidgetsHostScreenProps {
   /**
@@ -415,13 +368,9 @@ function WidgetsHostScreen({
     // this domain builds no routing wiring of its own.
     const ids = registry.getExtensionsForDomain(WIDGETS_DOMAIN_ID).map((e) => e.id);
     for (const id of ids) {
-      try {
-        registry.executeActionsChain({
-          action: { type: FRONTX_ACTION_MOUNT_EXT, target: WIDGETS_DOMAIN_ID, payload: { subject: id, history: 'replace' } },
-        });
-      } catch (error) {
-        console.error(`[demo-mfe widgets-host] auto-mount of ${id} refused`, error);
-      }
+      registry.executeActionsChain({
+        action: { type: FRONTX_ACTION_MOUNT_EXT, target: WIDGETS_DOMAIN_ID, payload: { subject: id, history: 'replace' } },
+      });
     }
     onDomainAttached(); // mount() resolves once the opening dispatch is made
   };
@@ -567,7 +516,7 @@ class DemoMfeWidgetsHostLifecycle extends ThemeAwareReactLifecycle {
     // body up to its first `await` synchronously). `super.mount()` then
     // renders `WidgetsHostScreen`, which receives this same promise to
     // drive its own loading/error UI without re-triggering bootstrap.
-    this.bootstrapPromise = bootstrapWidgetsRuntime(widgetsHostApp, widgetsHolder);
+    this.bootstrapPromise = bootstrapWidgetsRuntime(widgetsHostApp);
 
     let resolveDomainAttached!: () => void;
     this.domainAttachedPromise = new Promise<void>((resolve) => {

@@ -52,14 +52,16 @@ class FakeRegistry {
   readonly domains = new Map<string, unknown>();
   readonly handlers = new Map<string, ActionHandlerLike>();
   readonly overrides = new Map<string, (payload: { subject: string }) => Promise<void> | undefined>();
-  readonly executeActionsChain = vi.fn((chain: Chain): Promise<void> | undefined => {
+  // Fire-and-forget like the real `executeActionsChain`: it returns nothing.
+  readonly executeActionsChain = vi.fn((chain: Chain): void => {
     const subject = chain.action.payload?.subject;
     const key = subject !== undefined ? `${subject}:${chain.action.type}` : undefined;
     const override = key !== undefined ? this.overrides.get(key) : undefined;
-    if (override) return override({ subject: subject! });
-    const handler = this.handlers.get(chain.action.type);
-    if (!handler) return Promise.resolve();
-    return handler.handleAction(chain.action.type, chain.action.payload);
+    if (override) {
+      void override({ subject: subject! });
+      return;
+    }
+    void this.handlers.get(chain.action.type)?.handleAction(chain.action.type, chain.action.payload);
   });
 
   setOverride(subject: string, actionType: string, fn: (payload: { subject: string }) => Promise<void> | undefined): void {
@@ -258,7 +260,7 @@ function fakeBridge(): ChildMfeBridge {
   return {
     extDomainId: 'screen',
     extensionId: 'widgets-host',
-    executeActionsChain: vi.fn().mockResolvedValue(undefined),
+    executeActionsChain: vi.fn().mockReturnValue(undefined),
     registerActionHandler: vi.fn(),
     getProperty: vi.fn(() => undefined),
     subscribeToProperty: vi.fn(() => vi.fn()),
@@ -384,15 +386,6 @@ describe('demo-mfe widgets-host lifecycle', () => {
     expect(buildSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('mount() resolves even when a widget chain returns no promise (#648)', async () => {
-    fakeRegistry = new FakeRegistry();
-    for (const id of WIDGET_IDS) {
-      fakeRegistry.setOverride(id, MOUNT, () => undefined);
-    }
-
-    await expect(mount(fakeBridge())).resolves.toBeDefined();
-  });
-
   it('mount() resolves without waiting for any widget mount to settle, and starts no timer for one (no waiters)', async () => {
     fakeRegistry = new FakeRegistry();
     fakeRegistry.setOverride(ALPHA_ID, MOUNT, () => new Promise(() => {})); // never settles
@@ -403,10 +396,9 @@ describe('demo-mfe widgets-host lifecycle', () => {
     expect(setTimeoutSpy).not.toHaveBeenCalled();
   });
 
-  it('does not throw when a ping dispatch returns no promise, and the action still counts as dispatched (ping, #648)', async () => {
+  it('dispatches a ping chain to the widget without error (ping)', async () => {
     fakeRegistry = new FakeRegistry();
     fakeRegistry.typeSystem.getSchema.mockReturnValue({ actions: [WIDGET_PING_ACTION_TYPE] });
-    vi.spyOn(fakeRegistry, 'executeActionsChain').mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const { container } = await mount(fakeBridge());
@@ -425,14 +417,12 @@ describe('demo-mfe widgets-host lifecycle', () => {
     );
   });
 
-  it('rebinds impl to the already-registered domain on a remount, when the nested registry is cached (remount + cached registry)', async () => {
-    const WIDGETS_HOLDER_KEY = Symbol.for('@gears-frontx/demo-mfe/widgets-host-holder/v1');
-
+  it('mounts every widget again on a remount, when the nested registry is cached (remount + cached registry)', async () => {
     const registry = new FakeRegistry();
     fakeRegistry = registry;
 
     // First mount: nothing registered on `registry` yet, so `registerDomain`
-    // runs for real and constructs `WidgetsDomainImpl` (`holder.impl = this`).
+    // runs for real and constructs `WidgetsDomainImpl`.
     await mount(fakeBridge());
     await act(async () => {
       await Promise.all(pendingMounts);
@@ -449,8 +439,6 @@ describe('demo-mfe widgets-host lifecycle', () => {
       await Promise.all(pendingMounts);
     });
 
-    const holder = (globalThis as Record<symbol, { impl?: unknown } | undefined>)[WIDGETS_HOLDER_KEY];
-    expect(holder?.impl).toBeDefined();
     expect(new Set(registry.getMountedExtensions(WIDGETS_DOMAIN_ID))).toEqual(new Set(WIDGET_IDS));
   });
 });

@@ -19,9 +19,9 @@
  * `bootstrapWidgetsRuntime` against the lifecycle module's own REAL nested app
  * (`widgetsHostApp`: real `MfeRegistry`, real `DefaultExtensionMounter`, real
  * `ConcurrentMountStrategy`), the REAL `ExtensionDomainSlot` react binding,
- * and the REAL `WidgetsDomainImpl` (`holder.impl`, reached only through
- * `bootstrapWidgetsRuntime`'s exported surface — the class itself is not
- * exported, matching production's own encapsulation) — so the real
+ * and the REAL `WidgetsDomainImpl` (built by the domain factory
+ * `bootstrapWidgetsRuntime` registers — the class itself is not exported,
+ * matching production's own encapsulation) — so the real
  * attach/detach/mounted-set bookkeeping this regression covers is actually
  * exercised, not stubbed around.
  *
@@ -64,7 +64,7 @@ import {
   type MfManifest,
   type MfeRegistry,
 } from '@gears-frontx/react';
-import { bootstrapWidgetsRuntime, widgetsHostApp, type WidgetsRoutingHolder } from './lifecycle-widgets-host';
+import { bootstrapWidgetsRuntime, widgetsHostApp } from './lifecycle-widgets-host';
 
 const WIDGETS_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
 
@@ -109,13 +109,9 @@ function awaitMount(extensionId: string): Promise<void> {
 
 /** Dispatches a real `mount_ext` for `extensionId` (acceptance-only; settlement is observed through `awaitMount`). */
 function dispatchMount(registry: MfeRegistry, extensionId: string): void {
-  try {
-    registry.executeActionsChain({
-      action: { type: FRONTX_ACTION_MOUNT_EXT, target: WIDGETS_DOMAIN_ID, payload: { subject: extensionId } },
-    });
-  } catch (error) {
-    console.error(`mount ${extensionId} refused`, error);
-  }
+  registry.executeActionsChain({
+    action: { type: FRONTX_ACTION_MOUNT_EXT, target: WIDGETS_DOMAIN_ID, payload: { subject: extensionId } },
+  });
 }
 
 /**
@@ -278,8 +274,7 @@ describe('WidgetsDomainImpl — real registry remount (RM-LIVE2 D2)', () => {
     vi.spyOn(MfeHandlerMF.prototype, 'load').mockImplementation(loadTestLifecycle);
 
     const registry = widgetsHostApp.mfeRegistry!;
-    const holder: WidgetsRoutingHolder = { impl: undefined };
-    await bootstrapWidgetsRuntime(widgetsHostApp, holder);
+    await bootstrapWidgetsRuntime(widgetsHostApp);
 
     // --- First entry into Widgets Host: real slot attaches, auto-mount pass runs ---------
     const firstMounts = WIDGET_IDS.map((id) => awaitMount(id));

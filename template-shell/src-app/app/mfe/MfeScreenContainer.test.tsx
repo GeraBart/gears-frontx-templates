@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 
 const mockBootstrapMFE = vi.fn();
 const mockUseFrontX = vi.fn();
@@ -47,6 +47,7 @@ vi.mock('@gears-frontx/react', async (importOriginal) => ({
 
 describe('MfeScreenContainer', () => {
   let app: { mfeRegistry: Record<string, never> };
+  let bootstrap: { resolve: () => void; reject: (error: Error) => void };
 
   beforeEach(() => {
     // The bootstrap promise this component reuses across a real remount
@@ -58,7 +59,18 @@ describe('MfeScreenContainer', () => {
     app = { mfeRegistry: {} };
     mockUseFrontX.mockReturnValue(app);
     mockBootstrapMFE.mockReset();
-    mockBootstrapMFE.mockResolvedValue(undefined);
+    // Bootstrap settles only when a test says so, inside `act`.
+    bootstrap = {
+      resolve: () => {},
+      reject: () => {},
+    };
+    mockBootstrapMFE.mockImplementation(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          bootstrap.resolve = resolve;
+          bootstrap.reject = reject;
+        }),
+    );
     mockUseMountedExtensions.mockReset();
     mockUseMountedExtensions.mockReturnValue([]);
     mockUseDomainRouteStatus.mockReset();
@@ -69,21 +81,18 @@ describe('MfeScreenContainer', () => {
     vi.restoreAllMocks();
   });
 
+  async function settleBootstrap(): Promise<void> {
+    await act(async () => {
+      bootstrap.resolve();
+    });
+  }
+
   it('renders nothing while bootstrap is pending', async () => {
-    let resolveBootstrap: (() => void) | undefined;
-    mockBootstrapMFE.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveBootstrap = resolve;
-        }),
-    );
     const { MfeScreenContainer } = await import('./MfeScreenContainer');
 
     render(<MfeScreenContainer />);
 
     expect(screen.queryByTestId('extension-domain-slot')).toBeNull();
-
-    resolveBootstrap?.();
   });
 
   it('bootstraps the MFE runtime only once across re-renders', async () => {
@@ -93,9 +102,7 @@ describe('MfeScreenContainer', () => {
     rerender(<MfeScreenContainer />);
     rerender(<MfeScreenContainer />);
 
-    await waitFor(() => {
-      expect(mockBootstrapMFE).toHaveBeenCalledTimes(1);
-    });
+    expect(mockBootstrapMFE).toHaveBeenCalledTimes(1);
     expect(mockBootstrapMFE).toHaveBeenCalledWith(app);
   });
 
@@ -103,13 +110,12 @@ describe('MfeScreenContainer', () => {
     const { MfeScreenContainer } = await import('./MfeScreenContainer');
 
     render(<MfeScreenContainer />);
+    await settleBootstrap();
 
-    await waitFor(() => {
-      const slot = screen.getByTestId('extension-domain-slot');
-      expect(slot.dataset.domainId).toBe(mockScreenDomain.id);
-      expect(slot.dataset.registryPresent).toBe('yes');
-      expect(slot.dataset.className).toContain('h-full');
-    });
+    const slot = screen.getByTestId('extension-domain-slot');
+    expect(slot.dataset.domainId).toBe(mockScreenDomain.id);
+    expect(slot.dataset.registryPresent).toBe('yes');
+    expect(slot.dataset.className).toContain('h-full');
   });
 
   it('reads the screen domain status only once bootstrap has settled, not before', async () => {
@@ -117,13 +123,14 @@ describe('MfeScreenContainer', () => {
 
     render(<MfeScreenContainer />);
 
-    await waitFor(() => {
-      expect(mockUseDomainRouteStatus).toHaveBeenLastCalledWith(app.mfeRegistry, FRONTX_SCREEN_DOMAIN);
-    });
-    // Every call before that point was gated to `undefined` (C1 — no
+    // Every call before settling is gated to `undefined` (C1 — no
     // observer-backed status to read before this container's own
     // `ExtensionDomainSlot` has anywhere to mount into).
-    expect(mockUseDomainRouteStatus.mock.calls[0]).toEqual([undefined, FRONTX_SCREEN_DOMAIN]);
+    expect(mockUseDomainRouteStatus).toHaveBeenLastCalledWith(undefined, FRONTX_SCREEN_DOMAIN);
+
+    await settleBootstrap();
+
+    expect(mockUseDomainRouteStatus).toHaveBeenLastCalledWith(app.mfeRegistry, FRONTX_SCREEN_DOMAIN);
   });
 
   it('reuses the settled bootstrap across a real remount rather than re-invoking it (C8)', async () => {
@@ -133,30 +140,28 @@ describe('MfeScreenContainer', () => {
     // `rerender`, which reuses the same component instance and would pass
     // even with the old per-instance `useRef` guard this test targets.
     const first = render(<MfeScreenContainer />);
-    await waitFor(() => {
-      expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
-    });
+    await settleBootstrap();
+    expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
     first.unmount();
 
-    render(<MfeScreenContainer />);
-    await waitFor(() => {
-      expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
+    await act(async () => {
+      render(<MfeScreenContainer />);
     });
 
+    expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
     expect(mockBootstrapMFE).toHaveBeenCalledTimes(1);
   });
 
   it('logs an error and renders nothing when bootstrap rejects', async () => {
-    const error = new Error('boom');
-    mockBootstrapMFE.mockRejectedValue(error);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const { MfeScreenContainer } = await import('./MfeScreenContainer');
     render(<MfeScreenContainer />);
-
-    await waitFor(() => {
-      expect(errorSpy).toHaveBeenCalled();
+    await act(async () => {
+      bootstrap.reject(new Error('boom'));
     });
+
+    expect(errorSpy).toHaveBeenCalled();
     expect(screen.queryByTestId('extension-domain-slot')).toBeNull();
   });
 
@@ -166,10 +171,9 @@ describe('MfeScreenContainer', () => {
     const { MfeScreenContainer } = await import('./MfeScreenContainer');
 
     render(<MfeScreenContainer />);
+    await settleBootstrap();
 
-    await waitFor(() => {
-      expect(screen.getByTestId('screen-route-fallback')).not.toBeNull();
-    });
+    expect(screen.getByTestId('screen-route-fallback')).not.toBeNull();
   });
 
   it('renders no fallback when the screen domain carries no URL entry', async () => {
@@ -178,10 +182,9 @@ describe('MfeScreenContainer', () => {
     const { MfeScreenContainer } = await import('./MfeScreenContainer');
 
     render(<MfeScreenContainer />);
+    await settleBootstrap();
 
-    await waitFor(() => {
-      expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
-    });
+    expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
     expect(screen.queryByTestId('screen-route-fallback')).toBeNull();
   });
 
@@ -191,10 +194,9 @@ describe('MfeScreenContainer', () => {
     const { MfeScreenContainer } = await import('./MfeScreenContainer');
 
     render(<MfeScreenContainer />);
+    await settleBootstrap();
 
-    await waitFor(() => {
-      expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
-    });
+    expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
     expect(screen.queryByTestId('screen-route-fallback')).toBeNull();
   });
 });

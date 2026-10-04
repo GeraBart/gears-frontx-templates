@@ -29,9 +29,9 @@ import {
   FrameworkRouter,
   startRoutedDomain,
   stopRoutedDomain,
-  teardownRoutedDomain,
   routedDomainStatus,
   subscribeRoutedDomainStatus,
+  subscribeSettledMounts,
 } from '../router';
 
 const MOUNT = 'mount_ext';
@@ -265,7 +265,7 @@ describe('FrameworkRouter — reportSettled, history intent', () => {
     const router = buildRouter();
     const registry = new FakeRegistry();
     router.attachRegistry(registry as unknown as MfeRegistry);
-    router.registerDomain(domain('domA', route));
+    router.registerDomain({ id: 'domA', route, actions: [MOUNT] } as unknown as ExtensionDomain);
     routersToRelease.push({ router, domainId: 'domA' });
     registry.register(extension('extA', 'domA', 'alpha'));
     registry.register(extension('extB', 'domA', 'beta'));
@@ -289,6 +289,72 @@ describe('FrameworkRouter — reportSettled, history intent', () => {
     expect(replaceSpy).not.toHaveBeenCalled();
     expect(window.location.search).toContain(`${route}=beta`);
     expect(window.location.search).not.toContain(`${route}=alpha`);
+  });
+});
+
+describe('FrameworkRouter — settled-mount subscription', () => {
+  it('notifies a listener after every settled report, failed or history "none" included, until released', () => {
+    const router = buildRouter();
+    const registry = new FakeRegistry();
+    router.attachRegistry(registry as unknown as MfeRegistry);
+    const listener = vi.fn();
+    const release = subscribeSettledMounts(registry as unknown as MfeRegistry, listener);
+
+    router.reportSettled({ actionTypeId: MOUNT, domainId: 'unknown', payload: { subject: 'extA' }, succeeded: false });
+    router.reportSettled({ actionTypeId: UNMOUNT, domainId: 'unknown', payload: { subject: 'extA', history: 'none' }, succeeded: true });
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    release();
+    router.reportSettled({ actionTypeId: MOUNT, domainId: 'unknown', payload: { subject: 'extA' }, succeeded: true });
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('FrameworkRouter — a settle touches only its own subject entry', () => {
+  function setup(): { router: FrameworkRouter; registry: FakeRegistry; route: string } {
+    const route = freshRoute();
+    const router = buildRouter();
+    const registry = new FakeRegistry();
+    router.attachRegistry(registry as unknown as MfeRegistry);
+    router.registerDomain({ id: 'domC', route, actions: [MOUNT, UNMOUNT] } as unknown as ExtensionDomain);
+    routersToRelease.push({ router, domainId: 'domC' });
+    for (const [id, route] of [['extA', 'alpha'], ['extB', 'beta']] as const) {
+      const ext = extension(id, 'domC', route);
+      registry.register(ext);
+    }
+    return { router, registry, route };
+  }
+  const entries = (route: string): string[] =>
+    window.location.search.split(/[?&]/).filter((s) => s.startsWith(`${route}=`)).sort();
+
+  it('keeps an entry whose URL-initiated mount is still in flight when another extension settles first', () => {
+    const { router, registry, route } = setup();
+    // Deep link naming both; alpha's mount (history "none", no write) has not settled.
+    window.history.replaceState(null, '', `/?${route}=alpha&${route}=beta`);
+    registry.mounted.add('extB');
+    router.reportSettled({ actionTypeId: MOUNT, domainId: 'domC', payload: { subject: 'extB', history: 'replace' }, succeeded: true });
+
+    expect(entries(route)).toEqual([`${route}=alpha`, `${route}=beta`]);
+  });
+
+  it('keeps an unresolved entry when another extension settles a mount', () => {
+    const { router, registry, route } = setup();
+    window.history.replaceState(null, '', `/?${route}=ghost`);
+    registry.mounted.add('extA');
+    router.reportSettled({ actionTypeId: MOUNT, domainId: 'domC', payload: { subject: 'extA', history: 'replace' }, succeeded: true });
+
+    expect(entries(route)).toEqual([`${route}=alpha`, `${route}=ghost`]);
+  });
+
+  it('removes only its own entry on a settled unmount', () => {
+    const { router, registry, route } = setup();
+    window.history.replaceState(null, '', `/?${route}=alpha&${route}=beta&${route}=ghost`);
+    registry.mounted.add('extA');
+    registry.mounted.add('extB');
+    registry.mounted.delete('extA');
+    router.reportSettled({ actionTypeId: UNMOUNT, domainId: 'domC', payload: { subject: 'extA' }, succeeded: true });
+
+    expect(entries(route)).toEqual([`${route}=beta`, `${route}=ghost`]);
   });
 });
 
@@ -544,6 +610,48 @@ describe('FrameworkRouter — observer-driven restoration (Back after leaving)',
     const dispatched = registry.executeActionsChain.mock.calls.slice(dispatchCallsBefore).map(([chain]: [Chain]) => chain);
     const restoreMount = dispatched.find((c) => c.action.type === MOUNT && c.action.payload?.subject === 'extA');
     expect(restoreMount?.action.payload?.history).toBe('none');
+  });
+});
+
+describe('FrameworkRouter — an address matching no registered extension', () => {
+  function setup(initialUrl: string) {
+    const route = freshRoute();
+    const router = buildRouter();
+    const registry = new FakeRegistry();
+    router.attachRegistry(registry as unknown as MfeRegistry);
+    // Exclusive (no public unmount_ext), like the screen domain: a vanished entry never unmounts.
+    router.registerDomain({ id: 'domA', route, actions: [MOUNT] } as unknown as ExtensionDomain);
+    routersToRelease.push({ router, domainId: 'domA' });
+    registry.register(extension('extA', 'domA', 'alpha'));
+    window.history.replaceState(null, '', initialUrl.replace('ROUTE', route));
+    return { route, router, registry };
+  }
+
+  it('logs an error naming the domain and token when the URL later moves to it, and leaves the mounted occupant in place', () => {
+    const { route, router, registry } = setup('/?ROUTE=alpha');
+    registry.mounted.add('extA');
+    router.startDomain('domA');
+
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    resolveNavigationHistory().push(`/?${route}=does-not-exist`);
+
+    expect(logged).toHaveBeenCalledTimes(1);
+    expect(String(logged.mock.calls[0][0])).toMatch(/domA.*does-not-exist/);
+    expect(registry.mounted.has('extA')).toBe(true);
+    logged.mockRestore();
+  });
+
+  it('logs nothing for an unresolved address found at start, and keeps observing', () => {
+    const { route, router, registry } = setup('/?ROUTE=does-not-exist');
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    router.startDomain('domA');
+    expect(logged).not.toHaveBeenCalled();
+
+    resolveNavigationHistory().push(`/?${route}=alpha`);
+
+    expect(logged).not.toHaveBeenCalled();
+    expect(registry.mounted.has('extA')).toBe(true);
+    logged.mockRestore();
   });
 });
 
@@ -809,45 +917,6 @@ describe('FrameworkRouter — registry-keyed reach-through (D10)', () => {
     expect(() => stopRoutedDomain(registry, 'unknown')).not.toThrow();
     expect(routedDomainStatus(registry, 'unknown')).toEqual({ entries: 0, unresolved: 0 });
     expect(() => subscribeRoutedDomainStatus(registry, 'unknown', () => {})()).not.toThrow();
-  });
-});
-
-describe('teardownRoutedDomain — a host releasing a routed domain\'s occupants itself', () => {
-  it("stops the domain's own observer before `release` runs, so the release's own removals are never seen as URL transitions", async () => {
-    const route = freshRoute();
-    const router = buildRouter();
-    const registry = new FakeRegistry();
-    router.attachRegistry(registry as unknown as MfeRegistry);
-    router.registerDomain(domain('domA', route));
-    routersToRelease.push({ router, domainId: 'domA' });
-    registry.register(extension('extA', 'domA', 'alpha'));
-    registry.mounted.add('extA');
-    router.reportSettled({ actionTypeId: MOUNT, domainId: 'domA', payload: { subject: 'extA' }, succeeded: true });
-    startRoutedDomain(registry as unknown as MfeRegistry, 'domA');
-
-    const order: string[] = [];
-    const release = vi.fn(async () => {
-      order.push('release');
-      registry.mounted.delete('extA');
-    });
-
-    const originalStop = router.stopDomain.bind(router);
-    vi.spyOn(router, 'stopDomain').mockImplementation((domainId: string) => {
-      order.push('stop');
-      originalStop(domainId);
-    });
-
-    await teardownRoutedDomain(registry as unknown as MfeRegistry, 'domA', release);
-
-    expect(order).toEqual(['stop', 'release']);
-    expect(release).toHaveBeenCalledTimes(1);
-  });
-
-  it('still runs `release` for a registry with no FrameworkRouter attached, or an unrouted/unknown domain', async () => {
-    const registry = new FakeRegistry() as unknown as MfeRegistry;
-    const release = vi.fn(async () => {});
-    await teardownRoutedDomain(registry, 'unknown', release);
-    expect(release).toHaveBeenCalledTimes(1);
   });
 });
 

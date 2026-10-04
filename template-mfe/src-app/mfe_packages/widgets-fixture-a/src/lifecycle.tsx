@@ -91,7 +91,7 @@ function WidgetARoot(): React.ReactElement {
       data-testid="widget-a-instance"
       data-instance-id={bridge.extensionId}
       data-instance-text={randomHex}
-      className="m-2 rounded-lg border-2 border-blue-400 bg-blue-50 p-4 text-blue-900"
+      className="m-2 rounded-lg border-2 border-primary bg-primary/10 p-4 text-foreground"
     >
       <Outlet />
     </div>

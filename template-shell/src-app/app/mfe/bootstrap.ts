@@ -241,6 +241,13 @@ function collectDeclaredActionIds(entries: MfeEntryMF[]): Set<string> {
   return declaredActionIds;
 }
 
+const GTS_SCHEMA_ID_PREFIX = 'gts://';
+
+/** A schema's `$id` is its type id behind the `gts://` prefix, so it is an action schema exactly when that type id is a declared action id. */
+function isDeclaredActionSchema(schemaId: string, declaredActionIds: ReadonlySet<string>): boolean {
+  return schemaId.startsWith(GTS_SCHEMA_ID_PREFIX) && declaredActionIds.has(schemaId.slice(GTS_SCHEMA_ID_PREFIX.length));
+}
+
 function registerScopedSchemas(
   registry: MfeRegistry,
   schemas: JSONSchema[],
@@ -249,10 +256,7 @@ function registerScopedSchemas(
   for (const schema of schemas) {
     const schemaId = schema.$id;
     if (!schemaId) continue;
-    const matches = Array.from(declaredActionIds).some((actionId) =>
-      schemaId.includes(actionId),
-    );
-    if (matches) {
+    if (isDeclaredActionSchema(schemaId, declaredActionIds)) {
       registry.typeSystem.registerSchema(schema);
     }
   }
@@ -268,8 +272,8 @@ function registerScopedSchemas(
  * in `registerScopedSchemas` does not apply to these schemas because their
  * `$id` is a domain or extension type ID, not an action ID.
  *
- * Registration is idempotent: `gtsPlugin.registerSchema` accepts duplicates,
- * so registering all non-action schemas across all packages in a first pass
+ * `gtsPlugin.registerSchema` accepts a schema registered twice, so
+ * registering all non-action schemas across all packages in a first pass
  * is safe and keeps the schema chain available before any leaf-MFE extension
  * registration.
  */
@@ -281,10 +285,7 @@ function registerNonActionSchemas(
   for (const schema of schemas) {
     const schemaId = schema.$id;
     if (!schemaId) continue;
-    const matchesAction = Array.from(declaredActionIds).some((actionId) =>
-      schemaId.includes(actionId),
-    );
-    if (!matchesAction) {
+    if (!isDeclaredActionSchema(schemaId, declaredActionIds)) {
       registry.typeSystem.registerSchema(schema);
     }
   }
@@ -349,15 +350,11 @@ async function registerMfePackage(
     registry.typeSystem.register(entry);
   }
   for (const extension of config.extensions ?? []) {
-    // Phase 2.6 content-addressed discovery: only register extensions whose
-    // target domain is owned by this host registry. Extensions targeting a
-    // domain owned by another FrontX app (e.g., widgets-fixture-a's two widget
-    // extensions target the widgets domain owned by demo-mfe's child app) are
-    // skipped here and dispatched to the owning runtime by L4 inline code in
-    // that runtime's bootstrap. When the framework `microfrontends()` plugin's
-    // content-addressed dispatcher lands (post-Phase 2.6 implementation), this
-    // skip-and-defer rule moves into L2 and the host bootstrap becomes a pure
-    // GTS-runtime-store registrar.
+    // Only extensions whose target domain is owned by this host registry are
+    // registered here. Extensions targeting a domain owned by another FrontX
+    // app (e.g., widgets-fixture-a's two widget extensions target the widgets
+    // domain owned by demo-mfe's child app) are dispatched to the owning
+    // runtime by that runtime's own bootstrap.
     if (!hostOwnsDomain(registry, extension.domain)) {
       // This host doesn't own the target domain, so it must not admit/mount
       // this extension — but it still needs the declaration present on its
