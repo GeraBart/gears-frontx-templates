@@ -12,6 +12,9 @@ import { useSyncExternalStore, useCallback, useRef } from 'react';
 import { useFrontX } from '../../FrontXContext';
 import { resolveMfeRegistry } from './useMfeRegistry';
 import type { Extension } from '@gears-frontx/framework';
+// Framework-internal reach-through (never MFE-reachable) — the same path
+// `useDomainRouteStatus` reads the router's own signals through.
+import { subscribeSettledMounts } from '@gears-frontx/framework/internal';
 
 // ============================================================================
 // Hook Implementation
@@ -20,8 +23,11 @@ import type { Extension } from '@gears-frontx/framework';
 /**
  * Hook for observing the currently-mounted extensions in any domain.
  *
- * Subscribes to the FrontX store to detect mount state changes, and returns
- * the array of Extension instances currently mounted in the specified domain.
+ * Re-reads on every settled `mount_ext`/`unmount_ext` of the registry, in any
+ * domain: those actions are the only thing that changes the mounted set, and
+ * the framework router is told about each one as it settles (succeeded or
+ * not). Returns the array of Extension instances currently mounted in the
+ * specified domain.
  *
  * Pairs with getMountedExtensions(domainId) on the registry and resolves each
  * mounted extension ID to its Extension instance. IDs that have been unregistered
@@ -54,14 +60,9 @@ export function useMountedExtensions(domainId: string): Extension[] {
   const app = useFrontX();
   const registry = resolveMfeRegistry(app, 'useMountedExtensions');
 
-  // Subscribe to store changes. Any dispatch (including mount state updates) triggers
-  // a snapshot check. The cache key comparison ensures only actual mount-set changes
-  // cause re-renders.
   const subscribe = useCallback(
-    (onStoreChange: () => void) => {
-      return app.store.subscribe(onStoreChange);
-    },
-    [app.store]
+    (onChange: () => void) => subscribeSettledMounts(registry, onChange),
+    [registry]
   );
 
   // Cache the snapshot to maintain referential stability for useSyncExternalStore.

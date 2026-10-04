@@ -51,12 +51,7 @@
  *    attach/detach — `ExtensionDomainSlot` (`@gears-frontx/react`) calls
  *    `startRoutedDomain`/`stopRoutedDomain` (below) itself, through
  *    `@gears-frontx/framework`'s `./internal` subpath, so neither function
- *    is MFE-reachable; `teardownRoutedDomain` (below) is the ordering a host
- *    whose own teardown needs the observer stopped strictly before it
- *    releases that domain's occupants would use instead — kept
- *    framework-internal, since every shipped host relies on
- *    `ExtensionDomainSlot`'s own attach/detach ordering rather than managing
- *    this itself.
+ *    is MFE-reachable.
  *
  * @packageDocumentation
  */
@@ -132,19 +127,25 @@ interface RoutedDomainState {
   readonly tokens: Set<ExtensionToken>;
   readonly statusListeners: Set<() => void>;
   release: ReleaseFunction | undefined;
+  /** False until the observer's first transition (the URL as found at start) has been handled; only later transitions report an unresolved address. */
+  initialObserved: boolean;
   status: RouteObservationStatus;
   /**
    * At most ONE deferred write armed per domain: while this domain's own
    * enclosing entry has not yet landed, a settle re-arms this single
    * subscription instead of stacking a new one alongside whatever is
-   * already pending — `writeFromMountedSet` cancels and replaces it, never
+   * already pending — `writeSettledEntry` cancels and replaces it, never
    * stacks. The release is what `stopDomain`/`releaseDomain` call to drop a
    * still-pending write for a domain that is itself going away.
    */
   pendingWrite: ReleaseFunction | undefined;
-  /** The history intent the next collapsed write runs with — 'replace' wins over 'push' once something is pending (see `writeFromMountedSet`'s own doc comment). */
+  /** The history intent the next collapsed write runs with — 'replace' wins over 'push' once something is pending (see `writeSettledEntry`'s own doc comment). */
   pendingVerb: 'push' | 'replace' | undefined;
+  /** Each subject entry the deferred write still owes the URL; the latest settle for a token wins. */
+  readonly pendingChanges: Map<ExtensionToken, EntryChange>;
 }
+
+type EntryChange = 'add' | 'remove';
 
 interface ExtensionBookkeeping {
   readonly domainId: string;
@@ -285,6 +286,7 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
       }
     | undefined;
   private cachedHandle: MfeRouterHandle | undefined;
+  private readonly settledListeners = new Set<() => void>();
   /** This instance's own identity in the realm-global routed-routes rendezvous (O1) — an opaque, unforgeable value compared only by reference, so ownership checks hold even across independently loaded copies of this class. */
   private readonly instanceId: symbol = Symbol('frontx-router-instance');
 
@@ -505,9 +507,11 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
         tokens: new Set(),
         statusListeners: new Set(),
         release: undefined,
+        initialObserved: false,
         status: NO_DOMAIN_STATUS,
         pendingWrite: undefined,
         pendingVerb: undefined,
+        pendingChanges: new Map(),
       });
     }
     const enclosing = this.ownEntryAddress();
@@ -567,12 +571,49 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
   }
 
   reportSettled(report: SettledActionReport): void {
+    try {
+      this.reflectSettled(report);
+    } finally {
+      this.notifySettled();
+    }
+  }
+
+  /**
+   * Subscribes to every settled `mount_ext`/`unmount_ext` report this router
+   * receives, in any domain, succeeded or not. The mounted set changes only as
+   * the result of those actions, so this is the signal a mounted-set reader
+   * re-reads on. Returns the release.
+   */
+  subscribeSettled(listener: () => void): ReleaseFunction {
+    this.settledListeners.add(listener);
+    return () => {
+      this.settledListeners.delete(listener);
+    };
+  }
+
+  private notifySettled(): void {
+    for (const listener of [...this.settledListeners]) {
+      try {
+        listener();
+      } catch (error) {
+        console.error('[router] a settled listener threw', error);
+      }
+    }
+  }
+
+  private reflectSettled(report: SettledActionReport): void {
     if (!report.succeeded) return;
     const history = report.payload.history ?? 'push';
     if (history === 'none') return; // O5: a restoring chain writes nothing
     const state = this.domainsById.get(report.domainId);
     if (!state) return;
-    this.writeFromMountedSet(state, history === 'replace' ? 'replace' : 'push');
+    const extension = this.requireRegistry().getExtension(report.payload.subject);
+    const token = extension ? extensionTokenOf(extension) : undefined;
+    if (token === undefined) return;
+    const change: EntryChange | undefined =
+      report.actionTypeId === state.unmountActionType ? 'remove' : report.actionTypeId === state.mountActionType ? 'add' : undefined;
+    if (change === undefined) return;
+    this.writeSettledEntry(state, token, change, history === 'replace' ? 'replace' : 'push');
   }
 
   /** Called by `cpt-frontx-algo-mfe-host-communication-occupant-value-rendezvous`, `inst-ov-supply-navigation`, once this copy's registry adopts an inbound bridge. */
@@ -599,6 +640,7 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
     if (!state) return;
     state.release?.();
     state.release = undefined;
+    state.initialObserved = false;
     // A domain going away must not leave a deferred write armed behind it —
     // it would otherwise fire later against a domain that is not observed
     // (or, worse, a different domain re-registered on the same id).
@@ -653,6 +695,21 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
         console.error(`[router] a status listener for ${state.domainId} threw`, error);
       }
     }
+    // The previously mounted occupant stays (nothing above unmounts it). An
+    // address that matches no registered extension is reported only when the
+    // URL moves to it later; at start the host's own empty-slot fallback
+    // already shows it.
+    if (state.initialObserved) {
+      const unresolved = [...transition.diff.added, ...transition.diff.resolutionChanged].filter((token) =>
+        transition.entries.some((e) => e.extension === token && !e.resolution.resolved),
+      );
+      if (unresolved.length > 0) {
+        console.error(
+          `[router] domain "${state.domainId}" has no registered extension for ${unresolved.map((t) => `"${t}"`).join(', ')}`,
+        );
+      }
+    }
+    state.initialObserved = true;
   }
 
   /** The routed domain's own current URL-entry status (entry count, unresolved count) — `{entries: 0, unresolved: 0}` for a domain this router does not know or has not started observing. */
@@ -681,24 +738,23 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
   }
 
   /**
-   * O5/O7: rewrite this domain's own URL entries from its current mounted
-   * set, clearing in the same write every nested domain key a departing
-   * token is known to own.
+   * O5/O7: a settled `mount_ext` adds only its own subject's entry and a
+   * settled `unmount_ext` removes only its own subject's entry, clearing in
+   * the same write every nested domain key the departing token is known to
+   * own. The domain's other entries — mounted, still mounting, or unresolved
+   * — are never rewritten: a URL-initiated mount that is still in flight has
+   * its entry in the URL already, and only its own settle may touch it.
    *
    * When this domain's own enclosing entry has not yet landed (D11 — e.g.
    * Widgets Host auto-mounts before its own screen entry lands), the write
    * is DEFERRED behind a single `history().subscribe()` armed once per
    * domain, not once per settle: several settles arriving before the
    * enclosing entry lands (e.g. three opening mounts, each its own
-   * `reportSettled` call) re-arm the SAME pending write instead of stacking
-   * one listener per settle. A diff closed over at arm time would go stale
-   * by the time the enclosing entry actually lands, so each listener must
-   * instead be dropped and replaced rather than left to fire alongside the
-   * others — every settle before the enclosing entry lands contributes only
-   * its own history-intent merge (below), and the diff itself is computed
-   * fresh, against the LIVE mounted set and LIVE `ownEntries(domainKey)`,
-   * only once the write actually runs (`writeNow`) — never from values
-   * captured when the write was armed.
+   * `reportSettled` call) accumulate their subjects in `pendingChanges` and
+   * re-use the SAME pending subscription instead of stacking one listener
+   * per settle. Whether each entry is actually missing or present is
+   * decided against the LIVE `ownEntries(domainKey)` only once the write
+   * runs (`writeNow`) — never from values captured when it was armed.
    *
    * Collapsed history intent: 'replace' wins over 'push'. The opening case
    * this collapses is auto-mount-on-attach, which always carries 'replace'
@@ -707,74 +763,63 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
    * pending must not downgrade the eventual write to 'push', so the merge
    * is a one-way ratchet toward 'replace'.
    */
-  private writeFromMountedSet(state: RoutedDomainState, verb: 'push' | 'replace'): void {
+  private writeSettledEntry(state: RoutedDomainState, token: ExtensionToken, change: EntryChange, verb: 'push' | 'replace'): void {
     const enclosing = this.ownEntryAddress();
     if (enclosing && !this.enclosingPresent(enclosing)) {
+      state.pendingChanges.set(token, change);
       state.pendingVerb = state.pendingVerb === 'replace' || verb === 'replace' ? 'replace' : 'push';
-      if (state.pendingWrite) return; // already armed — the merged verb above is all this settle contributes
+      if (state.pendingWrite) return; // already armed — the merged change and verb above are all this settle contributes
       const release = this.history().subscribe(() => {
         if (!this.enclosingPresent(enclosing)) return;
         state.pendingWrite = undefined;
         const finalVerb = state.pendingVerb ?? verb;
+        const changes = new Map(state.pendingChanges);
         state.pendingVerb = undefined;
+        state.pendingChanges.clear();
         release();
-        this.writeNow(state, finalVerb);
+        this.writeNow(state, changes, finalVerb);
       });
       state.pendingWrite = release;
       return;
     }
-    this.writeNow(state, verb);
+    this.writeNow(state, new Map([[token, change]]), verb);
   }
 
-  /** Computes the URL diff against the LIVE mounted set and LIVE `ownEntries(domainKey)` at the moment this runs, and performs the back-projection — the one place `writeFromMountedSet` actually writes, whether called directly or from a collapsed deferred write. */
-  private writeNow(state: RoutedDomainState, verb: 'push' | 'replace'): void {
-    const registry = this.requireRegistry();
-    const mountedIds = registry.getMountedExtensions(state.domainId);
-    const mountedTokens = new Map<ExtensionToken, string>();
-    for (const extensionId of mountedIds) {
-      const extension = registry.getExtension(extensionId);
-      const token = extension ? extensionTokenOf(extension) : undefined;
-      if (token !== undefined) mountedTokens.set(token, extensionId);
-    }
+  /** Applies the given per-token changes against the LIVE `ownEntries(domainKey)` and performs the back-projection — the one place `writeSettledEntry` actually writes, whether called directly or from a collapsed deferred write. */
+  private writeNow(state: RoutedDomainState, changes: ReadonlyMap<ExtensionToken, EntryChange>, verb: 'push' | 'replace'): void {
     const ownTokens = this.ownEntries(state.domainKey);
-    const added = [...mountedTokens.keys()].filter((t) => !ownTokens.includes(t));
-    const removedTokens = ownTokens.filter((t) => {
-      const owner = this.ownerOfToken(state, t);
-      return owner === undefined || !mountedTokens.has(t);
-    });
+    const added = [...changes].filter(([t, c]) => c === 'add' && !ownTokens.includes(t)).map(([t]) => t);
+    const removedTokens = [...changes].filter(([t, c]) => c === 'remove' && ownTokens.includes(t)).map(([t]) => t);
+    // An Exclusive domain has no public unmount_ext: its strategy evicts the
+    // prior occupant without a settle of its own, so the admitted occupant's
+    // settle is the only signal that the previous entry is gone.
+    if (state.unmountActionType === undefined && added.length > 0) {
+      removedTokens.push(...ownTokens.filter((t) => !added.includes(t) && !removedTokens.includes(t)));
+    }
     if (added.length === 0 && removedTokens.length === 0) return; // nothing changed — no write
 
-    const departingOwnerKeys: string[] = [];
-    for (const token of removedTokens) {
-      const owner = this.ownerOfToken(state, token);
-      if (owner === undefined) continue;
-      departingOwnerKeys.push(ownerKey({ domainKey: state.domainKey, extension: token }));
-    }
+    const departingOwnerKeys = removedTokens.map((token) => ownerKey({ domainKey: state.domainKey, extension: token }));
     const clearedDomainKeys = this.collectNestedDomainKeysRecursive(departingOwnerKeys);
 
-    try {
-      if (added.length === 1 && removedTokens.length === 1) {
-        this.signal().backProjectEntries(
-          state.domainKey,
-          {
-            replaced: [{ oldExtension: removedTokens[0], entry: { extension: added[0], params: [] } }],
-            clearedDomainKeys: [...clearedDomainKeys],
-          },
-          verb,
-        );
-      } else {
-        this.signal().backProjectEntries(
-          state.domainKey,
-          {
-            added: added.map((extension) => ({ extension, params: [] })),
-            removed: removedTokens,
-            clearedDomainKeys: [...clearedDomainKeys],
-          },
-          verb,
-        );
-      }
-    } catch (error) {
-      console.error(`[router] back-projection for ${state.domainKey} failed`, error);
+    if (added.length === 1 && removedTokens.length === 1) {
+      this.signal().backProjectEntries(
+        state.domainKey,
+        {
+          replaced: [{ oldExtension: removedTokens[0], entry: { extension: added[0], params: [] } }],
+          clearedDomainKeys: [...clearedDomainKeys],
+        },
+        verb,
+      );
+    } else {
+      this.signal().backProjectEntries(
+        state.domainKey,
+        {
+          added: added.map((extension) => ({ extension, params: [] })),
+          removed: removedTokens,
+          clearedDomainKeys: [...clearedDomainKeys],
+        },
+        verb,
+      );
     }
   }
 
@@ -824,6 +869,7 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
     state.pendingWrite?.();
     state.pendingWrite = undefined;
     state.pendingVerb = undefined;
+    state.pendingChanges.clear();
   }
 
   private ownEntries(domainKey: DomainKey): ExtensionToken[] {
@@ -864,11 +910,6 @@ function isEntryAddress(value: unknown): value is EntryAddress {
 // package's PUBLIC entry, only through `@gears-frontx/framework`'s own
 // `./internal` subpath, consumed by `@gears-frontx/react`'s own components
 // (`ExtensionDomainSlot`, `ExtensionRouter`, `useDomainRouteStatus`).
-// `teardownRoutedDomain` below is the one ordering a host releasing a routed
-// domain's own occupants itself would need — kept framework-internal, with
-// no public exception in either package: every shipped host (e.g. Widgets
-// Host) relies on `ExtensionDomainSlot`'s own attach/detach ordering
-// instead of managing this itself.
 //
 // Realm-global rendezvous #3, for the same reason as #1/#2 above, but
 // forced here rather than chosen: the MFE build pipeline that mints
@@ -929,27 +970,6 @@ export function stopRoutedDomain(registry: MfeRegistry, domainId: string): void 
   routersByRegistry.get(registry)?.stopDomain(domainId);
 }
 
-/**
- * Stops the given routed domain's own URL observer, THEN runs `release` —
- * the framework-owned ordering a host needs when IT releases a routed
- * domain's occupants itself, outside `ExtensionDomainSlot`'s own
- * attach/detach (which already stops its domain's observer before its own
- * `mounter.detach()` — see that component's doc comment). A still-live
- * observer would otherwise see the host's own releases as ordinary URL
- * transitions and try to dispatch mount/unmount for subjects the host is
- * already tearing down. `release` always runs, even for a registry with no
- * `FrameworkRouter` attached or an unrouted/unknown domain (the observer
- * stop is then a no-op, nothing more).
- */
-export async function teardownRoutedDomain(
-  registry: MfeRegistry,
-  domainId: string,
-  release: () => Promise<void>,
-): Promise<void> {
-  routersByRegistry.get(registry)?.stopDomain(domainId);
-  await release();
-}
-
 /** The given routed domain's own current URL-entry status — `{entries: 0, unresolved: 0}` for a registry with no `FrameworkRouter` attached, or an unrouted/unknown/not-yet-started domain. */
 export function routedDomainStatus(registry: MfeRegistry, domainId: string): RouteObservationStatus {
   return routersByRegistry.get(registry)?.domainStatus(domainId) ?? NO_DOMAIN_STATUS;
@@ -962,6 +982,11 @@ export function subscribeRoutedDomainStatus(
   listener: () => void,
 ): ReleaseFunction {
   return routersByRegistry.get(registry)?.subscribeDomainStatus(domainId, listener) ?? (() => {});
+}
+
+/** Subscribes to every settled `mount_ext`/`unmount_ext` of the given registry (any domain). Returns a no-op release for a registry with no `FrameworkRouter` attached. */
+export function subscribeSettledMounts(registry: MfeRegistry, listener: () => void): ReleaseFunction {
+  return routersByRegistry.get(registry)?.subscribeSettled(listener) ?? (() => {});
 }
 
 // Thin indirection so this file's own imports stay the grouped list above —

@@ -439,7 +439,7 @@ export {
 // framework package — never reachable from this package or any app object.
 export type { MfeRouterHandle } from '@gears-frontx/framework';
 
-// `startRoutedDomain`/`stopRoutedDomain`/`teardownRoutedDomain`/
+// `startRoutedDomain`/`stopRoutedDomain`/
 // `routedDomainStatus`/`subscribeRoutedDomainStatus` are NOT re-exported
 // here (D10): they are reached only through `@gears-frontx/framework/internal`,
 // by this package's OWN components (`ExtensionDomainSlot`, `ExtensionRouter`,

@@ -10,7 +10,7 @@ const getDomain = vi.fn();
 const getExtension = vi.fn();
 const getExtensionsForDomain = vi.fn((_domainId: string): unknown[] => []);
 const getMountedExtensions = vi.fn(() => []);
-const executeActionsChain = vi.fn(() => Promise.resolve());
+const executeActionsChain = vi.fn(() => undefined);
 // Real `ExclusiveMountStrategy`/`OptionalMountStrategy` need a fully wired
 // `mfes` registry/mounter/bridge to mount anything — out of scope here (that
 // machinery is `mfes`'s own tested behaviour, Global Constraints). These
@@ -194,9 +194,9 @@ describe('bootstrapMFE (host-app)', () => {
     const manifestEntity = { $id: 'manifest.demo', id: 'manifest.demo' };
     const entry = { id: 'entry.demo', actions: ['act.a'], domainActions: ['act.b'] };
     const ext = { id: 'ext.demo', domain: screenDomainId };
-    const schemaActionA = { $id: 'schema.act.a' };
-    const schemaActionB = { $id: 'schema.act.b' };
-    const schemaUnrelated = { $id: 'schema.other' };
+    const schemaActionA = { $id: 'gts://act.a' };
+    const schemaActionB = { $id: 'gts://act.b' };
+    const schemaUnrelated = { $id: 'gts://other' };
 
     fetchSpy.mockResolvedValue(
       new Response(

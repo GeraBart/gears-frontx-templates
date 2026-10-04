@@ -24,7 +24,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GtsPlugin } from '@gears-frontx/gts-plugin';
 import type { ExtensionDomain, MfManifest } from '@gears-frontx/react';
-import { bootstrapWidgetsRuntime, type WidgetsRoutingHolder } from './lifecycle-widgets-host';
+import { bootstrapWidgetsRuntime } from './lifecycle-widgets-host';
 
 const WIDGETS_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
 
@@ -120,11 +120,10 @@ describe('bootstrapWidgetsRuntime — GTS registration order (RM-LIVE1)', () => 
         ],
       }),
     );
-    const holder: WidgetsRoutingHolder = { impl: undefined };
     // `bootstrapWidgetsRuntime` only reads `app.mfeRegistry` — see this
     // file's doc comment above for why this double is sufficient.
     const app = { mfeRegistry: registry } as unknown as Parameters<typeof bootstrapWidgetsRuntime>[0];
 
-    await expect(bootstrapWidgetsRuntime(app, holder)).resolves.toBe(WIDGETS_DOMAIN);
+    await expect(bootstrapWidgetsRuntime(app)).resolves.toBe(WIDGETS_DOMAIN);
   });
 });

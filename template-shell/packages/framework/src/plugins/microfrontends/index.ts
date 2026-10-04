@@ -307,16 +307,15 @@ export {
 // this package's public entry (`src/index.ts`) — only from its `./internal`
 // subpath (`src/internal.ts`), consumed by `@gears-frontx/react`'s own
 // `ExtensionDomainSlot`/`ExtensionRouter`/`useDomainRouteStatus`.
-// `teardownRoutedDomain` carries no public exception in either package — see
-// its own doc comment in `router.ts`. Never part of `app.mfeRouter` itself.
+// Never part of `app.mfeRouter` itself.
 export type { MfeRouterHandle } from './router';
 export {
   buildExtensionHistory,
   startRoutedDomain,
   stopRoutedDomain,
-  teardownRoutedDomain,
   routedDomainStatus,
   subscribeRoutedDomainStatus,
+  subscribeSettledMounts,
 } from './router';
 
 // Re-export base ExtensionDomain constants

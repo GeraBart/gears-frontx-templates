@@ -85,7 +85,7 @@ describe('microfrontends plugin - Phase 13', () => {
   });
 
   describe('13.8.2 - MFE lifecycle actions call executeActionsChain', () => {
-    it('should call executeActionsChain for loadExtension', async () => {
+    it('should call executeActionsChain for loadExtension', () => {
       const app = createFrontX()
         .use(effects())
         .use(microfrontends({ typeSystem: gtsPlugin }))
@@ -103,21 +103,16 @@ describe('microfrontends plugin - Phase 13', () => {
       const registry = app.mfeRegistry;
       if (!registry) throw new Error('expected mfeRegistry');
       vi.spyOn(registry, 'getExtension').mockReturnValue(testExtension);
-      const spy = vi.spyOn(registry, 'executeActionsChain').mockResolvedValue(undefined);
+      const spy = vi.spyOn(registry, 'executeActionsChain').mockReturnValue(undefined);
 
-      // loadExtension fires executeActionsChain fire-and-forget. Use vi.waitFor
-      // so we deterministically observe the call even if the action scheduling
-      // changes to a microtask boundary.
       loadExtension(testExtensionId);
 
-      await vi.waitFor(() => {
-        expect(spy).toHaveBeenCalledWith({
-          action: {
-            type: 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
-            target: testDomainId,
-            payload: { subject: testExtensionId },
-          },
-        });
+      expect(spy).toHaveBeenCalledWith({
+        action: {
+          type: 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
+          target: testDomainId,
+          payload: { subject: testExtensionId },
+        },
       });
     });
 
@@ -140,7 +135,7 @@ describe('microfrontends plugin - Phase 13', () => {
       if (!registry) throw new Error('expected mfeRegistry');
       vi.spyOn(registry, 'getExtension').mockReturnValue(testExtension);
       vi.spyOn(registry, 'getDomain').mockReturnValue(undefined);
-      const chainSpy = vi.spyOn(registry, 'executeActionsChain').mockResolvedValue(undefined);
+      const chainSpy = vi.spyOn(registry, 'executeActionsChain').mockReturnValue(undefined);
 
       expect(() => {
         unmountExtension(testExtensionId);

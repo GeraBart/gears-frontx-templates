@@ -21,8 +21,7 @@ import React, { useEffect, useEffectEvent, useRef, useState } from 'react';
 import type { MfeRegistry } from '@gears-frontx/framework';
 // Framework-internal reach-through (never MFE-reachable) — this component's
 // own attach/detach is the one place this routed domain's observer starts
-// and stops; a host never reaches this directly (`teardownRoutedDomain` is
-// the one ordering a host's own teardown needs instead).
+// and stops; a host never reaches this directly.
 import { startRoutedDomain, stopRoutedDomain } from '@gears-frontx/framework/internal';
 import { registerDomainTeardown } from '../domainTeardownCollector';
 
