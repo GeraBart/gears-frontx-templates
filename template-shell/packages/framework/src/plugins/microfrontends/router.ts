@@ -31,11 +31,10 @@
  *    Optional domain's strategy has already evicted the prior occupant by
  *    the time this runs, so the mounted set itself carries exactly what the
  *    URL should show.
- * 3. A domain's own mount/unmount action type is resolved from its declared
- *    `actions` via the injected `TypeSystemPlugin`'s `isTypeOf` against
- *    `resolveMountExtActionId()`/`resolveUnmountExtActionId()` — the same
- *    primitive `cpt-frontx-algo-extension-domain-governance-strategy-cardinality`
- *    already uses — rather than a second, host-supplied action-type field.
+ * 3. A domain's mount action is `resolveMountExtActionId()` and its unmount
+ *    action is `resolveUnmountExtActionId()` when the domain declares it in
+ *    `actions`, via the injected `TypeSystemPlugin` — rather than a second,
+ *    host-supplied action-type field.
  * 4. The nested-domain-keys a departing host's teardown must clear from the
  *    URL in the same write (O7) are tracked in a second realm-global
  *    rendezvous, keyed by the owning occupant's own `EntryAddress`
@@ -483,10 +482,9 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
       // declaration-derived fields below are refreshed.
     }
     const typeSystem = this.options.typeSystem;
-    const mountActionType =
-      domain.actions.find((a) => typeSystem.isTypeOf(a, typeSystem.resolveMountExtActionId())) ??
-      typeSystem.resolveMountExtActionId();
-    const unmountActionType = domain.actions.find((a) => typeSystem.isTypeOf(a, typeSystem.resolveUnmountExtActionId()));
+    const mountActionType = typeSystem.resolveMountExtActionId();
+    const unmountExtActionId = typeSystem.resolveUnmountExtActionId();
+    const unmountActionType = domain.actions.includes(unmountExtActionId) ? unmountExtActionId : undefined;
     this.routedRoutes.set(route, { domainId: domain.id, ownerId: this.instanceId });
     let existing = this.domainsById.get(domain.id);
     if (existing && existing.domainKey !== route) {
