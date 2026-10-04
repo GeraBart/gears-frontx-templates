@@ -153,12 +153,13 @@ Two outcomes at the `extensions` step are deliberately different:
 Base types (`extension.v1`, `domain.v1`, entries, actions, shared properties,
 lifecycle) are owned by `@gears-frontx/gts-plugin` and never redefined here.
 The shell owns one derived type, `extension_screen.v1.json`, which is what
-makes a screen extension menu-renderable — it requires `presentation`:
+makes a screen extension menu-renderable — it requires the extension's
+top-level `route` and its `presentation`:
 
 | Field | Required | Meaning |
 |---|---|---|
 | `label` | yes | menu item text (raw display string — no i18n key today) |
-| `route` | yes | route path; back-projected into the URL after mount and resolved from it on every transition (see above) |
+| `route` (top level, beside `id`/`domain`/`entry`) | yes | route path; back-projected into the URL after mount and resolved from it on every transition (see above) |
 | `icon` | no | Iconify icon name (e.g. `lucide:user`) |
 | `order` | no | sort key, lower = earlier; missing = `999` |
 

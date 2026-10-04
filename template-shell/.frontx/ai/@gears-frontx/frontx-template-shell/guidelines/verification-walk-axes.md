@@ -11,8 +11,8 @@ files named below change, this file must be updated to match.
 
 Authoritative files:
 
-- `src-app/mfe_packages/*/mfe.json` - each screen extension's `presentation`,
-  where its `route` and `label` are declared
+- `src-app/mfe_packages/*/mfe.json` - each screen extension's top-level `route`
+  and its `presentation.label`
 - `src-app/app/layout/Menu.tsx` - `menuItemTestId`, the handle each menu item carries
 - `src-app/app/main.tsx` - where the themes are registered and the default applied
 - `src-app/app/themes/` - one module per theme, each exporting its id and `name`
