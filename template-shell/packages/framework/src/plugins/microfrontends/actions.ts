@@ -92,30 +92,6 @@ declare module '@gears-frontx/state' {
 // ============================================================================
 
 /**
- * Run a fire-and-forget executeActionsChain call, logging every failure
- * mode through `onError` instead of letting any of them escape.
- *
- * `executeActionsChain` is typed as returning `Promise<void>`, but after
- * #648 the registry may throw synchronously, resolve to a non-promise, or
- * return a promise that rejects. This package sits below
- * `template-shell/packages/react` in the layer rules (framework -> react),
- * so it cannot import the shared guard from `useHostAction.ts`; this mirrors
- * that guard's semantics locally instead.
- */
-function runActionsChain(run: () => unknown, onError: (error: unknown) => void): void {
-  try {
-    const result: unknown = run();
-    const isThenable =
-      typeof result === 'object' && result !== null && typeof (result as { then?: unknown }).then === 'function';
-    if (isThenable) {
-      Promise.resolve(result as PromiseLike<void>).catch(onError);
-    }
-  } catch (error) {
-    onError(error);
-  }
-}
-
-/**
  * Load an MFE extension bundle.
  * Calls executeActionsChain() directly (fire-and-forget).
  *
@@ -133,19 +109,13 @@ export function loadExtension(extensionId: string): void {
   const domainId = resolveDomainId(registry, extensionId);
 
   // Call executeActionsChain fire-and-forget (no await)
-  runActionsChain(
-    () =>
-      registry.executeActionsChain({
-        action: {
-          type: FRONTX_ACTION_LOAD_EXT,
-          target: domainId,
-          payload: { subject: extensionId },
-        },
-      }),
-    (error) => {
-      console.error(`[MFE] Load failed for ${extensionId}:`, error);
-    }
-  );
+  registry.executeActionsChain({
+    action: {
+      type: FRONTX_ACTION_LOAD_EXT,
+      target: domainId,
+      payload: { subject: extensionId },
+    },
+  });
 }
 // @cpt-end:cpt-frontx-flow-framework-composition-mfe-lifecycle:p1:inst-1
 
@@ -169,19 +139,13 @@ export function mountExtension(extensionId: string): void {
   const domainId = resolveDomainId(registry, extensionId);
 
   // Call executeActionsChain fire-and-forget (no await)
-  runActionsChain(
-    () =>
-      registry.executeActionsChain({
-        action: {
-          type: FRONTX_ACTION_MOUNT_EXT,
-          target: domainId,
-          payload: { subject: extensionId },
-        },
-      }),
-    (error) => {
-      console.error(`[MFE] Mount failed for ${extensionId}:`, error);
-    }
-  );
+  registry.executeActionsChain({
+    action: {
+      type: FRONTX_ACTION_MOUNT_EXT,
+      target: domainId,
+      payload: { subject: extensionId },
+    },
+  });
 }
 // @cpt-end:cpt-frontx-flow-framework-composition-mfe-lifecycle:p1:inst-2
 
@@ -217,19 +181,13 @@ export function unmountExtension(extensionId: string): void {
   }
 
   // Call executeActionsChain fire-and-forget (no await)
-  runActionsChain(
-    () =>
-      registry.executeActionsChain({
-        action: {
-          type: FRONTX_ACTION_UNMOUNT_EXT,
-          target: domainId,
-          payload: { subject: extensionId },
-        },
-      }),
-    (error) => {
-      console.error(`[MFE] Unmount failed for ${extensionId}:`, error);
-    }
-  );
+  registry.executeActionsChain({
+    action: {
+      type: FRONTX_ACTION_UNMOUNT_EXT,
+      target: domainId,
+      payload: { subject: extensionId },
+    },
+  });
 }
 // @cpt-end:cpt-frontx-flow-framework-composition-mfe-lifecycle:p1:inst-3
 

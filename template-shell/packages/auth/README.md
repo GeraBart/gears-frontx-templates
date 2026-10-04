@@ -22,7 +22,7 @@ Optional surface:
 Use the framework `auth()` plugin to bind your `AuthProvider` into `@gears-frontx/api` REST requests (bearer tokens and cookie-session).
 
 ```ts
-import { createGears FrontX } from '@gears-frontx/framework';
+import { createFrontX } from '@gears-frontx/framework';
 import { auth } from '@gears-frontx/framework';
 import type { AuthProvider } from '@gears-frontx/auth';
 
@@ -38,7 +38,7 @@ const provider: AuthProvider = {
   },
 };
 
-const app = createGears FrontX()
+const app = createFrontX()
   .use(auth({ provider }))
   .build();
 ```

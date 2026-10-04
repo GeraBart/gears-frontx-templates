@@ -6,7 +6,7 @@ Part of the FrontX Framework Layer (L2) - depends on all SDK packages (@gears-fr
 
 ## Core API
 
-- [createGears FrontX](https://frontx.dev/docs/framework/create): The one way to create an app (`.use(...).build()`); a runtime builds exactly one
+- [createFrontX](https://frontx.dev/docs/framework/create): The one way to create an app (`.use(...).build()`); a runtime builds exactly one
 - [presets](https://frontx.dev/docs/framework/presets): Pre-configured plugin arrays (full, minimal); `full()` adds microfrontends only when `config.microfrontends` is supplied and auth only when `config.auth` is supplied, `minimal()` is themes only
 
 ## Available Plugins
@@ -27,8 +27,8 @@ Part of the FrontX Framework Layer (L2) - depends on all SDK packages (@gears-fr
 // alternatives, choose one per runtime.
 
 // Alternative: compose plugins
-import { createGears FrontX, effects, themes, layout, microfrontends, i18n } from '@gears-frontx/framework';
-const app = createGears FrontX()
+import { createFrontX, effects, themes, layout, microfrontends, i18n } from '@gears-frontx/framework';
+const app = createFrontX()
   .use(effects())
   .use(themes())
   .use(layout())
@@ -37,8 +37,8 @@ const app = createGears FrontX()
   .build();
 
 // Alternative: use the full preset, with microfrontends support
-import { createGears FrontX, presets } from '@gears-frontx/framework';
-const app = createGears FrontX().useAll(presets.full({ microfrontends: config })).build();
+import { createFrontX, presets } from '@gears-frontx/framework';
+const app = createFrontX().useAll(presets.full({ microfrontends: config })).build();
 
 // Access MFE-enabled registry
 app.mfeRegistry.registerDomain(screenDomain, containerProvider);
@@ -84,10 +84,10 @@ import {
 
 ```typescript
 import {
-  Gears FrontX_SCREEN_DOMAIN,   // 'screen'
-  Gears FrontX_SIDEBAR_DOMAIN,  // 'sidebar'
-  Gears FrontX_POPUP_DOMAIN,    // 'popup'
-  Gears FrontX_OVERLAY_DOMAIN,  // 'overlay'
+  FRONTX_SCREEN_DOMAIN,   // 'screen'
+  FRONTX_SIDEBAR_DOMAIN,  // 'sidebar'
+  FRONTX_POPUP_DOMAIN,    // 'popup'
+  FRONTX_OVERLAY_DOMAIN,  // 'overlay'
   screenDomain,         // ExtensionDomain object
   sidebarDomain,        // ExtensionDomain object
   popupDomain,          // ExtensionDomain object
@@ -99,9 +99,9 @@ import {
 
 ```typescript
 import {
-  Gears FrontX_ACTION_LOAD_EXT,     // 'frontx.action.load_ext'
-  Gears FrontX_ACTION_MOUNT_EXT,    // 'frontx.action.mount_ext'
-  Gears FrontX_ACTION_UNMOUNT_EXT,  // 'frontx.action.unmount_ext'
+  FRONTX_ACTION_LOAD_EXT,     // 'frontx.action.load_ext'
+  FRONTX_ACTION_MOUNT_EXT,    // 'frontx.action.mount_ext'
+  FRONTX_ACTION_UNMOUNT_EXT,  // 'frontx.action.unmount_ext'
 } from '@gears-frontx/framework';
 ```
 
@@ -109,18 +109,18 @@ import {
 
 ```typescript
 import {
-  Gears FrontX_SHARED_PROPERTY_THEME,     // 'frontx.shared.theme'
-  Gears FrontX_SHARED_PROPERTY_LANGUAGE,  // 'frontx.shared.language'
+  FRONTX_SHARED_PROPERTY_THEME,     // 'frontx.shared.theme'
+  FRONTX_SHARED_PROPERTY_LANGUAGE,  // 'frontx.shared.language'
 } from '@gears-frontx/framework';
 ```
 
 ## Plugin Composition Pattern
 
 ```typescript
-import { createGears FrontX, microfrontends, gtsPlugin } from '@gears-frontx/framework';
+import { createFrontX, microfrontends, gtsPlugin } from '@gears-frontx/framework';
 
 // MFE-enabled app
-const app = createGears FrontX()
+const app = createFrontX()
   .use(microfrontends({ typeSystem: gtsPlugin })) // Provides mfeRegistry (MFE-enabled), MFE actions and domain management
   .build();
 

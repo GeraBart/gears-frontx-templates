@@ -241,23 +241,7 @@ class WidgetsFixtureALifecycle implements MfeEntryLifecycle<ChildMfeBridge> {
     this.mounts.delete(container);
     return mounted.tree.unmount(container);
   }
-
-  /**
-   * HMR dispose hook (Q4), mirroring `lifecycle-widgets-host.tsx`'s and
-   * `shell-routing.ts`'s own HMR teardown: unmounts every container this OLD
-   * module instance still holds, so the replacement module HMR swaps in does
-   * not inherit subscriptions this old instance would otherwise leave behind.
-   */
-  disposeAll(): Promise<unknown> {
-    return Promise.allSettled([...this.mounts.keys()].map((container) => Promise.resolve().then(() => this.unmount(container))));
-  }
 }
 
 const lifecycle = new WidgetsFixtureALifecycle();
 export default lifecycle;
-
-if (import.meta.hot) {
-  import.meta.hot.dispose(async () => {
-    await lifecycle.disposeAll();
-  });
-}

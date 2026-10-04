@@ -287,9 +287,6 @@ export {
   selectExtensionState,
   selectRegisteredExtensions,
   selectExtensionError,
-  selectMountedExtensions,
-  addExtensionMounted,
-  removeExtensionMounted,
   type MfeState,
   type ExtensionRegistrationState,
 } from './slice';

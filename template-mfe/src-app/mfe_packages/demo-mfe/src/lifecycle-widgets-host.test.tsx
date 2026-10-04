@@ -425,23 +425,6 @@ describe('demo-mfe widgets-host lifecycle', () => {
     );
   });
 
-  it('does not throw when a ping dispatch refuses synchronously (ping, synchronous refusal)', async () => {
-    fakeRegistry = new FakeRegistry();
-    fakeRegistry.typeSystem.getSchema.mockReturnValue({ actions: [WIDGET_PING_ACTION_TYPE] });
-    vi.spyOn(fakeRegistry, 'executeActionsChain').mockImplementation(() => {
-      throw new Error('ping refused synchronously');
-    });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const { container } = await mount(fakeBridge());
-    const button = container.querySelector('[data-testid="ping-alpha"]') as HTMLButtonElement | null;
-    expect(button).toBeTruthy();
-
-    expect(() => fireEvent.click(button!)).not.toThrow();
-
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(`ping ${ALPHA_ID}`), expect.any(Error));
-  });
-
   it('rebinds impl to the already-registered domain on a remount, when the nested registry is cached (remount + cached registry)', async () => {
     const WIDGETS_HOLDER_KEY = Symbol.for('@gears-frontx/demo-mfe/widgets-host-holder/v1');
 

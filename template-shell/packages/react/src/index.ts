@@ -398,7 +398,6 @@ export {
   selectExtensionState,
   selectRegisteredExtensions,
   selectExtensionError,
-  selectMountedExtensions,
 } from '@gears-frontx/framework';
 
 // MFE Domain constants
