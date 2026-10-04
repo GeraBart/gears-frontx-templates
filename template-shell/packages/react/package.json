@@ -37,7 +37,7 @@
     "test:unit:watch": "vitest --watch"
   },
   "dependencies": {
-    "@gears-frontx/routing-tanstack": "0.3.0-alpha.2"
+    "@gears-frontx/routing-tanstack": "0.3.0-alpha.3"
   },
   "devDependencies": {
     "@reduxjs/toolkit": "2.12.0",
