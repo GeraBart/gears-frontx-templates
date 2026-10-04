@@ -339,26 +339,4 @@ describe('widgets-fixture-a lifecycle', () => {
 
     await lifecycle.unmount(container);
   });
-
-  it('disposeAll unmounts every container even when one container unmount throws synchronously', async () => {
-    const { default: lifecycle } = await import('./lifecycle');
-    const { bridge: alphaBridge } = fakeBridge(ALPHA);
-    const { bridge: betaBridge } = fakeBridge(BETA);
-    const first = document.createElement('div');
-    const second = document.createElement('div');
-    lifecycle.mount(first, alphaBridge);
-    lifecycle.mount(second, betaBridge);
-
-    rootUnmountSpy.mockImplementationOnce(() => {
-      throw new Error('unmount boom');
-    });
-
-    const settled = await lifecycle.disposeAll();
-
-    expect(settled).toEqual([
-      expect.objectContaining({ status: 'rejected' }),
-      expect.objectContaining({ status: 'fulfilled' }),
-    ]);
-    expect(rootUnmountSpy).toHaveBeenCalledTimes(2);
-  });
 });

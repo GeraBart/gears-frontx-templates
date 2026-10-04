@@ -22,18 +22,6 @@ export type ExtensionRegistrationState = 'unregistered' | 'registering' | 'regis
 export interface MfeState {
   registrationStates: Record<string, ExtensionRegistrationState>;
   errors: Record<string, string>;
-  /**
-   * Tracks the insertion-ordered list of mounted extension IDs per domain.
-   * Each key is a domainId; the value is an ordered array of currently-mounted
-   * extension IDs. The slice never stores `undefined` for a registered domain —
-   * registered-but-empty is represented as `[]`.
-   *
-   * Multi-mount domains (backed by `ConcurrentMountStrategy`) accumulate multiple
-   * IDs; single-mount domains hold at most one element. The `addExtensionMounted` and
-   * `removeExtensionMounted` reducers handle duplicate dispatches from concurrent chains
-   * safely — duplicate adds are no-ops, and duplicate removals are no-ops.
-   */
-  mountedExtensions: Record<string, string[]>;
 }
 
 declare module '@gears-frontx/state' {
@@ -52,7 +40,6 @@ const SLICE_KEY = 'mfe' as const;
 const initialState: MfeState = {
   registrationStates: {},
   errors: {},
-  mountedExtensions: {},
 };
 
 // ============================================================================
@@ -82,31 +69,6 @@ const { slice, ...actions } = createSlice({
       state.registrationStates[action.payload.extensionId] = 'error';
       state.errors[action.payload.extensionId] = action.payload.error;
     },
-
-    // Mount state reducers designed to handle duplicate dispatches from concurrent chains safely
-    addExtensionMounted: (state: MfeState, action: ReducerPayload<{ domainId: string; extensionId: string }>) => {
-      const { domainId, extensionId } = action.payload;
-      if (!state.mountedExtensions[domainId]) {
-        state.mountedExtensions[domainId] = [];
-      }
-      // Append-if-absent: duplicate dispatches from interleaved concurrent chains are no-ops.
-      if (!state.mountedExtensions[domainId].includes(extensionId)) {
-        state.mountedExtensions[domainId].push(extensionId);
-      }
-    },
-
-    removeExtensionMounted: (state: MfeState, action: ReducerPayload<{ domainId: string; extensionId: string }>) => {
-      const { domainId, extensionId } = action.payload;
-      const list = state.mountedExtensions[domainId];
-      if (!list) {
-        return;
-      }
-      // No-op-if-absent: removal is safe when two concurrent chains both try to remove the same ID.
-      const idx = list.indexOf(extensionId);
-      if (idx !== -1) {
-        list.splice(idx, 1);
-      }
-    },
   },
 });
 // @cpt-end:cpt-frontx-state-framework-composition-mfe-registration:p1:inst-1
@@ -125,8 +87,6 @@ export const {
   setExtensionRegistered,
   setExtensionUnregistered,
   setExtensionError,
-  addExtensionMounted,
-  removeExtensionMounted,
 } = actions;
 
 // ============================================================================
@@ -159,15 +119,6 @@ export function selectRegisteredExtensions(state: RootState): string[] {
  */
 export function selectExtensionError(state: RootState, extensionId: string): string | undefined {
   return state.mfe?.errors[extensionId];
-}
-
-/**
- * Select the ordered list of mounted extension IDs for a domain.
- * Returns an empty array if no extensions are mounted or the domain is unknown.
- * Safe to call for any domainId — never returns undefined.
- */
-export function selectMountedExtensions(state: RootState, domainId: string): readonly string[] {
-  return state.mfe?.mountedExtensions[domainId] ?? [];
 }
 
 export default slice.reducer;

@@ -6,9 +6,9 @@ Part of the FrontX React Layer (L3) - depends on @gears-frontx/framework. Peer d
 
 ## Core API
 
-- [Gears FrontXProvider](https://frontx.dev/docs/react/provider): Root context provider
+- [FrontXProvider](https://frontx.dev/docs/react/provider): Root context provider
 - [MFE Components](https://frontx.dev/docs/react/mfe): ExtensionDomainSlot, MfeProvider, RefContainerProvider
-- `Gears FrontXProvider` resolves the shared `QueryClient` from `queryCache()` / `queryCacheShared()` through the app instance; mounted MFEs reuse the host cache by building their local app with `queryCacheShared()`, which joins the same shared `QueryClient` without mutating L1 contracts
+- `FrontXProvider` resolves the shared `QueryClient` from `queryCache()` / `queryCacheShared()` through the app instance; mounted MFEs reuse the host cache by building their local app with `queryCacheShared()`, which joins the same shared `QueryClient` without mutating L1 contracts
 
 ## Hooks
 
@@ -33,20 +33,20 @@ Part of the FrontX React Layer (L3) - depends on @gears-frontx/framework. Peer d
 ## Quick Start
 
 ```tsx
-import { createGears FrontX, Gears FrontXProvider, presets, useTranslation, useFrontX } from '@gears-frontx/react';
+import { createFrontX, FrontXProvider, presets, useTranslation, useFrontX } from '@gears-frontx/react';
 
 // One app per runtime, built once at module level (the full preset here;
 // `presets.full({ microfrontends: config })` also adds microfrontends)
-const app = createGears FrontX().useAll(presets.full()).build();
+const app = createFrontX().useAll(presets.full()).build();
 
 // Wrap app with provider
 function App() {
   return (
-    <Gears FrontXProvider app={app}>
+    <FrontXProvider app={app}>
       <Layout>
         <MainScreen />
       </Layout>
-    </Gears FrontXProvider>
+    </FrontXProvider>
   );
 }
 
@@ -85,17 +85,17 @@ function LayoutScreen() {
 ### Using MFE Bridge
 
 ```tsx
-import { useMfeBridge, useSharedProperty, Gears FrontX_ACTION_LOAD_EXT, Gears FrontX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
+import { useMfeBridge, useSharedProperty, FRONTX_ACTION_LOAD_EXT, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
 
 function MyExtension() {
   const bridge = useMfeBridge();
-  const theme = useSharedProperty(Gears FrontX_SHARED_PROPERTY_THEME);
+  const theme = useSharedProperty(FRONTX_SHARED_PROPERTY_THEME);
 
   // executeActionsChain is acceptance-only: it returns void, never throws,
   // and never yields anything to await for the chain's own execution.
   const handleAction = () => {
     bridge.executeActionsChain({
-      action: { type: Gears FrontX_ACTION_LOAD_EXT, target: 'screen', payload: { subject: 'other' } }
+      action: { type: FRONTX_ACTION_LOAD_EXT, target: 'screen', payload: { subject: 'other' } }
     });
   };
 

@@ -16,9 +16,9 @@ Build the application by composing plugins. A runtime builds exactly one app, so
 
 ```typescript
 // Alternative: an explicit plugin list.
-import { createGears FrontX, effects, themes, layout, i18n } from '@gears-frontx/framework';
+import { createFrontX, effects, themes, layout, i18n } from '@gears-frontx/framework';
 
-const app = createGears FrontX()
+const app = createFrontX()
   .use(effects())
   .use(themes())
   .use(layout())
@@ -31,15 +31,15 @@ const app = createGears FrontX()
 Pre-configured plugin arrays, passed to `.useAll(...)`. `full()` contains effects, themes, layout, i18n, the query cache, and mock; it adds `microfrontends()` only when `config.microfrontends` is supplied and `auth()` only when `config.auth` is supplied. `minimal()` contains themes only. There is no other preset. Each example below is an alternative: choose one per runtime.
 
 ```typescript
-import { createGears FrontX, presets } from '@gears-frontx/framework';
+import { createFrontX, presets } from '@gears-frontx/framework';
 
 // Alternative: the full preset, with microfrontends support
-const fullApp = createGears FrontX()
+const fullApp = createFrontX()
   .useAll(presets.full({ microfrontends: config }))
   .build();
 
 // Alternative: the minimal preset (themes only)
-const minimalApp = createGears FrontX()
+const minimalApp = createFrontX()
   .useAll(presets.minimal())
   .build();
 ```
@@ -62,10 +62,10 @@ const minimalApp = createGears FrontX()
 The `queryCache()` plugin owns the shared **headless TanStack Query `QueryClient`** (`@tanstack/query-core` peer) and bridges it to L1 transport dedup: it **retains** the global `sharedFetchCache` from `@gears-frontx/api` for the app lifetime and **keeps it aligned** with Flux-driven cache events. It's included in the `full()` preset by default:
 
 ```typescript
-import { createGears FrontX, presets } from '@gears-frontx/framework';
+import { createFrontX, presets } from '@gears-frontx/framework';
 
 // Alternative: the full preset includes the queryCache plugin automatically
-const app = createGears FrontX().useAll(presets.full()).build();
+const app = createFrontX().useAll(presets.full()).build();
 
 // The plugin attaches the shared QueryClient to the app for React bindings
 // and shared child roots via queryCacheShared().
@@ -80,9 +80,9 @@ const app = createGears FrontX().useAll(presets.full()).build();
 For custom plugin compositions (an alternative to the preset above; choose one per runtime):
 
 ```typescript
-import { createGears FrontX, queryCache } from '@gears-frontx/framework';
+import { createFrontX, queryCache } from '@gears-frontx/framework';
 
-const app = createGears FrontX()
+const app = createFrontX()
   .use(queryCache({ staleTime: 60_000, gcTime: 600_000 }))
   .build();
 ```
@@ -102,10 +102,10 @@ The plugin:
 The `mock()` plugin provides centralized mock mode control. It's included in the `full()` preset by default, so apps don't need manual setup:
 
 ```typescript
-import { createGears FrontX, presets } from '@gears-frontx/framework';
+import { createFrontX, presets } from '@gears-frontx/framework';
 
 // Alternative: the full preset includes the mock plugin automatically
-const app = createGears FrontX().useAll(presets.full()).build();
+const app = createFrontX().useAll(presets.full()).build();
 
 // Toggle mock mode via actions (used by FrontX Studio ApiModeToggle)
 app.actions.toggleMockMode(true);  // Activates all registered mock plugins
@@ -115,9 +115,9 @@ app.actions.toggleMockMode(false); // Deactivates all registered mock plugins
 For custom plugin compositions (an alternative; choose one per runtime):
 
 ```typescript
-import { createGears FrontX, effects, mock } from '@gears-frontx/framework';
+import { createFrontX, effects, mock } from '@gears-frontx/framework';
 
-const app = createGears FrontX()
+const app = createFrontX()
   .use(effects())  // Required dependency
   .use(mock())     // Automatic mock mode control
   .build();
@@ -127,10 +127,10 @@ Services register mock plugins using `registerPlugin()` in their constructor. Th
 
 ### Built Application
 
-After calling `.build()`, access registries and actions through `app.*`. The MFE-enabled `mfeRegistry` is available when the build includes `microfrontends()` (for example, `createGears FrontX().useAll(presets.full({ microfrontends: config }))`):
+After calling `.build()`, access registries and actions through `app.*`. The MFE-enabled `mfeRegistry` is available when the build includes `microfrontends()` (for example, `createFrontX().useAll(presets.full({ microfrontends: config }))`):
 
 ```typescript
-const app = createGears FrontX().useAll(presets.full({ microfrontends: config })).build();
+const app = createFrontX().useAll(presets.full({ microfrontends: config })).build();
 
 // Access MFE-enabled registry
 app.mfeRegistry.registerDomain(screenDomain, containerProvider);
@@ -139,7 +139,7 @@ await app.mfeRegistry.registerExtension(homeExtension);
 // executeActionsChain is acceptance-only: it returns void, never throws,
 // and never yields a promise to await for the chain's own execution.
 app.mfeRegistry.executeActionsChain({
-  action: { type: Gears FrontX_ACTION_MOUNT_EXT, target: 'screen', payload: { subject: 'home' } }
+  action: { type: FRONTX_ACTION_MOUNT_EXT, target: 'screen', payload: { subject: 'home' } }
 });
 
 // Access other registries
@@ -181,8 +181,9 @@ import {
 } from '@gears-frontx/framework';
 
 // loadExtension/mountExtension/unmountExtension are fire-and-forget: each
-// dispatches an actions chain through the acceptance-only registry surface
-// and returns nothing to await. Dispatch never throws.
+// dispatches an actions chain through the registry and returns nothing to
+// await (`executeActionsChain` returns void). The helpers themselves throw
+// synchronously for an unregistered extension or domain, or a missing plugin.
 
 // Load extension code
 loadExtension('home');
@@ -221,10 +222,10 @@ const error = selectExtensionError(state, 'home');
 
 ```typescript
 import {
-  Gears FrontX_SCREEN_DOMAIN,
-  Gears FrontX_SIDEBAR_DOMAIN,
-  Gears FrontX_POPUP_DOMAIN,
-  Gears FrontX_OVERLAY_DOMAIN,
+  FRONTX_SCREEN_DOMAIN,
+  FRONTX_SIDEBAR_DOMAIN,
+  FRONTX_POPUP_DOMAIN,
+  FRONTX_OVERLAY_DOMAIN,
   screenDomain,
   sidebarDomain,
   popupDomain,
@@ -232,10 +233,10 @@ import {
 } from '@gears-frontx/framework';
 
 // String constants (GTS instance IDs)
-Gears FrontX_SCREEN_DOMAIN   // 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1'
-Gears FrontX_SIDEBAR_DOMAIN  // 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.sidebar.v1'
-Gears FrontX_POPUP_DOMAIN    // 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.popup.v1'
-Gears FrontX_OVERLAY_DOMAIN  // 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.overlay.v1'
+FRONTX_SCREEN_DOMAIN   // 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1'
+FRONTX_SIDEBAR_DOMAIN  // 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.sidebar.v1'
+FRONTX_POPUP_DOMAIN    // 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.popup.v1'
+FRONTX_OVERLAY_DOMAIN  // 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.overlay.v1'
 
 // Domain objects (ExtensionDomain interface: id, actions, extensionsActions,
 // sharedProperties, defaultActionTimeout, lifecycleStages, extensionsLifecycleStages,
@@ -250,21 +251,21 @@ overlayDomain  // overlay: toggle semantics (load_ext, mount_ext, unmount_ext)
 
 ```typescript
 import {
-  Gears FrontX_ACTION_LOAD_EXT,
-  Gears FrontX_ACTION_MOUNT_EXT,
-  Gears FrontX_ACTION_UNMOUNT_EXT,
-  Gears FrontX_SHARED_PROPERTY_THEME,
-  Gears FrontX_SHARED_PROPERTY_LANGUAGE,
+  FRONTX_ACTION_LOAD_EXT,
+  FRONTX_ACTION_MOUNT_EXT,
+  FRONTX_ACTION_UNMOUNT_EXT,
+  FRONTX_SHARED_PROPERTY_THEME,
+  FRONTX_SHARED_PROPERTY_LANGUAGE,
 } from '@gears-frontx/framework';
 
 // Action IDs
-Gears FrontX_ACTION_LOAD_EXT     // 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~'
-Gears FrontX_ACTION_MOUNT_EXT    // 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~'
-Gears FrontX_ACTION_UNMOUNT_EXT  // 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~'
+FRONTX_ACTION_LOAD_EXT     // 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~'
+FRONTX_ACTION_MOUNT_EXT    // 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~'
+FRONTX_ACTION_UNMOUNT_EXT  // 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~'
 
 // Shared property IDs
-Gears FrontX_SHARED_PROPERTY_THEME    // 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~'
-Gears FrontX_SHARED_PROPERTY_LANGUAGE // 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~'
+FRONTX_SHARED_PROPERTY_THEME    // 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~'
+FRONTX_SHARED_PROPERTY_LANGUAGE // 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~'
 ```
 
 ## Creating Custom Plugins
@@ -272,9 +273,9 @@ Gears FrontX_SHARED_PROPERTY_LANGUAGE // 'gts.frontx.mfes.comm.shared_property.v
 Extend FrontX with custom functionality:
 
 ```typescript
-import type { Gears FrontXPlugin } from '@gears-frontx/framework';
+import type { FrontXPlugin } from '@gears-frontx/framework';
 
-export function myPlugin(): Gears FrontXPlugin {
+export function myPlugin(): FrontXPlugin {
   return {
     name: 'my-plugin',
     dependencies: ['effects'], // Optional dependencies
@@ -296,8 +297,8 @@ export function myPlugin(): Gears FrontXPlugin {
 
 ## Key Rules
 
-1. **Use presets for common cases** - `createGears FrontX().useAll(presets.full({ microfrontends: config }))` for full apps with MFE support; build one app per runtime
-2. **Compose plugins for customization** - Use `createGears FrontX().use()` pattern
+1. **Use presets for common cases** - `createFrontX().useAll(presets.full({ microfrontends: config }))` for full apps with MFE support; build one app per runtime
+2. **Compose plugins for customization** - Use `createFrontX().use()` pattern
 3. **Dependencies are auto-resolved** - Plugin order doesn't matter
 4. **Access via app instance** - All registries and actions on `app.*`
 5. **NO React in this package** - Framework is headless, use @gears-frontx/react for React bindings
@@ -334,7 +335,7 @@ const menu = useAppSelector((state: RootStateWithLayout) => state.layout.menu);
 ## Exports
 
 ### Core
-- `createGears FrontX` - App builder factory
+- `createFrontX` - App builder factory
 - `presets` - Available presets (full, minimal)
 
 ### Plugins
@@ -344,7 +345,7 @@ const menu = useAppSelector((state: RootStateWithLayout) => state.layout.menu);
 - `createThemeRegistry` - Theme registry factory
 
 ### Types
-- `Gears FrontXConfig`, `Gears FrontXPlugin`, `Gears FrontXApp`, `Gears FrontXAppBuilder`
+- `FrontXConfig`, `FrontXPlugin`, `FrontXApp`, `FrontXAppBuilder`
 - `PluginFactory`, `PluginProvides`, `PluginLifecycle`
 - `Preset`, `Presets`
 - All re-exported types from SDK packages

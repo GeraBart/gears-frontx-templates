@@ -172,7 +172,7 @@ class WidgetsDomainFactory extends ExtensionDomainImplementationFactory {
  *      nested app can take ownership of it via `registry.registerDomain(...)`.
  *   4. Take ownership of the widgets domain (registerDomain on the nested
  *      registry, paired with the local `WidgetsDomainFactory`) — skipped when
- *      a cached registry (HMR, a remount) already owns it.
+ *      a cached registry (a remount) already owns it.
  *   5. Third pass: for each extension whose target domain is the widgets
  *      domain, register it opaquely on the child registry — skipped per
  *      extension already registered.
@@ -454,16 +454,9 @@ function WidgetsHostScreen({
       return entry?.actions?.includes(WIDGET_PING_ACTION_TYPE) ?? false;
     });
 
-  // #648: `executeActionsChain` is acceptance-only — it can refuse synchronously
-  // and returns nothing to await — so an unconditional `.catch()` on its result
-  // would throw `undefined.catch` even though the chain ran; a synchronous
-  // throw is the only refusal shape, caught here, fire-and-forget.
+  // `executeActionsChain` returns nothing awaitable: the chain is fire-and-forget.
   const handlePing = (extensionId: string): void => {
-    try {
-      registry.executeActionsChain({ action: { type: WIDGET_PING_ACTION_TYPE, target: extensionId, payload: {} } });
-    } catch (error) {
-      console.error(`[demo-mfe widgets-host] ping ${extensionId} refused`, error);
-    }
+    registry.executeActionsChain({ action: { type: WIDGET_PING_ACTION_TYPE, target: extensionId, payload: {} } });
   };
 
   return (

@@ -51,8 +51,7 @@ const hintCodeClass = 'rounded bg-muted px-1.5 py-0.5 font-mono text-xs';
  * on - the same value this component already uses as the React key and as the
  * mount subject - so two menu items cannot carry one id. The route is
  * a separate property: nothing stops two extensions declaring the
- * same route, and an extension may declare none at all. A route-derived id
- * could therefore either collide or collapse to the bare prefix. Verbatim also
+ * same route, so a route-derived id could collide. Verbatim also
  * means no slug step, which is its own collision risk - `a.b` and `a-b` slug to
  * one string, and extension ids are built from punctuation a slug would
  * flatten.

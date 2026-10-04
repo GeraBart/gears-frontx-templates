@@ -675,13 +675,9 @@ export class FrameworkRouter implements RouterPort, MfeRouterHandle {
   }
 
   private dispatch(domainId: string, actionType: string, subject: string, history: 'none' | 'replace' | 'push'): void {
-    try {
-      this.requireRegistry().executeActionsChain({
-        action: { type: actionType, target: domainId, payload: { subject, history } },
-      });
-    } catch (error) {
-      console.error(`[router] dispatch of ${actionType} for ${subject} in ${domainId} refused`, error);
-    }
+    this.requireRegistry().executeActionsChain({
+      action: { type: actionType, target: domainId, payload: { subject, history } },
+    });
   }
 
   /**

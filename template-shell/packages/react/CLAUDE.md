@@ -8,21 +8,21 @@ This package is part of the **React Layer (L3)** - it depends only on @gears-fro
 
 ## Core Concepts
 
-### Gears FrontXProvider
+### FrontXProvider
 
-Wrap your app with Gears FrontXProvider to enable all hooks. A runtime builds exactly one app, once at module level; the provider never creates one. The three compositions below are alternatives: choose one per runtime.
+Wrap your app with FrontXProvider to enable all hooks. A runtime builds exactly one app, once at module level; the provider never creates one. The three compositions below are alternatives: choose one per runtime.
 
 ```tsx
-import { createGears FrontX, Gears FrontXProvider, presets } from '@gears-frontx/react';
+import { createFrontX, FrontXProvider, presets } from '@gears-frontx/react';
 
 // Alternative 1: the full preset
-const app = createGears FrontX({ devMode: true }).useAll(presets.full()).build();
+const app = createFrontX({ devMode: true }).useAll(presets.full()).build();
 
 function App() {
   return (
-    <Gears FrontXProvider app={app}>
+    <FrontXProvider app={app}>
       <YourApp />
-    </Gears FrontXProvider>
+    </FrontXProvider>
   );
 }
 
@@ -31,17 +31,17 @@ function App() {
 Alternative 2: a host shell with a custom plugin set (a host typically uses `queryCache()`):
 
 ```tsx
-const app = createGears FrontX().use(effects()).use(queryCache()).build();
+const app = createFrontX().use(effects()).use(queryCache()).build();
 ```
 
 Alternative 3: a child MFE app. The canonical bootstrap matches `src/mfe_packages/*/init.ts`: `apiRegistry.register` / `initialize` before `.build()`, `registerSlice` after `.build()` when slices exist:
 
 ```tsx
-const app = createGears FrontX().use(effects()).use(queryCacheShared()).use(mock()).build();
+const app = createFrontX().use(effects()).use(queryCacheShared()).use(mock()).build();
 ```
 
 The shared `QueryClient` is created and owned by the `queryCache()` framework plugin at L2.
-`Gears FrontXProvider` resolves that client from the app instance — it does not create its own `QueryClient`.
+`FrontXProvider` resolves that client from the app instance — it does not create its own `QueryClient`.
 
 When the host uses `queryCache()` and the child MFE app uses `queryCacheShared()` (with `effects()` and `mock()` on the same chain as in repo MFE inits), both roots join the same shared `QueryClient` while keeping separate React trees. `ThemeAwareReactLifecycle` relies on that shared plugin-owned client through the app instance. If the shared client is missing for a mounted MFE, the lifecycle fails explicitly instead of silently falling back.
 
@@ -259,7 +259,7 @@ Access the MFE bridge for child MFEs:
 
 ```tsx
 import { useMfeBridge } from '@gears-frontx/react';
-import { Gears FrontX_ACTION_LOAD_EXT, Gears FrontX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
+import { FRONTX_ACTION_LOAD_EXT, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
 
 function MyExtension() {
   const bridge = useMfeBridge();
@@ -269,12 +269,12 @@ function MyExtension() {
     // throws, and never yields anything to await for the chain's own
     // execution.
     bridge.executeActionsChain({
-      action: { type: Gears FrontX_ACTION_LOAD_EXT, target: 'screen', payload: { subject: 'other' } }
+      action: { type: FRONTX_ACTION_LOAD_EXT, target: 'screen', payload: { subject: 'other' } }
     });
   };
 
   // Get shared property
-  const theme = bridge.getProperty(Gears FrontX_SHARED_PROPERTY_THEME);
+  const theme = bridge.getProperty(FRONTX_SHARED_PROPERTY_THEME);
 }
 ```
 
@@ -285,10 +285,10 @@ Subscribe to shared property changes. Two forms: the context form reads the brid
 **Context form** — `useSharedProperty(propertyTypeId)`. Reads the bridge from `MfeContext` and throws if no `MfeProvider` is mounted. Returns the value (or `undefined` if the host has not published it), updating on every host publish.
 
 ```tsx
-import { useSharedProperty, Gears FrontX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
+import { useSharedProperty, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
 
 function ThemedComponent() {
-  const theme = useSharedProperty(Gears FrontX_SHARED_PROPERTY_THEME);
+  const theme = useSharedProperty(FRONTX_SHARED_PROPERTY_THEME);
 
   return <div style={{ backgroundColor: theme?.primaryColor }}>...</div>;
 }
@@ -324,10 +324,10 @@ Both forms read through `useSyncExternalStore`, so the first render shows the ho
 Invoke actions on the host application:
 
 ```tsx
-import { useHostAction, Gears FrontX_ACTION_LOAD_EXT } from '@gears-frontx/react';
+import { useHostAction, FRONTX_ACTION_LOAD_EXT } from '@gears-frontx/react';
 
 function MyExtension() {
-  const loadExtension = useHostAction(Gears FrontX_ACTION_LOAD_EXT);
+  const loadExtension = useHostAction(FRONTX_ACTION_LOAD_EXT);
 
   const handleClick = () => {
     loadExtension({ subject: 'other' });
@@ -464,7 +464,7 @@ function Layout() {
 
 ## Key Rules
 
-1. **Wrap with Gears FrontXProvider** - Required for all hooks to work
+1. **Wrap with FrontXProvider** - Required for all hooks to work
 2. **Use hooks for state access** - Don't import selectors directly from @gears-frontx/framework
 3. **Use endpoint descriptors for data** - `useApiQuery(service.endpoint)` for REST, `useApiStream(service.stream)` for SSE — not `queryOptions()` or manual key factories
 4. **Service is the cache contract** - The service IS the data layer; cache keys are derived automatically
@@ -488,7 +488,7 @@ This allows users to import everything from `@gears-frontx/react` without needin
 ## Exports
 
 ### Components
-- `Gears FrontXProvider` - Main context provider
+- `FrontXProvider` - Main context provider
 - `MfeProvider` - MFE context provider
 - `ExtensionDomainSlot` - Domain slot renderer
 - `RefContainerProvider` - Container reference provider
@@ -512,11 +512,11 @@ This allows users to import everything from `@gears-frontx/react` without needin
 - `useActivePackage` - Subscribe to active GTS package
 
 ### Context
-- `Gears FrontXContext` - React context (for advanced use)
+- `FrontXContext` - React context (for advanced use)
 - `MfeContext` - MFE context (for advanced use)
 
 ### Types
-- `Gears FrontXProviderProps`
+- `FrontXProviderProps`
 - `ApiQueryResult<TData>` - Gears FrontX-owned query result type (data, error, isLoading, refetch, etc.)
 - `ApiMutationResult<TData>` - Gears FrontX-owned mutation result type (mutateAsync, isPending, error, reset, etc.)
 - `ApiStreamResult<TEvent>` - Gears FrontX-owned stream result type (data, events, status, error, disconnect)

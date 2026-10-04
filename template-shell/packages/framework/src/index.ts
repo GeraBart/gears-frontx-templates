@@ -78,7 +78,6 @@ export {
   selectExtensionState,
   selectRegisteredExtensions,
   selectExtensionError,
-  selectMountedExtensions,
   FRONTX_POPUP_DOMAIN,
   FRONTX_SIDEBAR_DOMAIN,
   FRONTX_SCREEN_DOMAIN,
