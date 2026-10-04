@@ -12,7 +12,6 @@ import { act } from '@testing-library/react';
 import type { ChildMfeBridge, FrontXApp } from '@gears-frontx/framework';
 
 let fw: typeof import('@gears-frontx/framework');
-let state: typeof import('@gears-frontx/state');
 let app: FrontXApp | undefined;
 let ThemeAwareReactLifecycle: typeof import('../ThemeAwareReactLifecycle')['ThemeAwareReactLifecycle'];
 let ProbeLifecycle: ReturnType<typeof defineProbeLifecycle>;
@@ -29,7 +28,6 @@ beforeEach(async () => {
   // A runtime builds one app, so each case loads its own module copy.
   vi.resetModules();
   fw = await import('@gears-frontx/framework');
-  state = await import('@gears-frontx/state');
   ({ ThemeAwareReactLifecycle } = await import('../ThemeAwareReactLifecycle'));
   ProbeLifecycle = defineProbeLifecycle();
 });
@@ -38,8 +36,7 @@ afterEach(() => {
   app?.destroy();
   app = undefined;
   vi.restoreAllMocks();
-  state.eventBus.clearAll();
-  state.resetStore();
+  fw.eventBus.clearAll();
 });
 
 const noopBridge = {} as ChildMfeBridge;
