@@ -380,7 +380,7 @@ Variants are inline `oneOf` alternatives: there is no per-variant `$id` and no `
           "type": "array",
           "minItems": 1,
           "description": "Typed array of nested Operator instances forming the depth-1 sub-pipeline. Each element conforms to one of the Operator base's inline oneOf branches (per gts-spec §3.7 instance form: typed references to the same GTS type are resolved against the discriminated-union schema). Depth is limited to 1: nested `subquery` operators are NOT permitted within `ops`. Config-time validation MUST reject any element whose `op` is `subquery`.",
-          "items": { "$ref": "gts://gts.frontx.v.query.operator.v1~" }
+          "items": { "allOf": [{ "$ref": "gts://gts.frontx.v.query.operator.v1~" }, { "not": { "properties": { "op": { "const": "subquery" } }, "required": ["op"] } }] }
         },
         "into": { "type": "string", "description": "Field name added to each emitted parent item, holding the sub-pipeline's output value (typed per the last sub-pipeline operator's emitted shape)." }
       }

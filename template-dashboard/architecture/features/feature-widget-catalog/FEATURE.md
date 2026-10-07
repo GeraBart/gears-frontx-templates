@@ -143,7 +143,7 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
           "type": "array",
           "minItems": 1,
           "description": "Static declared list of target widget instances, each a complete inline widget instance of one concrete kind. The widgets a single clicked item mounts are a subset of this list. For a modal drill-down this list is the source of the union of widgets any peer of the origin can show.",
-          "items": { "$ref": "gts://gts.frontx.m.widget.widget.v1~" }
+          "items": { "oneOf": [{ "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.summary_card.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.metric_card.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.ranked_list_card.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.progress_list_card.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.cartesian_chart.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.pie_chart.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.heatmap.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.markdown_card.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.code_diff.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.thread_list.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.event_timeline.v1~" }, { "$ref": "gts://gts.frontx.m.widget.widget.v1~frontx.m.widget.metadata_strip.v1~" }] }
         }
       }
     }

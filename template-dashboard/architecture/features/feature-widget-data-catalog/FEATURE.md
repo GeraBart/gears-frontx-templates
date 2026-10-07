@@ -654,6 +654,8 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
   "link_url": { "type": ["string", "null"], "description": "Optional URL applied when kind is 'link'; null when not applicable." },
   "badge_color": { "type": ["string", "null"], "description": "Optional theme-resolvable color override applied when kind is 'badge'; null falls back to the renderer's default badge palette." }
 }
+  ,"if": { "properties": { "kind": { "const": "link" } }, "required": ["kind"] },
+  "then": { "properties": { "link_url": { "type": "string" } }, "required": ["link_url"] }
       }
     }
   }

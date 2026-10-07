@@ -402,7 +402,7 @@ The system **MUST** give all chart and data display types one consistent look, i
 
 The system **MUST** show the first fully rendered dashboard within the threshold below, measured from the moment its data has been requested.
 
-**Threshold**: **Provisional.** Under 3 seconds at p95 for the largest supported data volume, covering data fetch, index build, layout rendering, and the first widget queries. The budget is carried from the prototype, which read a precomputed payload; this template fetches entity data live and indexes it in the browser. The reference conditions are fixed in the DESIGN: the reference device, the network profile, and whether the entity fetch is included in the measured time. The budget will be re-measured under those conditions and confirmed or revised.
+**Threshold**: **Provisional.** Under 3 seconds at p95 for the largest supported data volume, covering data fetch, index build, layout rendering, and the first widget queries. The budget is carried from the prototype, which read a precomputed payload; this template fetches entity data live and indexes it in the browser. The entity fetch is inside the measured time (request to first rendered dashboard). The reference conditions (reference device and network profile) are fixed in DESIGN section 3.9. The budget will be re-measured under those conditions and confirmed or revised.
 
 **Rationale**: A slow first view undermines the value of live data.
 
