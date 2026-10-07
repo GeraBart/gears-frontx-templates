@@ -1315,4 +1315,6 @@ All identifiers end in `~` (types) and use `v1`. The package `dashboard-demo` de
 
 ## 8. Open Questions
 
-- None. The port is rename-only: concrete filter ids moved to `gts.frontx.v.filter.filter.v1~frontx.demo.filter.<name>.v1~` and aspect references to `gts.frontx.demo.entity_aspect.*`. The prototype's "Subsumes PoC ..." sentences were dropped from descriptions, and the base entry (6.0) was removed because the base is defined in DESIGN section 3.1.
+- No port-level questions. The port is rename-only: concrete filter ids moved to `gts.frontx.v.filter.filter.v1~frontx.demo.filter.<name>.v1~` and aspect references to `gts.frontx.demo.entity_aspect.*`. The prototype's "Subsumes PoC ..." sentences were dropped from descriptions, and the base entry (6.0) was removed because the base is defined in DESIGN section 3.1.
+
+- **Inherited from the prototype**: `FilterByPrNumbers` and `FilterByIssueNumbers` require `has_repo` rather than an aspect that carries the filtered number, so applicability depends on repository presence.
