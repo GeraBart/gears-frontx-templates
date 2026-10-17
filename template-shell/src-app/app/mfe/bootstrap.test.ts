@@ -23,8 +23,9 @@ const executeActionsChain = vi.fn(() => undefined);
 // physical mount, `destroy(subject)` when that mount fails, and
 // `destroy(occupant)` when the slot detaches (`detach()` stands for the
 // screen mounter's detach releasing its occupant). `exclusiveMount` records
-// the call the handler makes on the strategy; `physicalMount` is the mounter's
-// own mount the strategy awaits.
+// the call the handler makes on the strategy and is awaited first, so a case
+// can make the strategy fail or hang through it; `physicalMount` is the
+// mounter's own mount the strategy awaits.
 const exclusiveMount = vi.fn();
 const physicalMount = vi.fn().mockResolvedValue(undefined);
 interface RecordedHooks {
@@ -38,7 +39,7 @@ class FakeExclusiveMountStrategy {
     FakeExclusiveMountStrategy.last = this;
   }
   async mount(payload: { subject: string }): Promise<void> {
-    exclusiveMount(payload);
+    await exclusiveMount(payload);
     const subject = payload.subject;
     if (this.occupant !== undefined && this.occupant !== subject) {
       this.hooks.destroy(this.occupant);

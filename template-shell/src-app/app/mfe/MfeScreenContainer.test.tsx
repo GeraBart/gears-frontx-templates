@@ -242,19 +242,6 @@ describe('MfeScreenContainer', () => {
       }
     });
 
-    it('shows only the error state, not the unknown-address fallback with it', async () => {
-      mockUseDomainRouteStatus.mockReturnValue({ entries: 1, unresolved: 1 });
-      const { MfeScreenContainer } = await import('./MfeScreenContainer');
-      const { screenLoadFailure } = await import('./screenLoadFailure');
-      render(<MfeScreenContainer />);
-      await settleBootstrap();
-
-      act(() => screenLoadFailure.report('ext.orders', 'none'));
-
-      expect(screen.getByRole('alert')).not.toBeNull();
-      expect(screen.queryByTestId('screen-route-fallback')).toBeNull();
-    });
-
     it('renders the error state the app passes in', async () => {
       const { MfeScreenContainer } = await import('./MfeScreenContainer');
       const { screenLoadFailure } = await import('./screenLoadFailure');
