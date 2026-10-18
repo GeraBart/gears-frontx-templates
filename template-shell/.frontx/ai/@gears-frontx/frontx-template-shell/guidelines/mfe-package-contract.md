@@ -74,7 +74,11 @@ three, on one shared predicate per rule rather than a copy each.
    copy of it, never shared across MFEs: the copy the MFE's registry receives
    must be the copy `<ExtensionRouter>` and `navigation()` read. The
    constant includes `@gears-frontx/routing-tanstack` only when the MFE renders
-   `<ExtensionRouter>` or calls `navigation()`.
+   `<ExtensionRouter>` or calls `navigation()`. A package declares each of the
+   two it lists in its own `package.json` too, at an exact version
+   (`@gears-frontx/routing-tanstack` under `dependencies`), so it resolves from
+   the package's own root without relying on hoisting, and
+   `policy:template-pin-drift` checks its version.
 
 ## Build-output contract (produced by `vite build`, consumed by the shell)
 

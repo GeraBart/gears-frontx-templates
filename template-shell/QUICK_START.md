@@ -139,7 +139,7 @@ fails to say so.
 
 Then update its `package.json` name and preview `--port`, declare your entries
 and screen extensions in `mfe.json`, and expose your lifecycle modules in its
-`vite.config.ts`, listing `@gears-frontx/routing` in its `sharedDeps` (and `@gears-frontx/routing-tanstack` only when the MFE uses `<ExtensionRouter>` or `navigation()`).
+`vite.config.ts`, keeping `@gears-frontx/routing` in its `sharedDeps` and pinned in its `package.json`, as the scaffold has it (add `@gears-frontx/routing-tanstack` to both, under `dependencies`, only when the MFE uses `<ExtensionRouter>` or `navigation()`).
 `dev:all` discovers MFEs automatically by scanning `src-app/mfe_packages/` —
 there is no registry file to edit. See the shell's `mfe-package-contract` AI
 guideline for the exact shape a new package must have.
