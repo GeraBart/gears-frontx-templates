@@ -70,6 +70,18 @@ for instance) calls `navigation()` from the same package. Everything outside a
 runtime's private subroute, including which screen is shown, changes through
 actions (`mount_ext`, `unmount_ext`), never through navigation.
 
+An address that names no screen leaves the content area empty, on purpose. At
+page load the router mounts only a screen the address names by a registered
+`route`; an unknown name is dropped and the address is rewritten without it,
+so a stale bookmark opens the shell with an empty content area and no menu
+item active, the same as an address naming no screen at all.
+`MfeScreenContainer` shows no "no screen matches" message: it renders the
+screen domain's slot and, for a screen or bootstrap that failed to load, the
+`LoadFailed` error state, and nothing else. A shell that wants an empty state
+of its own renders it once bootstrap has settled while `screenState` (in
+`src-app/app/mfe/screenState.ts`) names no screen and no load failure is
+reported; it needs no route state for that.
+
 ## From `mfe.json` to the browser
 
 ```text

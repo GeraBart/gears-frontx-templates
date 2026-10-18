@@ -56,8 +56,8 @@
   "peerDependencies": {
     "@gears-frontx/auth": "*",
     "@gears-frontx/state": "*",
-    "@gears-frontx/mfes": "*",
-    "@gears-frontx/routing": "*",
+    "@gears-frontx/mfes": "^0.4.0",
+    "@gears-frontx/routing": "^0.4.0",
     "@gears-frontx/gts-plugin": "*",
     "@gears-frontx/api": "*",
     "@gears-frontx/i18n": "*",
