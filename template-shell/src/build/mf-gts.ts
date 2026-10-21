@@ -1529,6 +1529,14 @@ export interface ChunkLinkage {
    * both map `b` to `a` in `x`.
    */
   reExports: Record<string, { from: string; name: string }>;
+  /**
+   * The local binding behind each of the chunk's own exports whose name
+   * differs from it: `export { x as N }` maps `N` to `x`, and
+   * `export default function f() {}` maps `default` to `f`. ES modules tell
+   * bindings apart by module and local name, so `N` and `x` are one binding
+   * there. `export default <expression>` binds a binding of its own.
+   */
+  locals: Record<string, string>;
   /** Names it imports per specifier, as in {@link ImportingChunk}. */
   imports: Record<string, string[]>;
 }
@@ -1591,6 +1599,7 @@ export function readChunkLinkage(
     exports: [],
     starExports: [],
     reExports: {},
+    locals: {},
     imports: {},
   };
   const addImport = (from: string, name?: string): void => {
@@ -1638,6 +1647,16 @@ export function readChunkLinkage(
       }
     } else if (node.type === 'ExportDefaultDeclaration') {
       linkage.exports.push('default');
+      // `export default function f() {}` binds `f`. Any expression, a
+      // parenthesized `(function f() {})` too, binds a binding of its own.
+      const declaration = node.declaration as AstNode;
+      if (
+        (declaration.type === 'FunctionDeclaration' ||
+          declaration.type === 'ClassDeclaration') &&
+        declaration.id
+      ) {
+        linkage.locals.default = nameOf(declaration.id as AstNode);
+      }
     } else if (node.type === 'ExportAllDeclaration') {
       const from = nameOf(node.source as AstNode);
       addImport(from, '*');
@@ -1653,6 +1672,7 @@ export function readChunkLinkage(
   for (const { local, exported } of localExports) {
     const binding = importedBindings.get(local);
     if (binding) linkage.reExports[exported] = binding;
+    else if (local !== exported) linkage.locals[exported] = local;
   }
 
   return linkage;
@@ -1731,7 +1751,11 @@ function declaredNames(node: AstNode): string[] {
  * lines supply a name from different bindings, the name is ambiguous: the
  * chunk does not export it, and neither does a chunk that re-exports it
  * through `export *` in turn. Two lines that lead to the same binding, as when
- * two packages both re-export one core package, are not ambiguous.
+ * two packages both re-export one core package, are not ambiguous. A binding
+ * is a module and a local name, so one variable exported under two names is
+ * one binding. A name re-exported from a module outside the shared chunks
+ * conflicts with none: the guard has not read that module, so it cannot tell
+ * whether another line leads to the same binding.
  *
  * Pure; exported for unit tests.
  */
@@ -1747,7 +1771,8 @@ export function findSharedImportMismatches(
     sharedChunks.map((chunk) => [chunk.name, new Set(chunk.exports)])
   );
 
-  type Binding = { module: string; name: string };
+  // `module` is null for a binding outside the shared chunks.
+  type Binding = { module: string; local: string } | { module: null };
   type Ambiguity = Omit<AmbiguousExport, 'name'>;
 
   // ECMA-262's ResolveExport over the shared chunks: the binding a name
@@ -1769,9 +1794,11 @@ export function findSharedImportMismatches(
       const target = byName.get(from);
       return target
         ? resolveExport(target, imported, resolveSet)
-        : { module: from, name: imported };
+        : { module: null };
     }
-    if (ownExports.get(chunk.name)?.has(name)) return { module: chunk.name, name };
+    if (ownExports.get(chunk.name)?.has(name)) {
+      return { module: chunk.name, local: chunk.locals[name] ?? name };
+    }
     if (name === 'default') return null;
 
     let star: { from: string; binding: Binding } | undefined;
@@ -1781,11 +1808,13 @@ export function findSharedImportMismatches(
       const resolved = resolveExport(target, name, resolveSet);
       if (resolved === null) continue;
       if ('sources' in resolved) return resolved;
-      if (!star) {
+      // The first binding in a shared chunk is the one the others must match.
+      if (!star || star.binding.module === null) {
         star = { from, binding: resolved };
       } else if (
-        star.binding.module !== resolved.module ||
-        star.binding.name !== resolved.name
+        resolved.module !== null &&
+        (star.binding.module !== resolved.module ||
+          star.binding.local !== resolved.local)
       ) {
         return { chunk: chunk.name, sources: [star.from, from] };
       }
@@ -1835,7 +1864,8 @@ export function findSharedImportMismatches(
  * package versions that do not fit each other. An ambiguous name usually
  * comes from two shared packages that each bundle their own copy of a third
  * one they both re-export; sharing the third one too gives both `export *`
- * lines one binding.
+ * lines one binding. Neither of the other fixes resolves that, so they are
+ * left out for a mismatch whose names are all ambiguous.
  */
 export function formatSharedImportMismatchError(
   mismatches: readonly SharedImportMismatch[]
@@ -1854,8 +1884,11 @@ export function formatSharedImportMismatchError(
     }
     return [line, ...reasons.map((reason) => `    (${reason})`)].join('\n');
   });
+  const notAllAmbiguous = mismatches.filter(
+    (mismatch) => (mismatch.ambiguous?.length ?? 0) < mismatch.missing.length
+  );
   const fixes: string[] = [];
-  if (mismatches.some((mismatch) => mismatch.importerPackage === undefined)) {
+  if (notAllAmbiguous.some((mismatch) => !mismatch.importerPackage)) {
     fixes.push(
       `Fix, where one of the MFE's own chunks imports the name: import only ` +
         `names the package exports. If a discovery failure is listed, the ` +
@@ -1865,7 +1898,7 @@ export function formatSharedImportMismatchError(
         `from build.rollupOptions.external so Vite bundles it into the MFE.`
     );
   }
-  if (mismatches.some((mismatch) => mismatch.importerPackage !== undefined)) {
+  if (notAllAmbiguous.some((mismatch) => mismatch.importerPackage)) {
     fixes.push(
       `Fix, where a shared chunk imports the name: that package's own code ` +
         `asks for it, so the import cannot change. If a discovery failure is ` +

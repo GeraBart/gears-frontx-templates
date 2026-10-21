@@ -29,6 +29,7 @@ import {
   formatUncheckedNamespaceImportWarning,
   patchCjsExternalsInSource,
   readChunkLinkage,
+  type AmbiguousExport,
   type ImportingChunk,
   type MintedSharedChunk,
   type SharedChunk,
@@ -57,6 +58,7 @@ function shared(
     exports: [],
     starExports: [],
     reExports: {},
+    locals: {},
     imports: {},
     ...overrides,
   };
@@ -131,6 +133,7 @@ describe('readChunkLinkage', () => {
       exports: ['f', 'h', 'default', 'i', 'k', 'l', 'fn', 'Cls', 'string-name'],
       starExports: ['g'],
       reExports: { f: { from: 'e', name: 'e' } },
+      locals: { 'string-name': 'm' },
       imports: {
         a: ['default'],
         b: ['*'],
@@ -160,6 +163,35 @@ describe('readChunkLinkage', () => {
       dflt: { from: 'w', name: 'default' },
       z: { from: 'w', name: 'z' },
     });
+  });
+
+  it('records the local binding behind each own export named otherwise', () => {
+    const code = [
+      'var x = 1;',
+      'function f() {}',
+      'export { x as N, x as y, x, f as default };',
+      'export class Cls {}',
+    ].join('\n');
+
+    expect(readChunkLinkage(code, parseAst).locals).toEqual({
+      N: 'x',
+      y: 'x',
+      default: 'f',
+    });
+  });
+
+  it('binds a default declaration to its name, a default expression to none', () => {
+    const localsOf = (code: string) => readChunkLinkage(code, parseAst).locals;
+    expect(localsOf('export default function f() {}\nexport { f };')).toEqual({
+      default: 'f',
+    });
+    expect(localsOf('export default class Cls {}')).toEqual({ default: 'Cls' });
+    expect(localsOf('export default function () {}')).toEqual({});
+    expect(localsOf('function f() {}\nexport default (function f() {});')).toEqual(
+      {}
+    );
+    // `export default x` binds a new binding to x's value, not x itself.
+    expect(localsOf('var x;\nexport default x;\nexport { x };')).toEqual({});
   });
 });
 
@@ -323,6 +355,72 @@ describe('findSharedImportMismatches', () => {
       ).toEqual([]);
     });
 
+    it('passes it when the lines lead to one binding under two names', () => {
+      // ES modules tell bindings apart by module and local name, not by the
+      // name exported. Node 24 links both imports below as plain .mjs files.
+      const aliased = [
+        ...chunks,
+        // const x = 1; export { x as N, x as y };
+        shared('alias', { exports: ['N', 'y'], locals: { N: 'x', y: 'x' } }),
+        // export { y as N } from "alias";
+        shared('renamed', {
+          exports: ['N'],
+          reExports: { N: { from: 'alias', name: 'y' } },
+        }),
+        shared('aliases', { starExports: ['alias', 'renamed'] }),
+        // function f() {} export { f as default, f };
+        shared('fn', { exports: ['default', 'f'], locals: { default: 'f' } }),
+        // export { default as f } from "fn";
+        shared('fromDefault', {
+          exports: ['f'],
+          reExports: { f: { from: 'fn', name: 'default' } },
+        }),
+        shared('functions', { starExports: ['fn', 'fromDefault'] }),
+      ];
+      expect(
+        findSharedImportMismatches(
+          [importer('assets/a.js', { aliases: ['N'], functions: ['f'] })],
+          aliased
+        )
+      ).toEqual([]);
+    });
+
+    it('lets a binding outside the shared chunks conflict with none', () => {
+      // The guard has not read 'unshared', so it cannot tell whether the
+      // binding there is the one another line leads to. The first binding
+      // in a shared chunk is still what the other lines have to match.
+      const outside = [
+        ...chunks,
+        shared('external', {
+          exports: ['N'],
+          reExports: { N: { from: 'unshared', name: 'N' } },
+        }),
+        shared('beside', { starExports: ['external', 'c1'] }),
+        shared('stillConflicting', { starExports: ['external', 'c1', 'c2'] }),
+      ];
+      expect(
+        findSharedImportMismatches(
+          [
+            importer('assets/a.js', {
+              external: ['N'],
+              beside: ['N'],
+              stillConflicting: ['N'],
+            }),
+          ],
+          outside
+        )
+      ).toEqual([
+        {
+          importer: 'assets/a.js',
+          packageName: 'stillConflicting',
+          missing: ['N'],
+          ambiguous: [
+            { name: 'N', chunk: 'stillConflicting', sources: ['c1', 'c2'] },
+          ],
+        },
+      ]);
+    });
+
     it('counts export * as ns as a binding of the chunk that does it', () => {
       // V8 links it that way: two chunks each doing `export * as ns from
       // "core"` give a third that re-exports both a conflicting `ns`.
@@ -395,6 +493,36 @@ describe('formatSharedImportMismatchError', () => {
     );
     expect(message).toContain('Fix, where a name is ambiguous');
     expect(message).toContain('share that package too');
+    // Importing another name or another package version does not resolve it.
+    expect(message).not.toContain(mfeFix);
+    expect(message).not.toContain(sharedFix);
+  });
+
+  it('gives the other fixes only for names that are not ambiguous', () => {
+    const ambiguous: AmbiguousExport[] = [
+      { name: 'N', chunk: 'conflict', sources: ['c1', 'c2'] },
+    ];
+    const fromSharedChunk = formatSharedImportMismatchError([
+      {
+        importer: 'shared/x.js',
+        importerPackage: 'x',
+        packageName: 'outer',
+        missing: ['N'],
+        ambiguous,
+      },
+    ]);
+    expect(fromSharedChunk).not.toContain(sharedFix);
+
+    const alsoMissing = formatSharedImportMismatchError([
+      {
+        importer: 'assets/a.js',
+        packageName: 'outer',
+        missing: ['N', 'other'],
+        ambiguous,
+      },
+    ]);
+    expect(alsoMissing).toContain(mfeFix);
+    expect(alsoMissing).toContain('Fix, where a name is ambiguous');
   });
 
   it('leaves the ambiguity fix out when no name is ambiguous', () => {
