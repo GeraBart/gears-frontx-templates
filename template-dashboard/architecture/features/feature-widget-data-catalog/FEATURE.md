@@ -2,14 +2,7 @@
 status: proposed
 version: 6
 date: 2026-10-24
-description: Type catalog of the abstract widget data base and the 9 widget data types derived from it, one per widget kind, each the response of a widget's own data request to the consuming backend, declared by dashboard-viewer.
-changelog:
-  - "v6 (2026-10-24): traces `cpt-frontx-dashboard-fr-generated-dashboards` (p2); the data types named by each kind complete the validation of a generated definition."
-  - "v5 (2026-10-24): params model and GTS v0.17. New abstract base `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); the 9 shapes derive from it, so their identifiers become `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.<kind>.v1~`. Widget data carries no `id`: the backend computes it on each widget data request (sent with the widget kind and its `params`), and the widget validates it against its kind's `data_type` trait. `x-gts-ref` is no longer used."
-  - "v4 (2026-10-23): each widget requests its own data; a shape is the response of that request, not part of the dashboard payload. Removed the code_diff, thread_list, event_timeline and metadata_strip shapes (9 shapes remain). Grid data gains optional row groups. The widget-to-data linking open item is gone."
-  - "v3 (2026-10-23): the dashboard payload is referenced by its DESIGN interface ID; the grid column type no longer drives sort ordering, and grid rows render in the order supplied."
-  - "v2 (2026-10-23): Source lines trace to PRD IDs only."
-  - "v1: initial port from the prototype."
+description: Domain-model types of the abstract widget data base and the 9 widget data types derived from it, one per widget kind, each the response of a widget's own data request to the consuming product backend, declared by dashboard-viewer.
 ---
 
 # Feature: Widget Data Catalog
@@ -23,14 +16,14 @@ changelog:
   - [1.3 Actors](#13-actors)
   - [1.4 References](#14-references)
 - [2. Actor Flows (CDSL)](#2-actor-flows-cdsl)
-  - [Type-Catalog Feature: No Actor Flows](#type-catalog-feature-no-actor-flows)
+  - [Domain-Model Feature: No Actor Flows](#domain-model-feature-no-actor-flows)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
-  - [Type-Catalog Feature: No Processes](#type-catalog-feature-no-processes)
+  - [Domain-Model Feature: No Processes](#domain-model-feature-no-processes)
 - [4. States (CDSL)](#4-states-cdsl)
-  - [Type-Catalog Feature: No State Machines](#type-catalog-feature-no-state-machines)
+  - [Domain-Model Feature: No State Machines](#domain-model-feature-no-state-machines)
 - [5. Definitions of Done](#5-definitions-of-done)
-  - [Type Catalog Definition of Done](#type-catalog-definition-of-done)
-- [6. Type Catalog](#6-type-catalog)
+  - [Domain Model Definition of Done](#domain-model-definition-of-done)
+- [6. Domain Model](#6-domain-model)
   - [6.0 WidgetData (abstract base)](#60-widgetdata-abstract-base)
   - [6.1 SummaryCardData](#61-summarycarddata)
   - [6.2 MetricCardData](#62-metriccarddata)
@@ -52,61 +45,61 @@ changelog:
 
 ### 1.1 Overview
 
-This feature is a **type-catalog feature**, not an actor-flow feature, declared in package `dashboard-viewer`. It enumerates the abstract widget data base `gts.frontx.v.widget_data.widget_data.v1~` and the 9 widget data types derived from it, `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.<kind>.v1~`, one per widget kind. Together they are the backend wire contract for widget data. The dashboard definition carries no widget data, and the backend stores none: each widget's MFE instance requests its own data once, when it mounts, sending its widget kind and its `params`; the backend computes the data from its own data on that request, and the response is one widget data instance of the type its kind names in the `data_type` trait, which the widget renders unchanged. The request goes through the FrontX API package, whose API cache is shared across MFE entries (`cpt-frontx-dashboard-interface-dashboard-payload`; the endpoint and request form are a DESIGN section 4 open item). Its structural prose lives in DESIGN section 3.1; the content lives in section 6 Type Catalog. The sections for flows, processes, and states are reduced to short not-applicable notes. The catalog is ported one-to-one from the prototype, rebased to the FrontX vendor (`gts.de.*` to `gts.frontx.*`).
+This feature is a **domain-model feature**, not an actor-flow feature, declared in package `dashboard-viewer`. It enumerates the abstract widget data base `gts.frontx.v.widget_data.widget_data.v1~` and the 9 widget data types derived from it, `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.<kind>.v1~`, one per widget kind, all under the FrontX vendor `frontx`. Together they are the backend wire contract for widget data. The dashboard definition carries no widget data, and the backend stores none: each widget's MFE instance requests its own data through the FrontX API package once, when it mounts, sending its widget kind and its `params`; the backend computes the data from its own data on that request, and the response is one widget data instance of the type its kind names in the `data_type` trait, which the widget renders unchanged (`cpt-frontx-dashboard-interface-dashboard-payload`; exact specification in feature-backend-contract section 6.2; the path and request form are open item 1 of its section 6.5). A widget's own request for what its larger view needs is answered with the same type. Its structural prose lives in DESIGN section 3.1; the content lives in section 6 Domain Model. The sections for flows, processes, and states are reduced to short not-applicable notes.
 
 ### 1.2 Purpose
 
-Concrete catalog of the widget data types that the consuming backend returns to a widget's data request and that the widget renders, each with its full GTS-typed JSON Schema. It addresses the type catalog and widget catalog of the PRD and the Widget data entity of DESIGN section 3.1. Two kinds have no demo coverage (see section 6). A generated dashboard carries no widget data, but each widget kind it uses names one of these types in its `data_type` trait, so validating the definition relies on them.
+Concrete catalog of the widget data types that the consuming product backend returns to a widget's data request and that the widget renders, each with its full GTS-typed JSON Schema. It addresses the domain model and the widget catalog of the PRD and the Widget data entity of DESIGN section 3.1. A dashboard that the consuming product writes or generates carries no widget data, but each widget kind it uses names one of these types in its `data_type` trait, so validating the dashboard relies on them.
 
-**Requirements**: `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-widget-catalog`, `cpt-frontx-dashboard-fr-generated-dashboards`
+**Requirements**: `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-widget-catalog`, `cpt-frontx-dashboard-fr-backend-source`
 
 **Principles**: `cpt-frontx-dashboard-principle-gts-contracts`
 
 ### 1.3 Actors
 
-N/A. This is a type-catalog feature. The catalog is consumed by the runtime type system (the widget MFEs, which request their widget data from the consuming backend with their kind and `params` and render it), not by an end-user actor, so no actor flows are authored.
+N/A. This is a domain-model feature. The catalog is consumed by the runtime type system (the widget MFEs, which request their widget data from the consuming product backend through the FrontX API package with their kind and `params` and render it), not by an end-user actor, so no actor flows are authored.
 
 ### 1.4 References
 
 - **PRD**: [PRD.md](../../PRD.md)
-- **Design**: [DESIGN.md](../../DESIGN.md) section 3.1 (Domain Model); section 4 (open item: path and request form of a widget's data request)
+- **Design**: [DESIGN.md](../../DESIGN.md) section 3.1 (Domain Model), section 3.3 (Dashboard Definition and Widget Data)
 - **ADRs**: [ADR-0003](../../ADR/0003-shared-data-types-and-schemas-v1.md), [ADR-0005](../../ADR/0005-data-grid-library-v1.md), [ADR-0008](../../ADR/0008-widget-kind-and-mfe-realization-v1.md), [ADR-0009](../../ADR/0009-subject-agnostic-widget-catalog-v1.md), [ADR-0011](../../ADR/0011-backend-delivered-dashboard-v1.md)
 - **Declaring package**: `dashboard-viewer` (`src-app/mfe_packages/dashboard-viewer/`)
-- **Dependencies**: None for authoring; the 9 types derive from the base in section 6.0. Paired with [feature-widget-catalog](../feature-widget-catalog/FEATURE.md): the widget base's `data_type` trait references this base, and each widget kind sets it to its paired type here; the widget data returned for a widget's data request must be an instance of that type. The widget requests its data with its kind and its `params` (feature-widget-catalog section 6.0).
+- **Dependencies**: None for authoring; the 9 types derive from the base in section 6.0. Paired with [feature-widget-catalog](../feature-widget-catalog/FEATURE.md): the widget base's `data_type` trait references this base, and each widget kind sets it to its paired type here; the widget data returned for a widget's data request must be an instance of that type. The widget requests its data through the FrontX API package with its kind and its `params` (feature-widget-catalog section 6.0).
+- **Related**: [feature-backend-contract](../feature-backend-contract/FEATURE.md) (section 6.2, the widget data request and response; section 6.3, widget data that cannot be shown; section 6.5, open item 1 on the path and request form)
 
 ## 2. Actor Flows (CDSL)
 
-### Type-Catalog Feature: No Actor Flows
+### Domain-Model Feature: No Actor Flows
 
-N/A. Type catalog content is consumed at runtime by the type system, not by an actor flow. The catalog lives in section 6.
+N/A. Domain model content is consumed at runtime by the type system, not by an actor flow. The catalog lives in section 6.
 
 ## 3. Processes / Business Logic (CDSL)
 
-### Type-Catalog Feature: No Processes
+### Domain-Model Feature: No Processes
 
 N/A. The catalog declares static GTS schemas. Runtime validation logic lives in the widget MFE bundles, which validate the response of their data request, not in this catalog.
 
 ## 4. States (CDSL)
 
-### Type-Catalog Feature: No State Machines
+### Domain-Model Feature: No State Machines
 
 N/A. Type declarations are stateless.
 
 ## 5. Definitions of Done
 
-### Type Catalog Definition of Done
+### Domain Model Definition of Done
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-widget-data-catalog-catalog-complete`
 
-The system **MUST** author every concrete type of this catalog, ported one-to-one from the prototype and rebased to the FrontX vendor.
+The system **MUST** author every concrete type of this catalog under the FrontX vendor `frontx`.
 
 - Every concrete passes GTS identifier grammar and GTS v0.17 schema validation.
 - The base `gts.frontx.v.widget_data.widget_data.v1~` is `x-gts-abstract: true`, and every one of the 9 types derives from it.
-- Every concrete keeps its prototype schema; only the vendor, namespace, version form, and the derivation from the base change. The grid shape adds optional row groups (section 6.5).
-- Each type is the response of one widget's data request; the dashboard definition carries no widget data, and widget data carries no `id`.
-- The two kinds without widget data in the demo are marked "no demo coverage".
+- Every concrete declares the data its paired widget kind renders, and nothing else. The grid shape carries either flat rows or ordered row groups (section 6.5).
+- Each type is the response of one widget's data request through the FrontX API package; the dashboard definition carries no widget data, and widget data carries no `id`.
 
-## 6. Type Catalog
+## 6. Domain Model
 
 ### 6.0 WidgetData (abstract base)
 
@@ -130,8 +123,6 @@ The system **MUST** author every concrete type of this catalog, ported one-to-on
 **Cross-references**:
 - Derived types: sections 6.1 to 6.9. Each derives through its `$id` chain; because the base adds no constraints beyond `type: object`, their bodies repeat no `$ref` to it (GTS v0.17 section 9.7.5, derivation follows the `$id` chain).
 - Referenced by the `data_type` trait schema of `gts.frontx.m.widget.widget.v1~` (`x-gts-type-ref`).
-
-Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_card`, `progress_list_card`, `grid`, `cartesian_chart`, `pie_chart`, and `heatmap` have widget data in the demo's static widget data. The two kinds `metric_card` and `markdown_card` are marked **no demo coverage**.
 
 ### 6.1 SummaryCardData
 
@@ -208,7 +199,6 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
 **Cross-references**:
 - Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.metric_card.v1~` (in feature-widget-catalog)
-- Demo coverage: none. The demo's static widget data carries no instance of this shape; the paired widget kind `metric_card` has no demo coverage (PRD section 6.3).
 
 ### 6.3 RankedListCardData
 
@@ -311,20 +301,20 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
   "properties": {
     "columns": {
       "type": "array",
-      "description": "Column descriptors. The widget kind's columns references each column's key and adds presentation-only attributes.",
+      "description": "Column descriptors. The widget kind's columns references each column's key and adds presentation-only attributes; a column it does not list is not shown, and a key it lists that is missing here makes the widget data one that cannot be shown.",
       "items": {
 "type": "object",
 "required": ["key", "label", "type"],
 "properties": {
   "key": { "type": "string", "description": "Stable column key." },
   "label": { "type": "string", "description": "Default header label (the widget kind's columns[].label may override)." },
-  "type": { "type": "string", "enum": ["string", "number", "integer", "boolean", "date", "enum"], "description": "Column value type; drives default formatting." }
+  "type": { "type": "string", "enum": ["string", "number", "integer", "boolean", "date", "enum"], "description": "Column value type. Only selects the body alignment when the widget column sets no align: number and integer right-aligned, every other type leading-aligned. Every value shows by plain string conversion and null as an empty cell, with no locale or rich formatting." }
 }
       }
     },
     "rows": {
       "type": "array",
-      "description": "Flat list of tabular row records keyed by column key, rendered in the order supplied; the grid does not sort, group, or paginate them.",
+      "description": "Flat list of tabular row records keyed by column key, rendered in the order supplied; the grid does not sort, group, or paginate them. A record that lacks the key of a displayed column shows an empty cell there; a record may hold further fields, such as the one row_color_by_field reads.",
       "items": { "type": "object" }
     },
     "groups": {
@@ -335,7 +325,7 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
 "required": ["label", "rows"],
 "properties": {
   "label": { "type": "string", "description": "Group heading label." },
-  "rows": { "type": "array", "items": { "type": "object" }, "description": "Row records of this group keyed by column key, rendered in the order supplied." }
+  "rows": { "type": "array", "items": { "type": "object" }, "description": "Row records of this group keyed by column key, rendered in the order supplied, under the same rules as the flat rows." }
 }
       }
     }
@@ -346,8 +336,10 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
 **Cross-references**:
 - Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~` (in feature-widget-catalog)
-- Source: `cpt-frontx-dashboard-fr-grid-presentation` anchors the optional row groups.
-- Large grids: the grid renders 500 to 5,000 rows without paging, using virtualized row rendering (ADR-0005).
+- Source: `cpt-frontx-dashboard-fr-widget-catalog` anchors the grid shape with its optional row groups; `cpt-frontx-dashboard-nfr-large-table` anchors large grids.
+- Presentation: how the grid shows these rows and groups, including frozen columns, column groups, row coloring, and group heading rows, is specified with the `grid` kind (feature-widget-catalog section 6.5).
+- Key checks: when a key of the widget's `columns` is absent from these `columns`, or the response carries both `rows` and `groups`, the widget data cannot be shown: an error state in that widget with a diagnostic, nothing of the response rendered, and no Retry (feature-widget-catalog section 6.5; feature-backend-contract section 6.3).
+- Large grids: the grid shows up to 5,000 rows, counted across all groups, without paging and stays responsive while the viewer scrolls (`cpt-frontx-dashboard-nfr-large-table`; feature-widget-catalog section 6.5).
 
 ### 6.6 CartesianChartData
 
@@ -492,7 +484,7 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
   "properties": {
     "markdown": {
       "type": "string",
-      "description": "Markdown body rendered by the widget kind. Authoring-time normalization (e.g., GitHub-flavored markdown extensions) is the backend's responsibility; the widget kind treats the value as opaque markdown source."
+      "description": "Markdown body rendered by the widget kind. Authoring-time normalization (e.g., GitHub-flavored markdown extensions) is the backend's responsibility. The widget kind renders it as markdown source in which raw HTML is not rendered as HTML, only http, https, and mailto link targets are links (others render as plain text), images are not loaded (an image shows its alt text, or nothing when it has none), raw HTML shows as literal text, and links open in a new browsing context without access to the opener (feature-widget-catalog section 6.9)."
     },
     "metadata": {
       "type": ["object", "null"],
@@ -510,16 +502,15 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
 - Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.markdown_card.v1~` (in feature-widget-catalog)
 - Source: `cpt-frontx-dashboard-fr-widget-catalog`.
-- Demo coverage: none. The demo's static widget data carries no instance of this shape; the paired widget kind `markdown_card` has no demo coverage (PRD section 6.3).
 
 ## 7. Acceptance Criteria
 
 - [ ] Every concrete listed in section 6 is authored with its full JSON Schema.
 - [ ] Every identifier follows GTS grammar, and every type validates under GTS v0.17.
-- [ ] No identifier uses the prototype vendor `de` or the `hai3` namespace.
+- [ ] Every identifier uses the FrontX vendor `frontx`.
 - [ ] `cfs validate --artifact` reports no structural errors for this document.
 - [ ] Exactly 9 types are authored, one per widget kind, each derived from the abstract base `gts.frontx.v.widget_data.widget_data.v1~`, which is authored too.
 - [ ] No widget data type declares an `id` field.
 - [ ] Each shape is described as the response of a widget's own data request; no shape is described as part of the dashboard definition.
-- [ ] The grid shape accepts either flat `rows` or ordered `groups`, each group with a label and its rows.
-- [ ] The two shapes for `metric_card` and `markdown_card` are marked "no demo coverage".
+- [ ] Given a grid response whose Widget Data `columns` lack a key that the widget's `columns` lists, when the grid loads it, then the widget data cannot be shown: an error state in that widget with a diagnostic naming the key, and no Retry (feature-widget-catalog section 6.5).
+- [ ] The grid shape accepts either flat `rows` or ordered `groups`, each group with a label and its rows, and rejects a response that carries both.

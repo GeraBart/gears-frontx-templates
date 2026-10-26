@@ -2,13 +2,7 @@
 status: proposed
 version: 5
 date: 2026-10-24
-description: Type catalog of the template MFE entry type with realizes, the widget manifest, and the 9 widget entries declared by dashboard-widgets, plus the viewer manifest, viewer and modal container entries, and the Viewer host routed extension declared by dashboard-viewer.
-changelog:
-  - "v5 (2026-10-24): params model and GTS v0.17. The template ships one widget MFE per kind (9 in all), and each requests its own widget data from the consuming backend with its kind and `params`; the shared API cache key is the kind plus canonical `params`. `realizes` uses `x-gts-type-ref` instead of `x-gts-ref`. New open question: entry lookup for widget types a consuming product derives from a kind."
-  - "v4 (2026-10-23): 9 widget entries (code_diff, thread_list, event_timeline and metadata_strip removed); widget entries list `set_subject` only, since `set_data` is gone and each widget requests its own data through the FrontX API package, whose API cache is shared across MFE entries. Section references into feature-extension-domain-catalog updated (theme payload 6.8, modal container extension 6.7)."
-  - "v3 (2026-10-23): fixed section references into feature-extension-domain-catalog (theme payload 6.9, modal container extension 6.8)."
-  - "v2 (2026-10-23): render-only scope cut."
-  - "v1 (2026-10-07): initial port from the prototype."
+description: Domain model of the template MFE entry type with realizes, the widget manifest, and the 9 widget entries declared by dashboard-widgets, plus the viewer manifest, viewer and modal container entries, and the Viewer host routed extension declared by dashboard-viewer.
 ---
 
 # Feature: MFE Entries
@@ -22,14 +16,14 @@ changelog:
   - [1.3 Actors](#13-actors)
   - [1.4 References](#14-references)
 - [2. Actor Flows (CDSL)](#2-actor-flows-cdsl)
-  - [Type-Catalog Feature: No Actor Flows](#type-catalog-feature-no-actor-flows)
+  - [Domain-Model Feature: No Actor Flows](#domain-model-feature-no-actor-flows)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
-  - [Type-Catalog Feature: No Processes](#type-catalog-feature-no-processes)
+  - [Domain-Model Feature: No Processes](#domain-model-feature-no-processes)
 - [4. States (CDSL)](#4-states-cdsl)
-  - [Type-Catalog Feature: No State Machines](#type-catalog-feature-no-state-machines)
+  - [Domain-Model Feature: No State Machines](#domain-model-feature-no-state-machines)
 - [5. Definitions of Done](#5-definitions-of-done)
-  - [Type Catalog Definition of Done](#type-catalog-definition-of-done)
-- [6. Type Catalog](#6-type-catalog)
+  - [Domain Model Definition of Done](#domain-model-definition-of-done)
+- [6. Domain Model](#6-domain-model)
   - [6.1 Template MFE Entry Type](#61-template-mfe-entry-type)
   - [6.2 Widget Manifest](#62-widget-manifest)
   - [6.3 Widget Entries](#63-widget-entries)
@@ -48,17 +42,17 @@ changelog:
 
 ### 1.1 Overview
 
-This is a **type-catalog feature**, not an actor-flow feature. It defines the template MFE entry type, which extends the FrontX Module Federation entry with one pointer to the widget kind the entry realizes, and it enumerates the entry and manifest instances the template ships. The flow, process, and state sections of the FEATURE template are reduced to short not-applicable notes; the catalog content lives in section 6 Type Catalog.
+This is a **domain-model feature**, not an actor-flow feature. It defines the template MFE entry type, which extends the FrontX Module Federation entry with one pointer to the widget kind the entry realizes, and it enumerates the entry and manifest instances the template ships. The flow, process, and state sections of the FEATURE template are reduced to short not-applicable notes; the types and instances live in section 6 Domain Model.
 
 ### 1.2 Purpose
 
-Concrete catalog of the "MFE entry" family of DESIGN section 3.1, ported from the prototype with rebased identifiers (`gts.hai3.mfes.*` to `gts.frontx.mfes.*`, `gts.de.v.*` to `gts.frontx.v.*`, `gts.de.m.*` to `gts.frontx.m.*`, every identifier at `v1`). DESIGN section 3.1 delegates the field-level schemas of these types and instances to this document, so section 6 carries them.
+Concrete types and instances of the "MFE entry" family of DESIGN section 3.1. Every identifier builds on the FrontX MFE base types (`gts.frontx.mfes.*`) and uses the template's `frontx` vendor namespaces (`gts.frontx.v.*`, `gts.frontx.m.*`), with every template segment at `v1`. DESIGN section 3.1 delegates the field-level schemas of these types and instances to this document, so section 6 carries them.
 
-Deltas against the prototype, all decided in the DESIGN and ADR-0008:
+The entries follow the DESIGN and ADR-0008:
 
-- The template ships the widget MFEs for all 9 widget kinds, one entry per kind. Each widget MFE gets its own data from the consuming backend: it sends its widget kind (type identifier) and its `params` in a widget data request and receives one widget data instance of its kind's `data_type`.
-- One widget manifest `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.v.widgets.manifest.v1` is defined here, and all 9 widget entries point to it. The prototype pointed each entry to its own manifest.
-- The `dashboard-viewer` package entries are listed here as well: the viewer manifest, the viewer entry, the modal container entry, and the Viewer host routed extension. The prototype had no such entries, because its viewer was an application of its own.
+- The template ships the widget MFEs for all 9 widget kinds, one entry per kind. Each widget MFE requests its own data from the consuming product backend through the FrontX API package: it sends its widget kind (type identifier) and its `params` in a widget data request and receives one widget data instance of its kind's `data_type`.
+- One widget manifest `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.v.widgets.manifest.v1` is defined here, and all 9 widget entries point to it.
+- The `dashboard-viewer` package entries are listed here as well: the viewer manifest, the viewer entry, the modal container entry, and the Viewer host routed extension.
 - Per-instance isolation; Module Federation is used for bundling only, as a template assumption.
 
 **Declaring packages**:
@@ -71,7 +65,7 @@ Deltas against the prototype, all decided in the DESIGN and ADR-0008:
 
 ### 1.3 Actors
 
-N/A. This is a type-catalog feature. The catalog is consumed by the runtime type system and by the registration path of the host and the Viewer host (the manifest channel), not by an end-user actor, so no actor flows are authored.
+N/A. This is a domain-model feature. Its types and instances are consumed by the runtime type system and by the registration path of the host and the Viewer host (the manifest channel), not by an end-user actor, so no actor flows are authored.
 
 ### 1.4 References
 
@@ -83,27 +77,27 @@ N/A. This is a type-catalog feature. The catalog is consumed by the runtime type
 
 ## 2. Actor Flows (CDSL)
 
-**Use cases**: `cpt-frontx-dashboard-usecase-explore-dashboard`, `cpt-frontx-dashboard-usecase-adopt-template`
+**Use cases**: `cpt-frontx-dashboard-usecase-explore-dashboard`
 
-### Type-Catalog Feature: No Actor Flows
+### Domain-Model Feature: No Actor Flows
 
-Not applicable because this feature declares static GTS types and instances; no actor interacts with the catalog itself. The runtime paths that use these instances are the manifest channel registration (DESIGN section 3.5) and the kind-to-entry lookup in `cpt-frontx-dashboard-seq-initial-load`.
+Not applicable because this feature declares static GTS types and instances; no actor interacts with the declarations themselves. The runtime paths that use these instances are the manifest channel registration (DESIGN section 3.5) and the kind-to-entry lookup in `cpt-frontx-dashboard-seq-initial-load`.
 
 ## 3. Processes / Business Logic (CDSL)
 
-### Type-Catalog Feature: No Processes
+### Domain-Model Feature: No Processes
 
-Not applicable because the catalog declares schemas and instances only. Registration is done by the shell bootstrap and the Viewer host from the manifest channel, and the kind-to-entry lookup through `realizes:` is part of the Viewer host (DESIGN `cpt-frontx-dashboard-component-viewer-host`).
+Not applicable because this feature declares schemas and instances only. Registration is done by the shell bootstrap and the Viewer host from the manifest channel, and the kind-to-entry lookup through `realizes:` is part of the Viewer host (DESIGN `cpt-frontx-dashboard-component-viewer-host`).
 
 ## 4. States (CDSL)
 
-### Type-Catalog Feature: No State Machines
+### Domain-Model Feature: No State Machines
 
 Not applicable because type and instance declarations are stateless. The extension lifecycle stages are declared by the domains in `feature-extension-domain-catalog`.
 
 ## 5. Definitions of Done
 
-### Type Catalog Definition of Done
+### Domain Model Definition of Done
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-mfe-entries-catalog-complete`
 
@@ -123,7 +117,7 @@ The system **MUST** register the entry type, the two manifests, the 11 entry ins
 **Touches**:
 - Entities: template MFE entry type, widget manifest, viewer manifest, widget entries, viewer entry, modal container entry, Viewer host routed extension
 
-## 6. Type Catalog
+## 6. Domain Model
 
 ### 6.1 Template MFE Entry Type
 
@@ -155,7 +149,7 @@ The system **MUST** register the entry type, the two manifests, the 11 entry ins
 
 **Inheritance notes**:
 - Inherited FrontX fields: `id`, `requiredProperties`, optional `optionalProperties`, `actions`, `domainActions` (entry base), and `manifest`, `exposedModule`, `exposeAssets` (`entry_mf`). They are not redeclared.
-- `realizes` holds a type identifier, so it uses `x-gts-type-ref` (GTS v0.17 section 9.6.1) with the wildcard operand `gts.frontx.m.widget.widget.v1~*`, which accepts every kind derived from the widget base and not the abstract base itself. The prototype named the base type itself, which no concrete kind identifier matches; this is a correction made with the rebase.
+- `realizes` holds a type identifier, so it uses `x-gts-type-ref` (GTS v0.17 section 9.6.1) with the wildcard operand `gts.frontx.m.widget.widget.v1~*`, which accepts every kind derived from the widget base and not the abstract base itself.
 
 **Cross-references**: DESIGN section 3.1 (MFE entry, `m` and `v` split); widget kinds in `feature-widget-catalog`; ADR-0008.
 
@@ -163,7 +157,7 @@ The system **MUST** register the entry type, the two manifests, the 11 entry ins
 
 **GTS instance ID**: `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.v.widgets.manifest.v1`
 
-**Description**: The single FrontX Module Federation manifest of the `dashboard-widgets` package. All 9 widget entries point to it. It is new in the template; the prototype had one manifest per entry.
+**Description**: The single FrontX Module Federation manifest of the `dashboard-widgets` package. All 9 widget entries point to it.
 
 | Field | Source | Content |
 |-------|--------|---------|
@@ -197,8 +191,8 @@ The aggregate reaches every registry through the manifest channel; the shell boo
 - `requiredProperties`: theme only, which every template domain provides. The value widgets read is the template theme payload (`feature-extension-domain-catalog`, section 6.8).
 - `actions`: `set_subject`. This covers the extension actions of both template domains, so every entry is admitted to `layout_cells` and `modal_panel` (FrontX ADR-0010).
 - `domainActions`: empty; an entry requires no domain action.
-- Widget data: no entry action carries widget data. Each widget MFE instance requests its own data from the consuming backend once, when it mounts, sending its widget kind and its `params`, through the FrontX API package, whose API cache is shared across MFE entries; the cache key is the kind plus the canonical form of `params` (`feature-widget-catalog`, section 6.0). The response is validated against the kind's `data_type`. The endpoint location comes from configuration; its path, request form, and cache options are a DESIGN section 4 open item.
-- `exposeAssets` is not authored: the host manifest pipeline populates it at registration time (FrontX `entry_mf`). The prototype listed it with empty arrays.
+- Widget data: no entry action carries widget data. Each widget MFE instance requests its own data from the consuming product backend through the FrontX API package, sending its widget kind and its `params` (`feature-widget-catalog`, section 6.0): in a cell once when it mounts and again only on Retry after a failure, and in its larger view whenever that view needs data. The response is validated against the kind's `data_type`. The endpoint location comes from configuration; the path and request form are open item 1 of `cpt-frontx-dashboard-feature-backend-contract` section 6.5.
+- `exposeAssets` is not authored: the host manifest pipeline populates it at registration time (FrontX `entry_mf`).
 
 **Entry instances** (identifier prefix `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.v.mfe.entry.v1~`; `realizes` prefix `gts.frontx.m.widget.widget.v1~`):
 
@@ -216,7 +210,9 @@ The aggregate reaches every registry through the manifest channel; the shell boo
 
 For example, row 5 is the instance `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.v.mfe.entry.v1~frontx.v.grid.v1`, which realizes `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~`.
 
-**Cross-references**: DESIGN `cpt-frontx-dashboard-component-widget-library`; widget kinds in `feature-widget-catalog` (two kinds have no demo coverage there, which does not affect their entries).
+The template ships exactly one entry per widget kind. A widget kind with no entry, or with more than one, is a configuration error that the Viewer host handles per cell (`feature-extension-domain-catalog` section 3).
+
+**Cross-references**: DESIGN `cpt-frontx-dashboard-component-widget-library`; widget kinds in `feature-widget-catalog`.
 
 ### 6.4 Viewer Package Entries (declared by `dashboard-viewer`)
 
@@ -260,14 +256,14 @@ The Viewer host reads the host theme id, which it maps to a mode, and the host l
 
 It requires theme and language, which the host modal domain shares, and declares no custom actions, because the host modal domain requires none. The container reads the host theme id through the theme shared property, not through entry actions, and applies the template's own theme.
 
-**Viewer host routed extension**: `gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.v.screens.viewer.v1`, an instance of the shell screen extension type, declared in the `dashboard-viewer` manifest and registered by the host bootstrap from the manifest channel.
+**Viewer host routed extension**: `gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.v.screens.viewer.v1`, an instance of the shell screen extension type, declared in the `dashboard-viewer` manifest and registered by the host bootstrap from the manifest channel. It is a routed extension in the sense of FrontX ADR-0036; the `route` field, the screen extension type, and the dashboard instance identifier in the route are template design.
 
 | Field | Value |
 |-------|-------|
 | `id` | `gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.v.screens.viewer.v1` |
 | `domain` | the host screen domain by role; as a manifest-declared extension it carries the current `template-shell` identifier `gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1`, or is generated from the shell constant at build time |
 | `entry` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.v.mfe.viewer.v1` |
-| `route` | a route (`Extension.route`, FrontX ADR-0036) that carries the dashboard instance identifier; required by the screen extension type |
+| `route` | a route that carries the dashboard instance identifier; required by the screen extension type |
 | `presentation` | a `label`, required by the screen extension type |
 
 **Cross-references**: DESIGN section 3.1 (ID-form convention), `cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-component-modal-container`, host contract in section 3.5 (`cpt-frontx-dashboard-constraint-role-based-host-ids`); ADR-0010.
@@ -284,19 +280,19 @@ It requires theme and language, which the host modal domain shares, and declares
 
 ### 6.6 Isolation and Packaging Notes
 
-**Description**: Packaging rules that apply to every entry in this catalog.
+**Description**: Packaging rules that apply to every entry of this feature.
 
-- FrontX gives every MFE load its own module graph (FrontX ADR-0011), so no library, store, or theme object of the template is shared between MFE instances, and no package declares shared singletons (`cpt-frontx-dashboard-principle-per-instance-isolation`). Widget data requests go through the FrontX API package, whose API cache is shared across MFE entries and keyed by widget kind plus canonical `params`, so identical data requests, such as the modal instance's, are served from that cache.
-- Module Federation is used only as the bundling format, and FrontX resolves dependencies itself. This is a template assumption from the product owner, not a statement of FrontX ADR-0011.
-- Each chart widget instance loads and evaluates its own ECharts, and each `grid` instance its own TanStack Table; the bundle budget counts them per instance (DESIGN section 3.9). FrontX ADR-0034 source reuse saves repeated fetches, not repeated evaluation.
+- FrontX gives every MFE load its own module graph (FrontX ADR-0011), so no library, store, or theme object of the template is shared between MFE instances, and no package declares shared singletons (`cpt-frontx-dashboard-principle-per-instance-isolation`). Each widget requests its own data through the FrontX API package.
+- Module Federation is used only as the bundling format, and FrontX resolves dependencies itself. This is a template assumption.
+- Each chart widget instance evaluates its own ECharts, and each `grid` instance its own TanStack Table, because evaluation is per MFE instance (FrontX ADR-0011). The source text of a dependency can be fetched once and reused across instances only when the MFE build publishes its content hash and lists it as a shared dependency (FrontX ADR-0034); this saves repeated fetches, not repeated evaluation. How the bundle budget accounts for both is set in DESIGN section 3.9.
 - Consumer widget kinds ship as separate packages with their own manifest and entries of the template entry type.
 - `dashboard-widgets` depends on `dashboard-viewer` only for GTS identifiers; `dashboard-viewer` reaches the widget entries only at run time through `realizes:` (DESIGN section 3.4).
 
 ### 6.7 Open Questions
 
 - **Routed extension route and label.** The DESIGN fixes that the route carries the dashboard instance identifier but not the route pattern or the presentation label of the Viewer host routed extension; both are fixed with the routing setup of `dashboard-viewer`.
-- **Entry for consumer-derived widget types.** A consuming product may derive a widget type from a kind to close its `params` (for example `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~acme.gh.widget.pr_list.v1~`). How the Viewer host resolves such a type to the entry that realizes the kind it derives from is not fixed yet (DESIGN section 4).
-- **Viewer entry module name.** The DESIGN names the container's exposed module (`./modal-container`) but not the viewer entry's; this catalog uses `./viewer`, to be confirmed at implementation.
+- **Entry for consumer-derived widget types.** A consuming product may derive a widget type from a kind to close its `params` (for example `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~acme.gh.widget.pr_list.v1~`). How the Viewer host resolves such a type to the entry that realizes the kind it derives from is not fixed yet. The consumer widget type itself is specified in `cpt-frontx-dashboard-feature-backend-contract` section 6.4, and how it reaches the browser is open item 3 of section 6.5 there. Owner: template architect.
+- **Viewer entry module name.** The DESIGN names the container's exposed module (`./modal-container`) but not the viewer entry's; this feature uses `./viewer`, to be confirmed at implementation.
 
 ## 7. Acceptance Criteria
 
@@ -307,5 +303,5 @@ It requires theme and language, which the host modal domain shares, and declares
 - [ ] Every widget entry requires only the theme shared property, lists only `set_subject` in `actions`, has an empty `domainActions`, and is admitted to `layout_cells` and `modal_panel`.
 - [ ] The viewer entry and the modal container entry are FrontX `entry_mf` instances without `realizes`, point to the viewer manifest, require theme and language, and declare no custom actions.
 - [ ] The Viewer host routed extension is an instance of the shell screen extension type in the host screen domain with a route that carries the dashboard instance identifier.
-- [ ] Every identifier in this catalog follows the template ID-form convention: types end with `~`, instances do not, and every template segment is at `v1`.
+- [ ] Every identifier of this feature follows the template ID-form convention: types end with `~`, instances do not, and every template segment is at `v1`.
 - [ ] Build review confirms that no package declares shared singletons.

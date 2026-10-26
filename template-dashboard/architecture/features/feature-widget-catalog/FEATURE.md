@@ -2,14 +2,7 @@
 status: proposed
 version: 6
 date: 2026-10-24
-description: Type catalog of the abstract Widget base and the 9 subject-agnostic widget kinds declared by dashboard-viewer, each naming its widget data type through the data_type trait.
-changelog:
-  - "v6 (2026-10-24): traces `cpt-frontx-dashboard-fr-generated-dashboards` (p2); the widget types let a generated definition be validated."
-  - "v5 (2026-10-24): params model and GTS v0.17. The Widget base is `x-gts-abstract`, declares `id` (combined anonymous instance identifier, `x-gts-instance-ref: \"/$id\"`), `title`, and `params` (open object) and drops `data_ref`; it declares the `data_type` trait through `x-gts-traits-schema`, and each kind sets it through `x-gts-traits` to its widget data type. Paired data type identifiers now derive from the abstract widget data base. A consuming product may derive widget types that close `params`. `x-gts-ref` is no longer used."
-  - "v4 (2026-10-23): each widget requests its own data. The Widget base gains the data reference `data_ref`; `set_data` is gone. Removed the code_diff, thread_list, event_timeline and metadata_strip kinds (9 kinds remain). Grid columns lose `renderer` (cells show their value as text); the renderer catalog dependency is gone. Removed the display-limit fields max_items, hidden_series, hidden_segments and truncate_at_lines, and the open question on content beyond caps: the backend supplies exactly what is shown."
-  - "v3 (2026-10-23): render-only presentation. Removed the grid's client-side sort and pagination fields (default_sort, page_size); the grid shows rows in the order the backend supplies. Configuration fields that described in-browser toggles or expand controls now state a fixed presentation set by the layout configuration. Overflow beyond configured caps is an open question (section 6.14)."
-  - "v2 (2026-10-23): Source lines trace to PRD IDs only; removed the pull-request detail modal citations and restated PRD requirement text."
-  - "v1: initial port from the prototype."
+description: Domain-model types of the abstract Widget base and the 9 subject-agnostic widget kinds declared by dashboard-viewer, each naming its widget data type through the data_type trait.
 ---
 
 # Feature: Widget Catalog
@@ -23,14 +16,14 @@ changelog:
   - [1.3 Actors](#13-actors)
   - [1.4 References](#14-references)
 - [2. Actor Flows (CDSL)](#2-actor-flows-cdsl)
-  - [Type-Catalog Feature: No Actor Flows](#type-catalog-feature-no-actor-flows)
+  - [Domain-Model Feature: No Actor Flows](#domain-model-feature-no-actor-flows)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
-  - [Type-Catalog Feature: No Processes](#type-catalog-feature-no-processes)
+  - [Domain-Model Feature: No Processes](#domain-model-feature-no-processes)
 - [4. States (CDSL)](#4-states-cdsl)
-  - [Type-Catalog Feature: No State Machines](#type-catalog-feature-no-state-machines)
+  - [Domain-Model Feature: No State Machines](#domain-model-feature-no-state-machines)
 - [5. Definitions of Done](#5-definitions-of-done)
-  - [Type Catalog Definition of Done](#type-catalog-definition-of-done)
-- [6. Type Catalog](#6-type-catalog)
+  - [Domain Model Definition of Done](#domain-model-definition-of-done)
+- [6. Domain Model](#6-domain-model)
   - [6.0 Widget (abstract base)](#60-widget-abstract-base)
   - [6.1 SummaryCard](#61-summarycard)
   - [6.2 MetricCard](#62-metriccard)
@@ -52,72 +45,71 @@ changelog:
 
 ### 1.1 Overview
 
-This feature is a **type-catalog feature**, not an actor-flow feature, declared in package `dashboard-viewer`. It enumerates the abstract Widget base and the 9 concrete widget kinds `gts.frontx.m.widget.widget.v1~frontx.m.widget.<kind>.v1~`; the template ships one widget MFE per kind (`feature-mfe-entries`). Its structural prose lives in DESIGN section 3.1; the content lives in section 6 Type Catalog. The sections for flows, processes, and states are reduced to short not-applicable notes. The catalog is ported from the prototype, rebased to the FrontX vendor (`gts.de.*` to `gts.frontx.*`), minus the prototype's client-side operations (see section 5).
+This feature is a **domain-model feature**, not an actor-flow feature, declared in package `dashboard-viewer`. It enumerates the abstract Widget base and the 9 concrete widget kinds `gts.frontx.m.widget.widget.v1~frontx.m.widget.<kind>.v1~`, all under the FrontX vendor `frontx`; the template ships one widget MFE per kind (`feature-mfe-entries`). Its structural prose lives in DESIGN section 3.1; the content lives in section 6 Domain Model. The sections for flows, processes, and states are reduced to short not-applicable notes. No kind declares a client-side operation (see section 5).
 
 ### 1.2 Purpose
 
-Concrete catalog of the widget kinds the Viewer host recognises at runtime, each with its full GTS-typed JSON Schema, plus the abstract Widget base with its shared fields `id`, `title`, and `params` and its `data_type` trait. A widget instance is presentation configuration plus `params`. The backend supplies every widget instance inline in the layout cells of the dashboard definition; the definition may be authored or generated by the consuming product, and it validates against these types. Each widget then requests its own widget data with its kind and its `params` and only renders what it receives, an instance of the data type its kind names in the `data_type` trait. The template keeps `params` open and gives it no meaning; a consuming product may derive a widget type from a kind that closes the `params` schema (ADR-0009). Every kind inherits the "open in modal" affordance from the shared widget chrome: one button that opens a new instance of the same widget, with the same configuration, in the modal. The affordance is chrome behavior, not a schema field. It addresses the widget library, the widget modal and the type catalog of the PRD and the Widget entity of DESIGN section 3.1. Two kinds have no demo coverage (see section 6). For a generated dashboard, these types let the consuming project validate each widget and its `params` before the dashboard is shown.
+Concrete catalog of the widget kinds the Viewer host recognises at runtime, each with its full GTS-typed JSON Schema, plus the abstract Widget base with its shared fields `id`, `title`, and `params` and its `data_type` trait. A widget instance is presentation configuration plus `params`. The backend supplies every widget instance inline in the layout cells of the dashboard definition; the definition may be authored or generated by the consuming product, and it validates against these types. Each widget then requests its own widget data through the FrontX API package with its kind and its `params` and only renders what it receives, an instance of the data type its kind names in the `data_type` trait (feature-backend-contract section 6.2). The template keeps `params` open and gives it no meaning; a consuming product may derive a widget type from a kind that closes the `params` schema (ADR-0009). Every kind inherits the larger-view affordance from the shared widget chrome: one button that opens the widget in its larger view, in the modal. What the larger view shows, and its data, are that widget's implementation detail; the widget may make its own data request for it through the FrontX API package. The affordance is chrome behavior, not a schema field. The `grid` kind also fixes the grid presentation: frozen columns, column groups, row coloring, row groups, and large grids without paging (section 6.5). It addresses the widget catalog, the larger view, the large-table target and the domain model of the PRD and the Widget entity of DESIGN section 3.1. For a dashboard that the consuming product writes or generates, these types let the consuming product validate each widget and its `params` before the dashboard is shown.
 
-**Requirements**: `cpt-frontx-dashboard-fr-widget-catalog`, `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-grid-presentation`, `cpt-frontx-dashboard-fr-widget-modal`, `cpt-frontx-dashboard-fr-backend-source`, `cpt-frontx-dashboard-fr-loading-error-states`, `cpt-frontx-dashboard-fr-generated-dashboards`
+**Requirements**: `cpt-frontx-dashboard-fr-widget-catalog`, `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-widget-modal`, `cpt-frontx-dashboard-fr-backend-source`, `cpt-frontx-dashboard-fr-loading-error-states`, `cpt-frontx-dashboard-nfr-large-table`
 
 **Principles**: `cpt-frontx-dashboard-principle-gts-contracts`, `cpt-frontx-dashboard-principle-per-instance-isolation`
 
 ### 1.3 Actors
 
-N/A. This is a type-catalog feature. The catalog is consumed by the runtime type system (the Viewer host and the widget MFEs), not by an end-user actor, so no actor flows are authored.
+N/A. This is a domain-model feature. The catalog is consumed by the runtime type system (the Viewer host and the widget MFEs), not by an end-user actor, so no actor flows are authored.
 
 ### 1.4 References
 
 - **PRD**: [PRD.md](../../PRD.md)
 - **Design**: [DESIGN.md](../../DESIGN.md) section 3.1 (Domain Model)
-- **ADRs**: [ADR-0003](../../ADR/0003-shared-data-types-and-schemas-v1.md), [ADR-0004](../../ADR/0004-charting-library-v1.md), [ADR-0005](../../ADR/0005-data-grid-library-v1.md), [ADR-0007](../../ADR/0007-extension-domain-taxonomy-v1.md), [ADR-0008](../../ADR/0008-widget-kind-and-mfe-realization-v1.md), [ADR-0009](../../ADR/0009-subject-agnostic-widget-catalog-v1.md), [ADR-0011](../../ADR/0011-backend-delivered-dashboard-v1.md)
+- **ADRs**: [ADR-0003](../../ADR/0003-shared-data-types-and-schemas-v1.md), [ADR-0004](../../ADR/0004-charting-library-v1.md), [ADR-0005](../../ADR/0005-data-grid-library-v1.md), [ADR-0006](../../ADR/0006-theme-distribution-v1.md), [ADR-0007](../../ADR/0007-extension-domain-taxonomy-v1.md), [ADR-0008](../../ADR/0008-widget-kind-and-mfe-realization-v1.md), [ADR-0009](../../ADR/0009-subject-agnostic-widget-catalog-v1.md), [ADR-0011](../../ADR/0011-backend-delivered-dashboard-v1.md)
 - **Declaring package**: `dashboard-viewer` (`src-app/mfe_packages/dashboard-viewer/`)
 - **Dependencies**: [feature-widget-data-catalog](../feature-widget-data-catalog/FEATURE.md) (the `data_type` trait references the widget data base, and each kind names its paired widget data type). Consumed by the layout and extension-domain features, which embed widget instances and realize kinds through `realizes:`.
+- **Related**: [feature-backend-contract](../feature-backend-contract/FEATURE.md) (section 6.2, the widget data request and response, including a widget's own request for its larger view; section 6.4, consumer widget types; section 6.5, open items)
 
 ## 2. Actor Flows (CDSL)
 
-### Type-Catalog Feature: No Actor Flows
+### Domain-Model Feature: No Actor Flows
 
-N/A. Type catalog content is consumed at runtime by the type system, not by an actor flow. The catalog lives in section 6.
+N/A. Domain model content is consumed at runtime by the type system, not by an actor flow. The catalog lives in section 6.
 
 ## 3. Processes / Business Logic (CDSL)
 
-### Type-Catalog Feature: No Processes
+### Domain-Model Feature: No Processes
 
 N/A. The catalog declares static GTS schemas. Runtime validation logic lives in the Viewer host and the widget MFE bundles, not in this catalog.
 
 ## 4. States (CDSL)
 
-### Type-Catalog Feature: No State Machines
+### Domain-Model Feature: No State Machines
 
 N/A. Type declarations are stateless.
 
 ## 5. Definitions of Done
 
-### Type Catalog Definition of Done
+### Domain Model Definition of Done
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-widget-catalog-catalog-complete`
 
-The system **MUST** author every concrete type of this catalog, ported one-to-one from the prototype and rebased to the FrontX vendor.
+The system **MUST** author every concrete type of this catalog under the FrontX vendor `frontx`, and every `grid` widget **MUST** show its data with the grid presentation of section 6.5.
 
 - Every concrete passes GTS identifier grammar and GTS v0.17 schema validation, including its `x-gts-type-ref` and `x-gts-instance-ref` operands and trait completeness (OP#13).
-- Every concrete keeps its prototype schema; only the vendor, namespace, and version form are rebased, fields for client-side operations, display limits, and cell renderers are removed, and the Widget base adds `id` and `params`.
+- Every concrete declares presentation fields only: no kind declares a field for client-side operations, display limits, or cell renderers. The Widget base declares `id`, `title`, and `params`.
 - The Widget base is `x-gts-abstract: true` and declares the required `data_type` trait; each of the 9 kinds sets `data_type` through `x-gts-traits` to its paired widget data type.
 - Widget instance identifiers are combined anonymous instance identifiers (the type chain followed by a UUID the backend generates); no widget declares a separate `type` field.
 - Presentation is fixed by the widget configuration delivered in the layout: no kind declares a field for client-side sorting, grouping, pagination, display limits, or any other in-browser change of data or presentation. The backend supplies exactly what is shown. The `grid` kind shows rows, and row groups when supplied, in the order the backend supplies; `column_groups` only labels contiguous columns in the header; grid cells show their value as text.
-- The Widget base declares `id`, `title`, and `params` as its shared fields and declares no drill-down field. `params` is an open object whose meaning belongs to the consuming product. Each widget requests its own data once, when it mounts, with its kind and its `params`.
-- Every kind inherits the "open in modal" affordance from the shared widget chrome: one button that opens a new instance of the same widget, with the same configuration, in the modal. No schema field declares it.
-- The two kinds that the demo dashboard does not show are marked "no demo coverage".
+- The `grid` kind keeps its first `frozen_columns` columns visible during horizontal scrolling, shows each column group as one header label above its columns, tints rows by `row_color_by_field` with the `row_tints` colors (for `generic`, also the `chart_categorical` colors) of the active palette of the template theme, shows one heading row per supplied row group, and shows up to 5,000 rows without paging while staying responsive (`cpt-frontx-dashboard-nfr-large-table`), as section 6.5 specifies.
+- The Widget base declares `id`, `title`, and `params` as its shared fields and declares no drill-down field. `params` is an open object whose meaning belongs to the consuming product. Each widget requests its own data through the FrontX API package once, when it mounts, with its kind and its `params`; after render its only other requests are Retry after a failure and its own request for what its larger view needs.
+- Every kind inherits the larger-view affordance from the shared widget chrome: one button that opens the widget in its larger view, in the modal. What the larger view shows, and its data, are that widget's implementation detail. No schema field declares it.
 
-## 6. Type Catalog
-
-Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_card`, `progress_list_card`, `grid`, `cartesian_chart`, `pie_chart`, and `heatmap` appear in the demo dashboard served by the demo package. The two kinds `metric_card` and `markdown_card` are marked **no demo coverage**.
+## 6. Domain Model
 
 ### 6.0 Widget (abstract base)
 
 **GTS ID**: `gts.frontx.m.widget.widget.v1~`
 
-**Description**: Abstract base type (`x-gts-abstract: true`) for every subject-agnostic rendering-primitive widget kind. Declares the fields shared by every kind: the instance identifier `id`, the display `title`, and the open `params` object. It also declares the required `data_type` trait, which each concrete kind sets to its widget data type. The backend supplies each widget instance inline in the layout cells of the dashboard definition, without its data. Each widget's MFE instance requests its own widget data once, when it mounts, with its kind and its `params`. Every kind inherits the "open in modal" affordance from the shared widget chrome: one button that opens a new instance of the same widget, with the same configuration, in the modal. The affordance is chrome behavior, so the base declares no field for it. Never instantiated directly; every concrete widget kind derives from this base.
+**Description**: Abstract base type (`x-gts-abstract: true`) for every subject-agnostic rendering-primitive widget kind. Declares the fields shared by every kind: the instance identifier `id`, the display `title`, and the open `params` object. It also declares the required `data_type` trait, which each concrete kind sets to its widget data type. The backend supplies each widget instance inline in the layout cells of the dashboard definition, without its data. Each widget's MFE instance requests its own widget data through the FrontX API package once, when it mounts, with its kind and its `params`. Every kind inherits the larger-view affordance from the shared widget chrome: one button that opens the widget in its larger view, in the modal. What the larger view shows, and its data, are that widget's implementation detail. The affordance is chrome behavior, so the base declares no field for it. Never instantiated directly; every concrete widget kind derives from this base.
 
 **Schema**:
 
@@ -162,10 +154,10 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
 **Cross-references**:
 - Concrete widget kinds extend this base via `allOf` `$ref` to `gts://gts.frontx.m.widget.widget.v1~` and set the `data_type` trait at the top level of their schema through `x-gts-traits`; see entries below. Because the base is abstract, every widget instance identifier names a concrete kind (or a type derived from one) as its rightmost type.
 - Conceptual definition: DESIGN section 3.1 (Core Entities and Abstract Bases).
-- Data: each widget's MFE instance requests its widget data from the consuming backend once, when it mounts, sending its widget kind (type identifier) and its `params`, through the FrontX API package, whose API cache is shared across MFE entries (`cpt-frontx-dashboard-interface-dashboard-payload`). The cache key is the widget kind plus the canonical form of `params`, so identical widgets share one request. The backend computes the data from its own data; the response is one instance of the kind's `data_type`. The endpoint location comes from configuration; the exact path, request form, and cache options are a DESIGN section 4 open item. Loading skeleton, error, and Retry are shown per widget. Nothing is requested again after render, except on Retry after a failure.
-- Open in modal: the shared widget chrome of every kind below carries one modal button. In a layout cell it opens a new instance of the same widget, with the same configuration, in the modal (`cpt-frontx-dashboard-fr-widget-modal`). That instance requests its data with the same kind and `params`, so it hits the same shared API cache entry and receives the same data as the cell, normally without a new backend request. In the modal the chrome does not show the button, so a widget in the modal cannot open another modal.
-- Consumer-derived widget types: a consuming product may derive a type from a kind that closes the `params` schema, for example `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~acme.gh.widget.pr_list.v1~`. A widget instance of that type names it in its `id`, renders with the MFE of the kind it derives from, and validates against the derived schema (ADR-0009); how the Viewer host resolves the entry for such a type is a DESIGN section 4 open item (`feature-mfe-entries` section 6.7).
-- Generated definitions: when the consuming product generates a dashboard definition, presentation keys a widget references, such as grid `columns[].key`, must be producible from its `params`. This is a consumer responsibility; how it is checked is a DESIGN section 4 open item.
+- Data: each widget's MFE instance requests its widget data from the consuming product backend through the FrontX API package once, when it mounts, sending its widget kind (taken from the type chain of its `id`) and its `params` (`cpt-frontx-dashboard-interface-dashboard-payload`; exact specification in feature-backend-contract section 6.2). The backend computes the data from its own data; the response is one instance of the kind's `data_type`. The endpoint location comes from configuration; the path and request form are open item 1 of feature-backend-contract section 6.5. Loading skeleton, error, and Retry are shown per widget. Nothing is requested after render except Retry after a failure and the widget's own request for what its larger view needs.
+- Larger view: the shared widget chrome of every kind below carries one button. In a layout cell it opens the widget in its larger view, in the modal (`cpt-frontx-dashboard-fr-widget-modal`). What the larger view shows, and its data, are that widget's implementation detail; when the view needs data, the widget makes its own data request through the FrontX API package, which the backend answers like any widget data request (feature-backend-contract section 6.2). In the modal the chrome does not show the button, so a widget in the modal cannot open another modal.
+- Consumer-derived widget types: a consuming product may derive a type from a kind that closes the `params` schema, for example `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~acme.gh.widget.pr_list.v1~`. A widget instance of that type names it in its `id`, validates against the derived schema (ADR-0009; feature-backend-contract section 6.4), and is intended to render with the MFE of the kind it derives from; how the Viewer host resolves the entry for such a type is open item 3 of feature-backend-contract section 6.5 (`feature-mfe-entries` section 6.7).
+- Written or generated dashboards: presentation keys a widget references, such as grid `columns[].key`, must be producible from its `params`. This is the responsibility of whoever writes or generates the dashboard; whether the template offers any means to check it is open item 4 of feature-backend-contract section 6.5.
 
 ### 6.1 SummaryCard
 
@@ -252,7 +244,6 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
 **Cross-references**:
 - Abstract base: `gts.frontx.m.widget.widget.v1~` declared in §6.0 above.
 - Related types: Paired Widget Data, set as the `data_type` trait: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.metric_card.v1~` (in feature-widget-data-catalog)
-- Demo coverage: none. The demo dashboard contains no `metric_card` widget; the kind exists in the widget library but the demo dashboard does not show it (PRD section 6.3).
 
 ### 6.3 RankedListCard
 
@@ -353,15 +344,16 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
       "properties": {
 "columns": {
   "type": "array",
-  "description": "Ordered presentation column descriptors. Each column references a Widget Data column key and adds presentation-only attributes (label, width, align). Cells show their value as text.",
+  "minItems": 1,
+  "description": "Ordered presentation column descriptors, at least one, with unique keys. Each column references a Widget Data column key and adds presentation-only attributes (label, width, align). Cells show their value as plain text.",
   "items": {
     "type": "object",
     "required": ["key", "label"],
     "properties": {
-      "key": { "type": "string", "description": "Column key — MUST match a key declared in the Widget Data columns. In a generated definition the key must be producible from the widget's params; that is the consuming product's responsibility." },
+      "key": { "type": "string", "description": "Column key, unique within columns[]. MUST match a key declared in the Widget Data columns; otherwise the widget data cannot be shown. In a written or generated dashboard the key must be producible from the widget's params; that is the responsibility of whoever writes or generates the dashboard (feature-backend-contract section 6.5, open item 4)." },
       "label": { "type": "string", "description": "Header label rendered for this column." },
       "width": { "type": "string", "description": "Optional CSS width hint (e.g., '120px', '1fr')." },
-      "align": { "type": "string", "enum": ["left", "right", "center"], "description": "Text alignment for the column body." }
+      "align": { "type": "string", "enum": ["left", "right", "center"], "description": "Text alignment for the column body. When absent, the Widget Data column type selects it: number and integer right-aligned, every other type leading-aligned." }
     }
   }
 },
@@ -372,7 +364,7 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
 },
 "column_groups": {
   "type": "array",
-  "description": "Ordered header groups stacking a label above contiguous columns. A static header label only: it does not group, sort, or reorder rows. Each group references existing column keys declared in columns[].",
+  "description": "Header groups stacking a label above contiguous columns. A static header label only: it does not group, sort, or reorder rows. Header cells follow column position; the array order of column_groups has no effect. The Viewer host checks the rules of column_keys.",
   "items": {
     "type": "object",
     "required": ["label", "column_keys"],
@@ -380,8 +372,9 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
       "label": { "type": "string", "description": "Group header label rendered above the contiguous columns." },
       "column_keys": {
         "type": "array",
+        "minItems": 1,
         "items": { "type": "string" },
-        "description": "Keys of columns participating in this group; each key must match a key declared in columns[]."
+        "description": "Keys of the columns in this group: at least one, each matching a key declared in columns[], contiguous in columns[] order, and named by no other group."
       }
     }
   }
@@ -389,10 +382,10 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
 "row_color_by_field": {
   "type": "object",
   "required": ["field", "palette"],
-  "description": "Tints each row by the value of a Widget Data field, looked up against a named palette family.",
+  "description": "Tints each row by the value of a row-record field, looked up against a named palette family of the template theme.",
   "properties": {
-    "field": { "type": "string", "description": "Widget Data field whose value selects the row tint." },
-    "palette": { "type": "string", "enum": ["severity", "status", "generic"], "description": "Palette family used to resolve the row tint colour." }
+    "field": { "type": "string", "description": "Row-record field whose value selects the row tint. Need not be a displayed column; a record that lacks it has no tint." },
+    "palette": { "type": "string", "enum": ["severity", "status", "generic"], "description": "Palette family whose row_tints entries in the active theme palette give the row tint colour." }
   }
 }
       }
@@ -404,10 +397,17 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
 **Cross-references**:
 - Abstract base: `gts.frontx.m.widget.widget.v1~` declared in §6.0 above.
 - Related types: Paired Widget Data, set as the `data_type` trait: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.grid.v1~` (in feature-widget-data-catalog)
-- Source: `cpt-frontx-dashboard-fr-grid-presentation` anchors `columns`, `frozen_columns`, `column_groups`, and `row_color_by_field`.
-- Row order: the grid renders the rows of its Widget Data in the order supplied; when the Widget Data carries row groups, it renders one group heading row per group, in the order supplied, with no collapsing or reordering. It declares no client-side sorting, grouping, or pagination.
-- Cells: each cell shows its value as text; the grid declares no cell renderers.
-- Large grids: 500 to 5,000 rows render without paging, using virtualized row rendering (ADR-0005).
+- Source: `cpt-frontx-dashboard-fr-widget-catalog` anchors the `grid` kind with `columns`, `frozen_columns`, `column_groups`, and `row_color_by_field`, and the row groups of its Widget Data; `cpt-frontx-dashboard-nfr-large-table` anchors large grids.
+- Columns: the grid shows the columns of `columns`, in that order, with the header label `label`, the optional width `width`, and the body alignment `align` of each. A Widget Data column that `columns` does not list is not shown. A row record that lacks the key of a displayed column shows an empty cell in that column.
+- Cells: each cell shows its value by plain string conversion, and a null value shows an empty cell; no locale or rich formatting applies, and the grid declares no cell renderers. The Widget Data column `type` only selects the alignment when `align` is absent: `number` and `integer` columns are right-aligned, every other column leading-aligned.
+- Configuration checks: the Viewer host makes these checks when it opens the dashboard, together with the layout checks (feature-layout-types section 6.3). A `grid` widget fails them when `columns` is empty or holds a key twice, or when `column_groups` holds a group with empty `column_keys`, a `column_keys` entry that matches no key in `columns`, a column named by two groups, or a group whose columns are not contiguous in `columns` order. The dashboard then cannot be shown: no cells, a diagnostic naming the widget and the failing column or group, and no Retry (feature-backend-contract section 6.3).
+- Data checks: when a `columns[].key` is absent from the Widget Data `columns`, the widget data cannot be shown: an error state in that widget with a diagnostic naming the key, nothing of the response rendered, and no Retry; other widgets are unaffected (feature-backend-contract section 6.3).
+- Frozen columns: the first `frozen_columns` columns, in `columns` order, stay visible at the leading edge while the viewer scrolls the grid horizontally; the other columns scroll beneath them. With `frozen_columns` 0 or absent, no column is frozen; a value larger than the number of columns freezes all columns.
+- Column groups: each entry of `column_groups` shows its `label` once, in a header row above the column headers, spanning exactly the columns named in its `column_keys`, which are contiguous and belong to no other group (configuration checks above). Header cells follow column position, so the array order of `column_groups` has no effect. A column outside every group has an empty cell in that header row. A column group is a header label only: it does not group, sort, or reorder rows. Without `column_groups`, the grid shows a single header row.
+- Row coloring: with `row_color_by_field` set, each data row is tinted by the value that its row record holds for `field`, using the palette family `palette`; `field` need not be a displayed column. The tint colors come from the active palette of the template theme (feature-dashboard-root-types section 6.2; ADR-0006), so they follow a light or dark switch without a new request. A row whose record lacks `field` or holds null for it, or holds a value that the palette family does not recognise, shows no tint. Group heading rows are never tinted. The tint is a row background only: cell values still show as text and stay readable on every tint in both modes. Without `row_color_by_field`, no row is tinted.
+- Palette families: a value matches by its string form, exactly and case-sensitively. `severity` recognises `critical`, `high`, `medium`, `low`, and `info`; `status` recognises `success`, `warning`, `error`, `in_progress`, and `neutral`; each such value takes its color from `row_tints.severity` or `row_tints.status` of the active palette. `generic` recognises any value: a value listed in `row_tints.generic` takes that color, and the other distinct values, those not listed in `row_tints.generic`, take the `chart_categorical` colors of the active palette in order of first appearance in the rows, across groups, wrapping around; listed values do not count in that order. A value with no color in the active palette shows no tint.
+- Row order and row groups: the grid shows the rows of its Widget Data in the order supplied. When the Widget Data carries `groups` (feature-widget-data-catalog section 6.5), the grid shows, for each group in the order supplied, one heading row with the group label across the full width of the grid, followed by the group's rows in the order supplied; heading rows do not collapse, and groups are not reordered. Widget Data that carries both `rows` and `groups` does not validate against the grid widget data type, so the widget data cannot be shown (feature-backend-contract section 6.3). The grid declares no client-side sorting, grouping, or pagination.
+- Large grids: the grid shows up to 5,000 rows, counted across all groups, in one continuous scrolling body without paging and with no paging control. While the viewer scrolls through all of them, the view never stops responding for longer than 100 ms (provisional), under the reference conditions fixed in the DESIGN (`cpt-frontx-dashboard-nfr-large-table`). The grid renders rows virtualized, so only the rows in view and the group heading rows among them are rendered (ADR-0005).
 
 ### 6.6 CartesianChart
 
@@ -600,18 +600,37 @@ Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_car
 - Abstract base: `gts.frontx.m.widget.widget.v1~` declared in §6.0 above.
 - Related types: Paired Widget Data, set as the `data_type` trait: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.markdown_card.v1~` (in feature-widget-data-catalog)
 - Source: `cpt-frontx-dashboard-fr-widget-catalog`.
-- Demo coverage: none. The demo dashboard contains no `markdown_card` widget; the kind exists in the widget library but the demo dashboard does not show it (PRD section 6.3).
+- Rendering: raw HTML in the markdown is not rendered as HTML. Link targets are limited to `http`, `https`, and `mailto`; a link with any other target renders as plain text. Images are not loaded: an image shows its alt text, or nothing when it has none. Raw HTML shows as literal text. Links open in a new browsing context without access to the opener.
 
 ## 7. Acceptance Criteria
 
 - [ ] Every concrete listed in section 6 is authored with its full JSON Schema.
 - [ ] Every identifier follows GTS grammar, and every `x-gts-type-ref` and `x-gts-instance-ref` operand is valid under GTS v0.17.
-- [ ] No identifier uses the prototype vendor `de` or the `hai3` namespace.
+- [ ] Every identifier uses the FrontX vendor `frontx`.
 - [ ] `cfs validate --artifact` reports no structural errors for this document.
-- [ ] The Widget base is abstract, requires `id`, `title`, and `params`, constrains `id` with `x-gts-instance-ref: "/$id"`, keeps `params` an open object, and declares no drill-down or modal field.
+- [ ] The Widget base is abstract, requires `id`, `title`, and `params`, constrains `id` with `x-gts-instance-ref: "/$id"`, keeps `params` an open object, and declares no drill-down field and no field for the larger view.
 - [ ] The Widget base declares the required `data_type` trait, and each of the 9 kinds passes the trait completeness check with its own widget data type.
-- [ ] Every kind inherits the "open in modal" button from the shared widget chrome, and the button opens a new instance of the same widget, with the same configuration, in the modal.
+- [ ] Given a rendered widget of any of the 9 kinds in a layout cell, when the dashboard viewer selects the larger-view button of its chrome, then the widget opens in its larger view, in the modal; any data request it makes for that view goes through the FrontX API package and names its kind and its `params`; and in the modal the chrome shows no larger-view button.
 - [ ] No kind declares a field for client-side sorting, grouping, pagination, a display limit, or an in-browser toggle; the `grid` kind shows rows and row groups in the order the backend supplies.
 - [ ] Grid columns declare no cell renderer; grid cells show their value as text.
-- [ ] The two kinds `metric_card` and `markdown_card` are marked "no demo coverage".
+- [ ] Given a `grid` widget with no `align` on any column and Widget Data with one column of each type `string`, `number`, `integer`, `boolean`, `date`, and `enum`, whose first row holds "alpha", 1234.5, 42, true, "2026-10-26", and "open" and whose second row holds null under `number`, when the grid renders, then the first row shows "alpha", "1234.5", "42", "true", "2026-10-26", and "open", the second row shows an empty `number` cell, the `number` and `integer` columns are right-aligned, and the other columns are leading-aligned.
+- [ ] Given a `grid` widget whose `columns` lists `c1` and `c2`, and Widget Data whose `columns` declares `c1`, `c2`, and `c9` and whose second row record has no `c2` value, when the grid renders, then only the columns `c1` and `c2` are shown, and the second row shows an empty cell under `c2`.
+- [ ] Given, in turn, a `grid` widget whose `columns` is empty; whose `columns` holds the key `c1` twice; whose `column_groups` holds a group with empty `column_keys`; a group naming the key `zz` that no column has; the column `c3` in two groups; or one group over `c1` and `c3` with `c2` between them, when the viewer checks the dashboard, then in each case it renders no cells, shows a diagnostic naming the widget and the failing column or group, and offers no Retry.
+- [ ] Given a `grid` widget whose `columns` lists the key `owner` and Widget Data whose `columns` declares no `owner`, when the widget receives the data, then the widget shows its cannot-show state with a diagnostic naming `owner`, renders nothing of the response, offers no Retry, and every other widget is unaffected.
+- [ ] Given Widget Data for a `grid` widget that carries both `rows` and `groups`, when the widget receives it, then the widget shows its cannot-show state with a diagnostic, renders nothing of the response, and offers no Retry.
+- [ ] Given a `grid` widget with 8 columns and `frozen_columns` 2, when the dashboard viewer scrolls the grid horizontally to its last column, then the first 2 columns stay visible at the leading edge and the other columns scroll beneath them; with `frozen_columns` 0 or absent, all columns scroll.
+- [ ] Given a `grid` widget with 4 columns and `frozen_columns` 6, when the dashboard viewer scrolls the grid horizontally, then all 4 columns stay frozen at the leading edge and no column scrolls beneath them.
+- [ ] Given a `grid` widget whose `column_groups` holds one group labelled "Group A" over the contiguous columns with keys `c3` and `c4`, when the grid renders, then a header row above the column headers shows "Group A" once, spanning exactly those two columns, every other column has an empty cell in that row, and the rows keep the order supplied.
+- [ ] Given a `grid` widget whose `column_groups` lists a group over `c5` and `c6` before a group over `c1` and `c2`, when the grid renders, then the group header cells appear in column position, the `c1`/`c2` group first.
+- [ ] Given a `grid` widget without `column_groups`, when the grid renders, then it shows a single header row of column labels.
+- [ ] Given a `grid` widget without `row_color_by_field`, when the grid renders, then no row is tinted.
+- [ ] Given a `grid` widget with `row_color_by_field` field `level` and palette `severity`, and Widget Data whose flat rows hold for `level` "critical", "Critical", "unknown", and no value, when the grid renders in light mode, then the "critical" row shows the `light_palette` `row_tints.severity.critical` color, the other three rows show no tint, and cell values stay readable as text.
+- [ ] Given the grid of the previous criterion, when the host theme switches to dark, then the "critical" row shows the `dark_palette` `row_tints.severity.critical` color, the other rows stay untinted, and no data request is sent.
+- [ ] Given a `grid` widget with `row_color_by_field` field `state` and palette `status`, and Widget Data that carries two `groups` whose rows hold for `state` "error", "unknown", and no value, when the grid renders, then the "error" row shows the `row_tints.status.error` color of the active palette, the other rows show no tint, and no group heading row is tinted.
+- [ ] Given a `grid` widget with `row_color_by_field` palette `generic`, an active palette whose `chart_categorical` holds two colors and whose `row_tints.generic` lists none of the values, and rows that hold, in order, "x", "y", "x", and "z", when the grid renders, then both "x" rows take the first color, the "y" row the second, and the "z" row the first again.
+- [ ] Given a `grid` widget with `row_color_by_field` palette `generic`, an active palette whose `chart_categorical` holds two colors and whose `row_tints.generic` lists only "a", and rows that hold, in order, "x", "a", "y", when the grid renders, then the "x" row takes the first `chart_categorical` color, the "a" row takes its `row_tints.generic` color, and the "y" row takes the second `chart_categorical` color.
+- [ ] Given a `grid` widget with `row_color_by_field` field `sev`, which is not one of its `columns`, and palette `severity`, and rows that hold `sev` "high" and lack `sev`, when the grid renders, then no `sev` column is shown, the first row shows the `row_tints.severity.high` color of the active palette, and the second row shows no tint.
+- [ ] Given Widget Data for a `grid` widget that carries `groups` with three groups, when the grid renders, then it shows one heading row with each group's label across the full width of the grid, followed by that group's rows, with groups and rows in the order supplied, and no heading row can be collapsed.
+- [ ] Given Widget Data for a `grid` widget with 5,000 rows, when the dashboard viewer scrolls from the first row to the last, then every row is reachable in one continuous scrolling body, no paging control appears, and the view never stops responding for longer than 100 ms (provisional) under the reference conditions fixed in the DESIGN (`cpt-frontx-dashboard-nfr-large-table`).
+- [ ] Given `markdown_card` Widget Data whose `markdown` holds a raw `<b>` tag, links to `https://example.com`, `mailto:a@example.com`, and `javascript:alert(1)`, and an image, when the card renders, then no element is created from the raw tag, the `https` and `mailto` links open in a new browsing context without access to the opener, the `javascript:` link shows as plain text, the raw tag shows as literal text, and the image is not requested and shows its alt text, or nothing when it has none.
 - [ ] All 9 kinds chain from `gts.frontx.m.widget.widget.v1~` and set `data_type` to their paired `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.<kind>.v1~` type.
