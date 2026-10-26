@@ -234,6 +234,7 @@ artifacts = [
   { name = "feature-mfe-entries", path = "template-dashboard/architecture/features/feature-mfe-entries/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
   { name = "feature-widget-catalog", path = "template-dashboard/architecture/features/feature-widget-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
   { name = "feature-widget-data-catalog", path = "template-dashboard/architecture/features/feature-widget-data-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-backend-contract", path = "template-dashboard/architecture/features/feature-backend-contract/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
 ]
 
 [[systems.codebase]]
