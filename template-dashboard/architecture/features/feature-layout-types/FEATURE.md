@@ -1,3 +1,17 @@
+---
+status: proposed
+version: 6
+date: 2026-10-24
+description: Type catalog of the 60-column Layout, embedded in the Dashboard, and the LayoutCell that embeds one widget instance, declared by dashboard-viewer.
+changelog:
+  - "v6 (2026-10-24): traces `cpt-frontx-dashboard-fr-generated-dashboards` (p2); the layout types let a generated definition be validated."
+  - "v5 (2026-10-24): embedded layout and params model. The Layout is an embedded object type of the Dashboard with no identifier of its own, and drops `name`; no layout reference or separate layout instance exists. Each cell embeds one widget instance: presentation configuration plus `params`, identified by its combined instance `id`; `data_ref` is gone. `x-gts-ref` is no longer used."
+  - "v4 (2026-10-23): the layout arrives in the backend's dashboard definition, which carries no widget data; each cell's widget configuration carries its data reference, and each widget requests its own data."
+  - "v3 (2026-10-23): the dashboard payload is referenced by its DESIGN interface ID; the Definition of Done and acceptance criteria state that the layout fully defines widget composition and the Viewer host renders it as given."
+  - "v2 (2026-10-23): LayoutCell.widget is an inline widget instance checked by `$ref` to the Widget base, not a string reference, matching DESIGN section 3.1."
+  - "v1: initial port from the prototype."
+---
+
 # Feature: Layout Types Catalog
 
 
@@ -30,27 +44,28 @@
 
 ### 1.1 Overview
 
-This is a **type-catalog feature**, not an actor-flow feature. It enumerates the Layout and LayoutCell types of the 60-column grid. The FEATURE template's flow, process, and state sections are reduced to stubs; the catalog lives in section 6, Type Catalog.
+This is a **type-catalog feature**, not an actor-flow feature. It enumerates the Layout and LayoutCell types of the 60-column grid. Both are embedded object types: the Layout is embedded in the Dashboard, and each cell is embedded in the Layout; neither has an identifier of its own. The FEATURE template's flow, process, and state sections are reduced to stubs; the catalog lives in section 6, Type Catalog.
 
 ### 1.2 Purpose
 
-Concrete catalog of the layout structural types the Viewer host recognises at runtime, with the full JSON Schema declaration and cross-references to the widget base (DESIGN section 3.1, Layout and cell). Schema validation checks each coordinate; the Viewer host checks overlaps and `x + w` greater than 60.
+Concrete catalog of the layout structural types the Viewer host recognises at runtime, with the full JSON Schema declaration and cross-references to the widget base (DESIGN section 3.1, Layout and cell). Schema validation checks each coordinate; the Viewer host checks overlaps and `x + w` greater than 60. For a generated dashboard, these types let the consuming project validate the layout and each cell of the definition before it is shown.
 
 **Declaring package**: `dashboard-viewer`.
 
-**Requirements**: `cpt-frontx-dashboard-fr-type-catalog`
+**Requirements**: `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-generated-dashboards`
 
 **Principles**: `cpt-frontx-dashboard-principle-gts-contracts`
 
 ### 1.3 Actors
 
-N/A — type-catalog feature. The catalog is consumed by the runtime type system (Viewer host, Worker, and widget MFEs), not by an end-user actor. No human actor flows are authored.
+N/A — type-catalog feature. The catalog is consumed by the runtime type system (the Viewer host, which reads the layout from the backend-delivered dashboard definition, and the widget MFEs), not by an end-user actor. No human actor flows are authored.
 
 ### 1.4 References
 
 - **PRD**: [PRD.md](../../PRD.md)
-- **Design**: [DESIGN.md](../../DESIGN.md#31-domain-model)
-- **Dependencies**: None for authoring. `LayoutCell.widget` references `gts.frontx.m.widget.widget.v1~` (`feature-widget-catalog`) by `x-gts-ref`. `gts.frontx.m.dashboard.dashboard.v1~` (`feature-dashboard-root-types`) references the Layout. Dependency graph: layout-types depends on widget-catalog (reference only); dashboard-root-types depends on layout-types.
+- **Design**: [DESIGN.md](../../DESIGN.md#31-domain-model); the layout arrives embedded in the backend's dashboard definition (`cpt-frontx-dashboard-interface-dashboard-payload`), which carries no widget data
+- **ADRs**: [ADR-0002](../../ADR/0002-dashboard-layout-grid-v1.md), [ADR-0003](../../ADR/0003-shared-data-types-and-schemas-v1.md), [ADR-0011](../../ADR/0011-backend-delivered-dashboard-v1.md)
+- **Dependencies**: None for authoring. `LayoutCell.widget` embeds one widget instance, presentation configuration plus `params`, checked against the Widget base `gts.frontx.m.widget.widget.v1~` (`feature-widget-catalog`) by `$ref`. `gts.frontx.m.dashboard.dashboard.v1~` (`feature-dashboard-root-types`) embeds the Layout. Dependency graph: layout-types depends on widget-catalog (reference only); dashboard-root-types depends on layout-types.
 
 ## 2. Actor Flows (CDSL)
 
@@ -62,7 +77,7 @@ N/A — type-catalog feature. Catalog content is consumed at runtime by the type
 
 ### Type-Catalog Feature — No Processes
 
-N/A — type-catalog feature. The catalog declares static GTS schemas; runtime validation and execution logic lives in the Viewer host and Worker bundles of `dashboard-viewer`, not in this catalog file.
+N/A — type-catalog feature. The catalog declares static GTS schemas; runtime validation logic for the backend-delivered dashboard definition lives in the Viewer host bundle of `dashboard-viewer`, not in this catalog file.
 
 ## 4. States (CDSL)
 
@@ -80,7 +95,9 @@ The system **MUST** declare `gts.frontx.m.layout.layout.v1~` with `columns` fixe
 
 - Every concrete is authored with a full JSON Schema declaration.
 - Every identifier follows the GTS identifier grammar and the ID-form convention of DESIGN section 3.1 (types end with `~`, instances do not).
-- Every `x-gts-ref` and `$ref` resolves to a declared type.
+- Every `$ref` resolves to a declared type.
+- The Layout and LayoutCell are embedded object types with no `id` field; the Dashboard embeds the Layout, and nothing references a layout by identifier.
+- The Layout fully defines widget composition: each cell fixes position, size, and the embedded widget instance, including its `params`; the cell carries no widget data. The Viewer host renders the cells as given and does not reorder, regroup, or re-place them in the browser.
 
 **Constraints**: `cpt-frontx-dashboard-constraint-sixty-column-grid`
 
@@ -91,7 +108,7 @@ The system **MUST** declare `gts.frontx.m.layout.layout.v1~` with `columns` fixe
 
 **GTS ID**: `gts.frontx.m.layout.layout.v1~`
 
-**Description**: Reusable grid layout with a 60-column model containing an ordered array of positioned cells.
+**Description**: Grid layout embedded in a Dashboard: a 60-column model containing an ordered array of positioned cells. It has no identifier of its own.
 
 **Schema**:
 
@@ -100,14 +117,10 @@ The system **MUST** declare `gts.frontx.m.layout.layout.v1~` with `columns` fixe
   "$id": "gts://gts.frontx.m.layout.layout.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Layout",
-  "description": "Reusable grid layout with a 60-column model containing an ordered array of positioned cells.",
+  "description": "Grid layout embedded in a Dashboard: a 60-column model containing an ordered array of positioned cells. Not independently addressable.",
   "type": "object",
-  "required": ["name", "columns", "cells"],
+  "required": ["columns", "cells"],
   "properties": {
-    "name": {
-      "type": "string",
-      "description": "Human-readable layout name."
-    },
     "columns": {
       "type": "integer",
       "const": 60,
@@ -126,7 +139,7 @@ The system **MUST** declare `gts.frontx.m.layout.layout.v1~` with `columns` fixe
 
 **Cross-references**:
 - No abstract base (flat single-segment chain).
-- Related types: `gts.frontx.m.layout.cell.v1~`
+- Related types: `gts.frontx.m.layout.cell.v1~`; embedded by `gts.frontx.m.dashboard.dashboard.v1~` (`feature-dashboard-root-types`).
 
 ### 6.2 LayoutCell
 
@@ -168,9 +181,8 @@ The system **MUST** declare `gts.frontx.m.layout.layout.v1~` with `columns` fixe
       "description": "Height of the cell in grid rows."
     },
     "widget": {
-      "type": "string",
-      "description": "Inline widget instance rendered in this cell (the widget instance is embedded in the cell, so the reference stays inside package `m`).",
-      "x-gts-ref": "gts.frontx.m.widget.widget.v1~"
+      "$ref": "gts://gts.frontx.m.widget.widget.v1~",
+      "description": "The one widget instance rendered in this cell, embedded inline: its id, presentation configuration, and params. The cell schema checks it against the Widget base; the widget type named by its id checks its own fields. The widget requests its own data with its kind and params."
     }
   }
 }
@@ -178,11 +190,15 @@ The system **MUST** declare `gts.frontx.m.layout.layout.v1~` with `columns` fixe
 
 **Cross-references**:
 - No abstract base (flat single-segment chain).
-- Related types: `gts.frontx.m.widget.widget.v1~`
+- Related types: `gts.frontx.m.widget.widget.v1~` (embedded inline through `$ref`, matching DESIGN section 3.1: one inline widget instance per cell).
+- Widget validation: the embedded widget's `id` names its concrete type (a kind, or a type a consuming product derives from a kind) as the rightmost type of its chain, and the widget validates against that type. How the definition's validation selects that type for an embedded widget, including how the `/$id` operand of the widget's `id` resolves there, is a DESIGN section 4 open item.
 
 ## 7. Acceptance Criteria
 
 - [ ] Every concrete listed in this catalog is authored with its full schema
-- [ ] Every concrete passes GTS identifier grammar and `x-gts-ref` validation
+- [ ] Every concrete passes GTS identifier grammar and GTS v0.17 schema validation
 - [ ] Every type identifier ends with `~`, every instance identifier does not, and every identifier carries `v1`
+- [ ] No field of Layout or LayoutCell is changed in the browser; the rendered dashboard matches the delivered layout.
+- [ ] A LayoutCell embeds one widget instance with its `id`, presentation configuration, and `params`, and no widget data.
+- [ ] The Layout declares no `id` or `name` and is embedded in the Dashboard; no layout reference exists.
 - [ ] `cfs validate --artifact` on this file reports PASS

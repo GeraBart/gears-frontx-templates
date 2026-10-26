@@ -54,7 +54,7 @@ The decision has these parts:
 * The dashboard is packaged as FrontX MFEs. The FrontX runtime loads and isolates them. Each MFE load gets its own module graph (FrontX ADR-0011), so no library is shared as a singleton between instances.
 * Template assumption: FrontX uses Module Federation only as a bundling format and resolves dependencies itself. This assumption comes from the template product owner. FrontX ADR-0006 covers how the runtime selects the handler that loads such bundles.
 
-This ADR does not restate the related decisions. ADR-0008 decides theme delivery. ADR-0010 decides the extension domains. ADR-0011 decides widget realization, including the choice between one MFE per widget kind and widgets bundled into the viewer MFE. ADR-0016 decides the overlay packaging and the placement of the viewer in the host.
+This ADR does not restate the related decisions. ADR-0006 decides theme delivery. ADR-0007 decides the extension domains. ADR-0008 decides widget realization, including the choice between one MFE per widget kind and widgets bundled into the viewer MFE. ADR-0010 decides the overlay packaging and the placement of the viewer in the host.
 
 ### Consequences
 
@@ -79,7 +79,7 @@ The viewer and the widgets are FrontX MFEs. The viewer resolves widget MFEs at r
 * Good, because it uses the loading, actions, and domains that the host framework already provides.
 * Good, because TypeScript types and the shared data types line up with FrontX base types.
 * Good, because consumers can ship widget kinds as separately built packages.
-* Neutral, because the split between one MFE per widget kind and widgets bundled into the viewer MFE is decided separately in ADR-0011.
+* Neutral, because the split between one MFE per widget kind and widgets bundled into the viewer MFE is decided separately in ADR-0008.
 * Bad, because per-instance isolation duplicates library code across instances.
 * Bad, because each widget needs MFE entries, a manifest, and typed action contracts.
 
@@ -92,12 +92,12 @@ The host still runs FrontX. The template would ship one FrontX extension whose c
 * Bad, because consumers cannot add widget kinds as separately built packages. A new kind needs a rebuild of the template's component.
 * Bad, because widgets can couple through shared module state.
 * Bad, because widget contracts would be TypeScript props only, which cannot be validated as data (see ADR-0003).
-* Bad, because the host modal domain holds FrontX extensions, so modal drill-down (`cpt-frontx-dashboard-fr-drilldown-modal`) would still need a separate MFE outside this model.
+* Bad, because the host modal domain holds FrontX extensions, so the widget modal (`cpt-frontx-dashboard-fr-widget-modal`) would still need a separate MFE outside this model.
 
 ## More Information
 
 * **Review trigger**: revisit this decision when a FrontX release changes MFE load isolation or the template contracts (the overlay format or the `template-shell` host contract).
-* **Scope**: this decision covers the framework, the language, and the MFE packaging model. It does not cover theme delivery (ADR-0008), extension domains (ADR-0010), widget realization (ADR-0011), overlay packaging and viewer placement (ADR-0016), or the chart and grid libraries (ADR-0004 and ADR-0005). Authoring is out of scope for this template, so there is no authoring interface and dashboards are written as data.
+* **Scope**: this decision covers the framework, the language, and the MFE packaging model. It does not cover theme delivery (ADR-0006), extension domains (ADR-0007), widget realization (ADR-0008), overlay packaging and viewer placement (ADR-0010), or the chart and grid libraries (ADR-0004 and ADR-0005). Authoring is out of scope for this template, so there is no authoring interface and dashboards are written as data.
 * **Checklist applicability**: ARCH applicable (sets the framework and packaging model); PERF applicable (per-instance library cost); SEC applicable (per-instance isolation between independently built widgets); REL applicable (fault containment limits and the `develop` line dependency); DATA N/A (data types are decided in ADR-0003); INT applicable (FrontX packages and the `template-shell` host contract); OPS N/A (the template is applied into the consumer's build and has no deployment of its own); MAINT applicable (pin policy for the moving `develop` line); TEST applicable (build checks and review confirm compliance); COMPL N/A (no regulated data or new license is introduced); UX N/A (no user-facing behavior is decided here); BIZ applicable (consumers adopt through `frontx add` and add their own widget kinds).
 * Related decisions: FrontX ADR-0006 (MFE handler resolution), FrontX ADR-0011 (load isolation), FrontX ADR-0018, ADR-0020, and ADR-0030 (templates), and FrontX ADR-0036 (extension routing).
 
@@ -111,5 +111,5 @@ This decision directly addresses the following requirements or design elements:
 * `cpt-frontx-dashboard-fr-overlay-install` — the template is a FrontX overlay applied with `frontx add` and depends on `template-shell` only.
 * `cpt-frontx-dashboard-fr-viewer-host` — the viewer is a FrontX MFE inside the host application, not a separate application.
 * `cpt-frontx-dashboard-fr-widget-catalog` — widgets are FrontX MFEs, and consumers add kinds as separate packages.
-* `cpt-frontx-dashboard-fr-theme` — the FrontX shared-property channel is what ADR-0008 uses to deliver the theme.
+* `cpt-frontx-dashboard-fr-theme` — the FrontX shared-property channel is what ADR-0006 uses to deliver the theme.
 * `cpt-frontx-dashboard-nfr-compatibility` — the framework choice and the pin policy set the supported FrontX baseline.

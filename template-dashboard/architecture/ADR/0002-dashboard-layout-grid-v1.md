@@ -116,7 +116,7 @@ The viewer would render and position cells through a drag-and-resize grid librar
 
 This decision directly addresses the following requirements or design elements:
 
-* `cpt-frontx-dashboard-fr-type-catalog` — the layout and cell types in the catalog store integer `{x, y, w, h}` coordinates on the 60-column grid.
+* `cpt-frontx-dashboard-fr-domain-model` — the layout and cell types in the catalog store integer `{x, y, w, h}` coordinates on the 60-column grid.
 * `cpt-frontx-dashboard-fr-widget-catalog` — each cell holds one widget of the catalog.
 * `cpt-frontx-dashboard-nfr-bundle-budget` — the viewer carries no layout library.
 * `cpt-frontx-dashboard-nfr-initial-render` — native CSS Grid keeps layout cost low at first render.

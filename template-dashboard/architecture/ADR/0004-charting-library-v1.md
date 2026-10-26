@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-05
+date: 2026-10-23
 decision-makers: template-dashboard architecture maintainers
 ---
 
@@ -49,7 +49,7 @@ The earlier DevExpert prototype chose Apache ECharts through the echarts-for-rea
 
 Chosen option: "Apache ECharts with echarts-for-react", because it covers cartesian, pie, and heatmap charts natively, takes a JSON option object, and maps the dashboard theme to every chart kind through one theme object, which keeps token-driven light and dark theming in one place.
 
-Chart theme values come from the dashboard's theme instance, an instance of the type `gts.frontx.m.dashboard.theme.v1~` (ADR-0008). Light or dark mode follows the host theme mode, and the theme instance supplies the palette for that mode. Each chart widget registers its own ECharts theme from the theme shared property. The Viewer host does not register ECharts themes, because under isolation each widget has its own ECharts module. The mapping effort is one theme builder that turns the palette and typography of the theme instance into an ECharts theme for all chart kinds.
+Chart theme values come from the template-owned theme instance, an instance of the type `gts.frontx.m.dashboard.theme.v1~` (ADR-0006). Light or dark mode follows the host theme mode, and the theme instance supplies the palette for that mode. Each chart widget registers its own ECharts theme from the theme shared property. The Viewer host does not register ECharts themes, because under isolation each widget has its own ECharts module. The mapping effort is one theme builder that turns the palette and typography of the theme instance into an ECharts theme for all chart kinds.
 
 Under per-instance isolation, each chart MFE instance evaluates its own copy of ECharts, so the size anchor from the Context (about 300 KB minified and gzipped for the full library) is paid per instance. Two mitigations apply. Chart widgets import only the chart types and components they need through `echarts/core`. FrontX ADR-0034 reuses the source text of a shared dependency when its content hash matches, which reduces network fetches but does not share the evaluated module. The bundle budget for chart widgets is an open question and is resolved in the DESIGN, after measurement.
 
@@ -99,10 +99,11 @@ A React component library built on SVG.
 ## More Information
 
 * **Review trigger**: if the measured per-instance cost of a chart widget exceeds the budget set in the DESIGN, reconsider Chart.js.
-* **Scope**: this decision covers the charting library, its React wrapper, and how charts take the dashboard theme. It does not cover the bundle budget figures (DESIGN), theme distribution (ADR-0008), or the data grid (ADR-0005).
-* **Checklist applicability**: ARCH applicable (library choice for all chart widgets); PERF applicable (per-instance library cost and its mitigations); SEC N/A (charts render data already loaded by the Data Query Worker and add no trust boundary); REL N/A (no failure mode beyond the widget's own loading and error states); DATA N/A (chart options are built from existing widget data); INT applicable (theme shared property from ADR-0008); OPS N/A (no deployment or operational change); MAINT applicable (wrapper maintenance risk and the direct-ECharts fallback); TEST applicable (rendering in both themes and size measurement); COMPL applicable (ECharts is Apache-2.0 and echarts-for-react is MIT, both compatible with the template); UX applicable (token-driven visual quality in light and dark); BIZ N/A (no business trade-off beyond the bundle cost).
+* **Scope**: this decision covers the charting library, its React wrapper, and how charts take the dashboard theme. It does not cover the bundle budget figures (DESIGN), theme distribution (ADR-0006), or the data grid (ADR-0005).
+* **Checklist applicability**: ARCH applicable (library choice for all chart widgets); PERF applicable (per-instance library cost and its mitigations); SEC N/A (charts render widget data delivered by the backend ([ADR-0011](0011-backend-delivered-dashboard-v1.md)) and add no trust boundary); REL N/A (no failure mode beyond the widget's own loading and error states); DATA N/A (chart options are built from existing widget data); INT applicable (theme shared property from ADR-0006); OPS N/A (no deployment or operational change); MAINT applicable (wrapper maintenance risk and the direct-ECharts fallback); TEST applicable (rendering in both themes and size measurement); COMPL applicable (ECharts is Apache-2.0 and echarts-for-react is MIT, both compatible with the template); UX applicable (token-driven visual quality in light and dark); BIZ N/A (no business trade-off beyond the bundle cost).
 * Related decisions: FrontX ADR-0011 (each MFE load gets its own module graph) and FrontX ADR-0034 (shared dependency source-text reuse by content hash).
-* ADR-0001 explains the isolation model that causes the bundle consequence. ADR-0008 decides how the theme reaches widgets.
+* **Revision.** Revised on 2026-10-23 for the render-only scope ([ADR-0011](0011-backend-delivered-dashboard-v1.md)); the revised decision is accepted.
+* ADR-0001 explains the isolation model that causes the bundle consequence. ADR-0006 decides how the theme reaches widgets.
 
 ## Traceability
 
@@ -112,6 +113,6 @@ A React component library built on SVG.
 This decision directly addresses the following requirements or design elements:
 
 * `cpt-frontx-dashboard-nfr-visual-quality` — one ECharts theme built from the theme instance applies the design-system tokens to every chart kind, in light and dark, with no per-widget styling.
-* `cpt-frontx-dashboard-fr-theme` — chart styling comes from the dashboard's theme instance, delivered through the theme shared property (ADR-0008).
+* `cpt-frontx-dashboard-fr-theme` — chart styling comes from the template-owned theme instance, delivered through the theme shared property (ADR-0006).
 * `cpt-frontx-dashboard-nfr-bundle-budget` — the isolation cost is recorded and the budget is set in the DESIGN.
 * `cpt-frontx-dashboard-fr-widget-catalog` — chart widget kinds use this library.

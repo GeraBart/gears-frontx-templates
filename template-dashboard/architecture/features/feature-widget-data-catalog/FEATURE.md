@@ -1,3 +1,17 @@
+---
+status: proposed
+version: 6
+date: 2026-10-24
+description: Type catalog of the abstract widget data base and the 9 widget data types derived from it, one per widget kind, each the response of a widget's own data request to the consuming backend, declared by dashboard-viewer.
+changelog:
+  - "v6 (2026-10-24): traces `cpt-frontx-dashboard-fr-generated-dashboards` (p2); the data types named by each kind complete the validation of a generated definition."
+  - "v5 (2026-10-24): params model and GTS v0.17. New abstract base `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); the 9 shapes derive from it, so their identifiers become `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.<kind>.v1~`. Widget data carries no `id`: the backend computes it on each widget data request (sent with the widget kind and its `params`), and the widget validates it against its kind's `data_type` trait. `x-gts-ref` is no longer used."
+  - "v4 (2026-10-23): each widget requests its own data; a shape is the response of that request, not part of the dashboard payload. Removed the code_diff, thread_list, event_timeline and metadata_strip shapes (9 shapes remain). Grid data gains optional row groups. The widget-to-data linking open item is gone."
+  - "v3 (2026-10-23): the dashboard payload is referenced by its DESIGN interface ID; the grid column type no longer drives sort ordering, and grid rows render in the order supplied."
+  - "v2 (2026-10-23): Source lines trace to PRD IDs only."
+  - "v1: initial port from the prototype."
+---
+
 # Feature: Widget Data Catalog
 
 
@@ -17,6 +31,7 @@
 - [5. Definitions of Done](#5-definitions-of-done)
   - [Type Catalog Definition of Done](#type-catalog-definition-of-done)
 - [6. Type Catalog](#6-type-catalog)
+  - [6.0 WidgetData (abstract base)](#60-widgetdata-abstract-base)
   - [6.1 SummaryCardData](#61-summarycarddata)
   - [6.2 MetricCardData](#62-metriccarddata)
   - [6.3 RankedListCardData](#63-rankedlistcarddata)
@@ -26,10 +41,6 @@
   - [6.7 PieChartData](#67-piechartdata)
   - [6.8 HeatmapData](#68-heatmapdata)
   - [6.9 MarkdownCardData](#69-markdowncarddata)
-  - [6.10 CodeDiffData](#610-codediffdata)
-  - [6.11 ThreadListData](#611-threadlistdata)
-  - [6.12 EventTimelineData](#612-eventtimelinedata)
-  - [6.13 MetadataStripData](#613-metadatastripdata)
 - [7. Acceptance Criteria](#7-acceptance-criteria)
 
 <!-- /toc -->
@@ -41,27 +52,27 @@
 
 ### 1.1 Overview
 
-This feature is a **type-catalog feature**, not an actor-flow feature, declared in package `dashboard-viewer`. It enumerates the 13 widget data shapes `gts.frontx.v.widget_data.<kind>.v1~`, one per widget kind, with no abstract base. Its structural prose lives in DESIGN section 3.1; the content lives in section 6 Type Catalog. The sections for flows, processes, and states are reduced to short not-applicable notes. The catalog is ported one-to-one from the prototype, rebased to the FrontX vendor (`gts.de.*` to `gts.frontx.*`).
+This feature is a **type-catalog feature**, not an actor-flow feature, declared in package `dashboard-viewer`. It enumerates the abstract widget data base `gts.frontx.v.widget_data.widget_data.v1~` and the 9 widget data types derived from it, `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.<kind>.v1~`, one per widget kind. Together they are the backend wire contract for widget data. The dashboard definition carries no widget data, and the backend stores none: each widget's MFE instance requests its own data once, when it mounts, sending its widget kind and its `params`; the backend computes the data from its own data on that request, and the response is one widget data instance of the type its kind names in the `data_type` trait, which the widget renders unchanged. The request goes through the FrontX API package, whose API cache is shared across MFE entries (`cpt-frontx-dashboard-interface-dashboard-payload`; the endpoint and request form are a DESIGN section 4 open item). Its structural prose lives in DESIGN section 3.1; the content lives in section 6 Type Catalog. The sections for flows, processes, and states are reduced to short not-applicable notes. The catalog is ported one-to-one from the prototype, rebased to the FrontX vendor (`gts.de.*` to `gts.frontx.*`).
 
 ### 1.2 Purpose
 
-Concrete catalog of the payload shapes a query pipeline returns and a widget renders, each with its full GTS-typed JSON Schema. It addresses the type catalog and widget catalog of the PRD and the Widget data entity of DESIGN section 3.1. Six kinds have no demo coverage (see section 6).
+Concrete catalog of the widget data types that the consuming backend returns to a widget's data request and that the widget renders, each with its full GTS-typed JSON Schema. It addresses the type catalog and widget catalog of the PRD and the Widget data entity of DESIGN section 3.1. Two kinds have no demo coverage (see section 6). A generated dashboard carries no widget data, but each widget kind it uses names one of these types in its `data_type` trait, so validating the definition relies on them.
 
-**Requirements**: `cpt-frontx-dashboard-fr-type-catalog`, `cpt-frontx-dashboard-fr-widget-catalog`
+**Requirements**: `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-widget-catalog`, `cpt-frontx-dashboard-fr-generated-dashboards`
 
 **Principles**: `cpt-frontx-dashboard-principle-gts-contracts`
 
 ### 1.3 Actors
 
-N/A. This is a type-catalog feature. The catalog is consumed by the runtime type system (the Viewer host, the Data Query Worker, and the widget MFEs), not by an end-user actor, so no actor flows are authored.
+N/A. This is a type-catalog feature. The catalog is consumed by the runtime type system (the widget MFEs, which request their widget data from the consuming backend with their kind and `params` and render it), not by an end-user actor, so no actor flows are authored.
 
 ### 1.4 References
 
 - **PRD**: [PRD.md](../../PRD.md)
-- **Design**: [DESIGN.md](../../DESIGN.md) section 3.1 (Domain Model)
-- **ADRs**: [ADR-0003](../../ADR/0003-shared-data-types-and-schemas-v1.md), [ADR-0011](../../ADR/0011-widget-kind-and-mfe-realization-v1.md), [ADR-0012](../../ADR/0012-subject-agnostic-widget-catalog-v1.md)
+- **Design**: [DESIGN.md](../../DESIGN.md) section 3.1 (Domain Model); section 4 (open item: path and request form of a widget's data request)
+- **ADRs**: [ADR-0003](../../ADR/0003-shared-data-types-and-schemas-v1.md), [ADR-0005](../../ADR/0005-data-grid-library-v1.md), [ADR-0008](../../ADR/0008-widget-kind-and-mfe-realization-v1.md), [ADR-0009](../../ADR/0009-subject-agnostic-widget-catalog-v1.md), [ADR-0011](../../ADR/0011-backend-delivered-dashboard-v1.md)
 - **Declaring package**: `dashboard-viewer` (`src-app/mfe_packages/dashboard-viewer/`)
-- **Dependencies**: None for the shapes themselves (flat single-segment chains, no abstract base). Paired with [feature-widget-catalog](../feature-widget-catalog/FEATURE.md); a query's `output_widget_data_type` must equal the paired shape.
+- **Dependencies**: None for authoring; the 9 types derive from the base in section 6.0. Paired with [feature-widget-catalog](../feature-widget-catalog/FEATURE.md): the widget base's `data_type` trait references this base, and each widget kind sets it to its paired type here; the widget data returned for a widget's data request must be an instance of that type. The widget requests its data with its kind and its `params` (feature-widget-catalog section 6.0).
 
 ## 2. Actor Flows (CDSL)
 
@@ -73,7 +84,7 @@ N/A. Type catalog content is consumed at runtime by the type system, not by an a
 
 ### Type-Catalog Feature: No Processes
 
-N/A. The catalog declares static GTS schemas. Runtime validation logic lives in the Viewer host, the Worker, and the widget MFE bundles, not in this catalog.
+N/A. The catalog declares static GTS schemas. Runtime validation logic lives in the widget MFE bundles, which validate the response of their data request, not in this catalog.
 
 ## 4. States (CDSL)
 
@@ -89,17 +100,42 @@ N/A. Type declarations are stateless.
 
 The system **MUST** author every concrete type of this catalog, ported one-to-one from the prototype and rebased to the FrontX vendor.
 
-- Every concrete passes GTS identifier grammar and `x-gts-ref` validation.
-- Every concrete keeps its prototype schema; only the vendor, namespace, and version form are rebased.
-- The six kinds without demo queries are marked "no demo coverage".
+- Every concrete passes GTS identifier grammar and GTS v0.17 schema validation.
+- The base `gts.frontx.v.widget_data.widget_data.v1~` is `x-gts-abstract: true`, and every one of the 9 types derives from it.
+- Every concrete keeps its prototype schema; only the vendor, namespace, version form, and the derivation from the base change. The grid shape adds optional row groups (section 6.5).
+- Each type is the response of one widget's data request; the dashboard definition carries no widget data, and widget data carries no `id`.
+- The two kinds without widget data in the demo are marked "no demo coverage".
 
 ## 6. Type Catalog
 
-Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_card`, `progress_list_card`, `grid`, `cartesian_chart`, `pie_chart`, and `heatmap` have demo queries. The six kinds `metric_card`, `markdown_card`, `code_diff`, `thread_list`, `event_timeline`, and `metadata_strip` are marked **no demo coverage**.
+### 6.0 WidgetData (abstract base)
+
+**GTS ID**: `gts.frontx.v.widget_data.widget_data.v1~`
+
+**Description**: Abstract base (`x-gts-abstract: true`) of every widget data type. It is the operand of the `data_type` trait that the Widget base declares (feature-widget-catalog section 6.0), so each widget kind names a type derived from it. It adds no fields. Widget data is computed by the backend on each widget data request and has no persistent identity: an instance carries no `id`, and the widget validates it against the `data_type` of its own kind. Never instantiated directly.
+
+**Schema**:
+
+```json
+{
+  "$id": "gts://gts.frontx.v.widget_data.widget_data.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WidgetData",
+  "description": "Abstract base of every widget data type: the response to one widget's data request, computed by the backend from the widget kind and its params. Carries no id; validated against the data_type trait of the requesting widget's kind.",
+  "x-gts-abstract": true,
+  "type": "object"
+}
+```
+
+**Cross-references**:
+- Derived types: sections 6.1 to 6.9. Each derives through its `$id` chain; because the base adds no constraints beyond `type: object`, their bodies repeat no `$ref` to it (GTS v0.17 section 9.7.5, derivation follows the `$id` chain).
+- Referenced by the `data_type` trait schema of `gts.frontx.m.widget.widget.v1~` (`x-gts-type-ref`).
+
+Demo coverage of the 9 kinds (PRD section 6.3): `summary_card`, `ranked_list_card`, `progress_list_card`, `grid`, `cartesian_chart`, `pie_chart`, and `heatmap` have widget data in the demo's static widget data. The two kinds `metric_card` and `markdown_card` are marked **no demo coverage**.
 
 ### 6.1 SummaryCardData
 
-**GTS ID**: `gts.frontx.v.widget_data.summary_card.v1~`
+**GTS ID**: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.summary_card.v1~`
 
 **Description**: Widget Data for `summary_card`: ordered list of label/value rows.
 
@@ -107,10 +143,10 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 
 ```json
 {
-  "$id": "gts://gts.frontx.v.widget_data.summary_card.v1~",
+  "$id": "gts://gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.summary_card.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SummaryCardData",
-  "description": "Paired Widget Data shape for the summary_card widget kind: an ordered list of label/value rows produced by a Query (e.g. PR-status counts, contributor-bucket counts, LOC-by-language counts).",
+  "description": "Paired Widget Data shape for the summary_card widget kind: an ordered list of label/value rows returned by the backend for the widget's data request (e.g. PR-status counts, contributor-bucket counts, LOC-by-language counts).",
   "type": "object",
   "required": ["rows"],
   "properties": {
@@ -133,12 +169,12 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 ```
 
 **Cross-references**:
-- No abstract base (flat single-segment chain).
+- Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.summary_card.v1~` (in feature-widget-catalog)
 
 ### 6.2 MetricCardData
 
-**GTS ID**: `gts.frontx.v.widget_data.metric_card.v1~`
+**GTS ID**: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.metric_card.v1~`
 
 **Description**: Widget Data for `metric_card`: single headline value with optional trend and optional sparkline series.
 
@@ -146,7 +182,7 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 
 ```json
 {
-  "$id": "gts://gts.frontx.v.widget_data.metric_card.v1~",
+  "$id": "gts://gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.metric_card.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "MetricCardData",
   "description": "Paired Widget Data shape for the metric_card widget kind: a single headline value with optional trend and optional sparkline.",
@@ -170,13 +206,13 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 ```
 
 **Cross-references**:
-- No abstract base (flat single-segment chain).
+- Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.metric_card.v1~` (in feature-widget-catalog)
-- Demo coverage: none. No demo query outputs this shape; the paired widget kind `metric_card` has no demo coverage (PRD section 6.3).
+- Demo coverage: none. The demo's static widget data carries no instance of this shape; the paired widget kind `metric_card` has no demo coverage (PRD section 6.3).
 
 ### 6.3 RankedListCardData
 
-**GTS ID**: `gts.frontx.v.widget_data.ranked_list_card.v1~`
+**GTS ID**: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.ranked_list_card.v1~`
 
 **Description**: Widget Data for `ranked_list_card`: ordered ranked items (rank, label, value, optional secondary).
 
@@ -184,7 +220,7 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 
 ```json
 {
-  "$id": "gts://gts.frontx.v.widget_data.ranked_list_card.v1~",
+  "$id": "gts://gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.ranked_list_card.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "RankedListCardData",
   "description": "Paired Widget Data shape for the ranked_list_card widget kind: a ranked list of items with primary value and optional secondary value.",
@@ -210,12 +246,12 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 ```
 
 **Cross-references**:
-- No abstract base (flat single-segment chain).
+- Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.ranked_list_card.v1~` (in feature-widget-catalog)
 
 ### 6.4 ProgressListCardData
 
-**GTS ID**: `gts.frontx.v.widget_data.progress_list_card.v1~`
+**GTS ID**: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.progress_list_card.v1~`
 
 **Description**: Widget Data for `progress_list_card`: list of items with current/target progress.
 
@@ -223,7 +259,7 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 
 ```json
 {
-  "$id": "gts://gts.frontx.v.widget_data.progress_list_card.v1~",
+  "$id": "gts://gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.progress_list_card.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ProgressListCardData",
   "description": "Paired Widget Data shape for the progress_list_card widget kind: a list of items with current/target progress.",
@@ -249,12 +285,12 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 ```
 
 **Cross-references**:
-- No abstract base (flat single-segment chain).
+- Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.progress_list_card.v1~` (in feature-widget-catalog)
 
 ### 6.5 GridData
 
-**GTS ID**: `gts.frontx.v.widget_data.grid.v1~`
+**GTS ID**: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.grid.v1~`
 
 **Description**: Widget Data for `grid`: declared columns + tabular rows.
 
@@ -262,12 +298,16 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 
 ```json
 {
-  "$id": "gts://gts.frontx.v.widget_data.grid.v1~",
+  "$id": "gts://gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.grid.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "GridData",
-  "description": "Paired Widget Data shape for the grid widget kind: tabular data with declared columns and rows.",
+  "description": "Paired Widget Data shape for the grid widget kind: tabular data with declared columns and either a flat list of rows or an ordered list of row groups.",
   "type": "object",
-  "required": ["columns", "rows"],
+  "required": ["columns"],
+  "oneOf": [
+    { "required": ["rows"] },
+    { "required": ["groups"] }
+  ],
   "properties": {
     "columns": {
       "type": "array",
@@ -278,26 +318,40 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 "properties": {
   "key": { "type": "string", "description": "Stable column key." },
   "label": { "type": "string", "description": "Default header label (the widget kind's columns[].label may override)." },
-  "type": { "type": "string", "enum": ["string", "number", "integer", "boolean", "date", "enum"], "description": "Column value type; drives default formatting and sort ordering." }
+  "type": { "type": "string", "enum": ["string", "number", "integer", "boolean", "date", "enum"], "description": "Column value type; drives default formatting." }
 }
       }
     },
     "rows": {
       "type": "array",
-      "description": "Tabular row records keyed by column key.",
+      "description": "Flat list of tabular row records keyed by column key, rendered in the order supplied; the grid does not sort, group, or paginate them.",
       "items": { "type": "object" }
+    },
+    "groups": {
+      "type": "array",
+      "description": "Optional row groups, rendered in the order supplied. The grid renders one group heading row with the group label, followed by the group's rows; groups do not collapse and are not reordered. Without groups the grid renders the flat rows list.",
+      "items": {
+"type": "object",
+"required": ["label", "rows"],
+"properties": {
+  "label": { "type": "string", "description": "Group heading label." },
+  "rows": { "type": "array", "items": { "type": "object" }, "description": "Row records of this group keyed by column key, rendered in the order supplied." }
+}
+      }
     }
   }
 }
 ```
 
 **Cross-references**:
-- No abstract base (flat single-segment chain).
+- Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~` (in feature-widget-catalog)
+- Source: `cpt-frontx-dashboard-fr-grid-presentation` anchors the optional row groups.
+- Large grids: the grid renders 500 to 5,000 rows without paging, using virtualized row rendering (ADR-0005).
 
 ### 6.6 CartesianChartData
 
-**GTS ID**: `gts.frontx.v.widget_data.cartesian_chart.v1~`
+**GTS ID**: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.cartesian_chart.v1~`
 
 **Description**: Widget Data for `cartesian_chart`: shared x_values plus a list of named series with per-series type ∈ {bar, line, area, scatter}.
 
@@ -305,7 +359,7 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 
 ```json
 {
-  "$id": "gts://gts.frontx.v.widget_data.cartesian_chart.v1~",
+  "$id": "gts://gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.cartesian_chart.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "CartesianChartData",
   "description": "Paired Widget Data shape for the cartesian_chart widget kind. Carries a shared x_values axis and a list of named series; each series declares its own rendering type via series[].type. Current enum values are bar | line | area | scatter; future Cartesian rendering shapes extend this enum without changing the widget kind.",
@@ -338,12 +392,12 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 ```
 
 **Cross-references**:
-- No abstract base (flat single-segment chain).
+- Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.cartesian_chart.v1~` (in feature-widget-catalog)
 
 ### 6.7 PieChartData
 
-**GTS ID**: `gts.frontx.v.widget_data.pie_chart.v1~`
+**GTS ID**: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.pie_chart.v1~`
 
 **Description**: Widget Data for `pie_chart`: ordered segments (label, value, optional color).
 
@@ -351,7 +405,7 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 
 ```json
 {
-  "$id": "gts://gts.frontx.v.widget_data.pie_chart.v1~",
+  "$id": "gts://gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.pie_chart.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PieChartData",
   "description": "Paired Widget Data shape for the pie_chart widget kind: an ordered list of segments.",
@@ -376,12 +430,12 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 ```
 
 **Cross-references**:
-- No abstract base (flat single-segment chain).
+- Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.pie_chart.v1~` (in feature-widget-catalog)
 
 ### 6.8 HeatmapData
 
-**GTS ID**: `gts.frontx.v.widget_data.heatmap.v1~`
+**GTS ID**: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.heatmap.v1~`
 
 **Description**: Widget Data for `heatmap`: sparse cells with (x, y, value) plus optional axis label arrays.
 
@@ -389,7 +443,7 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 
 ```json
 {
-  "$id": "gts://gts.frontx.v.widget_data.heatmap.v1~",
+  "$id": "gts://gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.heatmap.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "HeatmapData",
   "description": "Paired Widget Data shape for the heatmap widget kind: a sparse cell collection plus optional axis label arrays.",
@@ -416,12 +470,12 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 ```
 
 **Cross-references**:
-- No abstract base (flat single-segment chain).
+- Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.heatmap.v1~` (in feature-widget-catalog)
 
 ### 6.9 MarkdownCardData
 
-**GTS ID**: `gts.frontx.v.widget_data.markdown_card.v1~`
+**GTS ID**: `gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.markdown_card.v1~`
 
 **Description**: Widget Data for `markdown_card`: a markdown body string with optional metadata sub-shape.
 
@@ -429,23 +483,23 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 
 ```json
 {
-  "$id": "gts://gts.frontx.v.widget_data.markdown_card.v1~",
+  "$id": "gts://gts.frontx.v.widget_data.widget_data.v1~frontx.v.widget_data.markdown_card.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "MarkdownCardData",
-  "description": "Paired Widget Data shape for the markdown_card widget kind: a markdown body produced by a Query (e.g., a pull-request body, an issue body, release notes) with optional author/age metadata for an inline header.",
+  "description": "Paired Widget Data shape for the markdown_card widget kind: a markdown body returned by the backend for the widget's data request (e.g., a pull-request body, an issue body, release notes) with optional author/age metadata for an inline header.",
   "type": "object",
   "required": ["markdown"],
   "properties": {
     "markdown": {
       "type": "string",
-      "description": "Markdown body rendered by the widget kind. Authoring-time normalization (e.g., GitHub-flavored markdown extensions) is the Query's responsibility; the widget kind treats the value as opaque markdown source."
+      "description": "Markdown body rendered by the widget kind. Authoring-time normalization (e.g., GitHub-flavored markdown extensions) is the backend's responsibility; the widget kind treats the value as opaque markdown source."
     },
     "metadata": {
       "type": ["object", "null"],
       "description": "Optional metadata sub-shape rendered above the body when the widget kind's show_metadata_header is true.",
       "properties": {
 "author_label": { "type": "string", "description": "Display label of the body's author (e.g., a contributor display name)." },
-"age_seconds": { "type": "integer", "minimum": 0, "description": "Age in seconds at the time of dashboard generation; the renderer humanizes it (e.g., '3 days ago')." }
+"age_seconds": { "type": "integer", "minimum": 0, "description": "Age in seconds at the time the backend produced the data; the renderer humanizes it (e.g., '3 days ago')." }
       }
     }
   }
@@ -453,226 +507,19 @@ Demo coverage of the 13 kinds (PRD section 6.3): `summary_card`, `ranked_list_ca
 ```
 
 **Cross-references**:
-- No abstract base (flat single-segment chain).
+- Abstract base: `gts.frontx.v.widget_data.widget_data.v1~` (section 6.0); this type derives from it through its `$id` chain.
 - Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.markdown_card.v1~` (in feature-widget-catalog)
-- Source: `cpt-frontx-dashboard-fr-widget-catalog` (PRD §5.3).
-- Demo coverage: none. No demo query outputs this shape; the paired widget kind `markdown_card` has no demo coverage (PRD section 6.3).
-
-### 6.10 CodeDiffData
-
-**GTS ID**: `gts.frontx.v.widget_data.code_diff.v1~`
-
-**Description**: Widget Data for `code_diff`: one file's diff hunks with optional inline annotations.
-
-**Schema**:
-
-```json
-{
-  "$id": "gts://gts.frontx.v.widget_data.code_diff.v1~",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "CodeDiffData",
-  "description": "Paired Widget Data shape for the code_diff widget kind: a single file with its diff hunks (context / addition / deletion lines), optional per-hunk header text, and optional line-bound annotations the renderer surfaces inline.",
-  "type": "object",
-  "required": ["file", "hunks"],
-  "properties": {
-    "file": {
-      "type": "object",
-      "required": ["path"],
-      "description": "File descriptor for the diff.",
-      "properties": {
-"path": { "type": "string", "description": "File path (repository-relative)." },
-"language": { "type": ["string", "null"], "description": "Optional language hint (e.g., 'typescript', 'python') driving syntax-highlight selection at render time; null when the language is unknown or not classified." }
-      }
-    },
-    "hunks": {
-      "type": "array",
-      "description": "Ordered diff hunks. Each hunk groups a contiguous run of lines.",
-      "items": {
-"type": "object",
-"required": ["lines"],
-"properties": {
-  "header": { "type": ["string", "null"], "description": "Optional hunk header (e.g., the unified-diff '@@ ... @@' line); null when the renderer should compute its own." },
-  "lines": {
-    "type": "array",
-    "description": "Lines composing the hunk in order.",
-    "items": {
-      "type": "object",
-      "required": ["kind", "text"],
-      "properties": {
-        "kind": { "type": "string", "enum": ["context", "addition", "deletion"], "description": "Diff classification driving line styling." },
-        "text": { "type": "string", "description": "Line content (without the leading +/-/space marker)." },
-        "line_number_old": { "type": ["integer", "null"], "minimum": 0, "description": "Old-side line number (null on addition lines)." },
-        "line_number_new": { "type": ["integer", "null"], "minimum": 0, "description": "New-side line number (null on deletion lines)." }
-      }
-    }
-  }
-}
-      }
-    },
-    "annotations": {
-      "type": ["array", "null"],
-      "description": "Optional inline annotations bound to specific lines (e.g., review comments). Null when no annotations are produced.",
-      "items": {
-"type": "object",
-"required": ["line_number", "side", "payload"],
-"properties": {
-  "line_number": { "type": "integer", "minimum": 0, "description": "Target line number." },
-  "side": { "type": "string", "enum": ["old", "new"], "description": "Diff side the line number belongs to." },
-  "payload": { "type": "string", "description": "Annotation body (markdown). The renderer surfaces it inline at the target line." }
-}
-      }
-    }
-  }
-}
-```
-
-**Cross-references**:
-- No abstract base (flat single-segment chain).
-- Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.code_diff.v1~` (in feature-widget-catalog)
-- Source: `cpt-frontx-dashboard-fr-widget-catalog` (PRD §5.3).
-- Demo coverage: none. No demo query outputs this shape; the paired widget kind `code_diff` has no demo coverage (PRD section 6.3).
-
-### 6.11 ThreadListData
-
-**GTS ID**: `gts.frontx.v.widget_data.thread_list.v1~`
-
-**Description**: Widget Data for `thread_list`: a recursive-tree array of threaded entries.
-
-**Schema**:
-
-```json
-{
-  "$id": "gts://gts.frontx.v.widget_data.thread_list.v1~",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "ThreadListData",
-  "description": "Paired Widget Data shape for the thread_list widget kind: a recursive-tree array of threaded entries. Each entry carries a stable id, an author label, a timestamp, a markdown body, and a recursive replies array of the same shape.",
-  "type": "object",
-  "required": ["threads"],
-  "$defs": {
-    "Thread": {
-      "type": "object",
-      "required": ["id", "author_label", "timestamp", "body_markdown"],
-      "properties": {
-"id": { "type": "string", "description": "Stable thread/entry identifier; unique within the dataset." },
-"parent_id": { "type": ["string", "null"], "description": "Parent entry's id when this is a reply; null for top-level entries." },
-"author_label": { "type": "string", "description": "Display label of the entry's author." },
-"timestamp": { "type": "string", "format": "date-time", "description": "ISO-8601 timestamp of when the entry was authored." },
-"body_markdown": { "type": "string", "description": "Markdown body of the entry." },
-"replies": {
-  "type": "array",
-  "description": "Ordered nested replies. Empty when there are none.",
-  "items": { "$ref": "#/$defs/Thread" }
-}
-      }
-    }
-  },
-  "properties": {
-    "threads": {
-      "type": "array",
-      "description": "Top-level threaded entries (parent_id is null for these). Order is the renderer's display order.",
-      "items": { "$ref": "#/$defs/Thread" }
-    }
-  }
-}
-```
-
-**Cross-references**:
-- No abstract base (flat single-segment chain).
-- Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.thread_list.v1~` (in feature-widget-catalog)
-- Source: `cpt-frontx-dashboard-fr-widget-catalog` (PRD §5.3).
-- Demo coverage: none. No demo query outputs this shape; the paired widget kind `thread_list` has no demo coverage (PRD section 6.3).
-
-### 6.12 EventTimelineData
-
-**GTS ID**: `gts.frontx.v.widget_data.event_timeline.v1~`
-
-**Description**: Widget Data for `event_timeline`: a time-ordered events array with typed kind classifiers.
-
-**Schema**:
-
-```json
-{
-  "$id": "gts://gts.frontx.v.widget_data.event_timeline.v1~",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "EventTimelineData",
-  "description": "Paired Widget Data shape for the event_timeline widget kind: an array of time-ordered events. Each event carries a kind classifier (free-form string; the renderer styles by lookup against the widget kind's kind_styles map), a label, a timestamp, and an optional actor label and payload.",
-  "type": "object",
-  "required": ["events"],
-  "properties": {
-    "events": {
-      "type": "array",
-      "description": "Time-ordered events.",
-      "items": {
-"type": "object",
-"required": ["kind", "label", "timestamp"],
-"properties": {
-  "kind": { "type": "string", "description": "Free-form kind classifier (e.g., 'opened', 'commented', 'merged'). The renderer styles by lookup against the widget kind's kind_styles map; the classifier itself is subject-defined and produced by the Query." },
-  "label": { "type": "string", "description": "Display label of the event (e.g., 'opened by alice', 'merged into main')." },
-  "timestamp": { "type": "string", "format": "date-time", "description": "ISO-8601 timestamp of when the event occurred." },
-  "actor_label": { "type": ["string", "null"], "description": "Optional display label of the actor associated with the event; null when the event has no actor." },
-  "payload": { "type": ["string", "null"], "description": "Optional secondary detail string surfaced inline (e.g., a commit subject, a comment excerpt); null when not produced." }
-}
-      }
-    }
-  }
-}
-```
-
-**Cross-references**:
-- No abstract base (flat single-segment chain).
-- Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.event_timeline.v1~` (in feature-widget-catalog)
-- Source: `cpt-frontx-dashboard-fr-widget-catalog` (PRD §5.3).
-- Demo coverage: none. No demo query outputs this shape; the paired widget kind `event_timeline` has no demo coverage (PRD section 6.3).
-
-### 6.13 MetadataStripData
-
-**GTS ID**: `gts.frontx.v.widget_data.metadata_strip.v1~`
-
-**Description**: Widget Data for `metadata_strip`: an ordered list of label/value tuples with a typed kind discriminator per item.
-
-**Schema**:
-
-```json
-{
-  "$id": "gts://gts.frontx.v.widget_data.metadata_strip.v1~",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "MetadataStripData",
-  "description": "Paired Widget Data shape for the metadata_strip widget kind: an ordered list of label/value tuples. Each tuple carries a typed kind discriminator (text | badge | link | humanized_age | score) that drives the renderer's value formatting; the kind determines which optional fields apply.",
-  "type": "object",
-  "required": ["items"],
-  "properties": {
-    "items": {
-      "type": "array",
-      "description": "Ordered label/value items rendered left-to-right (or top-to-bottom in wrap layout).",
-      "items": {
-"type": "object",
-"required": ["label", "value", "kind"],
-"properties": {
-  "label": { "type": "string", "description": "Item label rendered by the widget kind per its label_position config." },
-  "value": { "type": "string", "description": "Item value as a string. Numeric and time values are stringified by the Query; the kind discriminator drives interpretation (humanized_age expects a numeric epoch-seconds string; score expects a numeric string)." },
-  "kind": { "type": "string", "enum": ["text", "badge", "link", "humanized_age", "score"], "description": "Typed renderer discriminator: text renders verbatim; badge renders as a colored chip; link renders as a clickable link using link_url; humanized_age renders the value (epoch seconds) as relative age; score renders with reward-tier styling driven by the value magnitude." },
-  "link_url": { "type": ["string", "null"], "description": "Optional URL applied when kind is 'link'; null when not applicable." },
-  "badge_color": { "type": ["string", "null"], "description": "Optional theme-resolvable color override applied when kind is 'badge'; null falls back to the renderer's default badge palette." }
-}
-  ,"if": { "properties": { "kind": { "const": "link" } }, "required": ["kind"] },
-  "then": { "properties": { "link_url": { "type": "string" } }, "required": ["link_url"] }
-      }
-    }
-  }
-}
-```
-
-**Cross-references**:
-- No abstract base (flat single-segment chain).
-- Related types: Paired widget kind: `gts.frontx.m.widget.widget.v1~frontx.m.widget.metadata_strip.v1~` (in feature-widget-catalog)
-- Source: `cpt-frontx-dashboard-fr-widget-catalog` (PRD §5.3).
-- Demo coverage: none. No demo query outputs this shape; the paired widget kind `metadata_strip` has no demo coverage (PRD section 6.3).
+- Source: `cpt-frontx-dashboard-fr-widget-catalog`.
+- Demo coverage: none. The demo's static widget data carries no instance of this shape; the paired widget kind `markdown_card` has no demo coverage (PRD section 6.3).
 
 ## 7. Acceptance Criteria
 
 - [ ] Every concrete listed in section 6 is authored with its full JSON Schema.
-- [ ] Every identifier follows GTS grammar and every `x-gts-ref` resolves to a registered type.
+- [ ] Every identifier follows GTS grammar, and every type validates under GTS v0.17.
 - [ ] No identifier uses the prototype vendor `de` or the `hai3` namespace.
 - [ ] `cfs validate --artifact` reports no structural errors for this document.
-- [ ] Exactly 13 shapes are authored, one per widget kind, none with an abstract base.
-- [ ] The six shapes for `metric_card`, `markdown_card`, `code_diff`, `thread_list`, `event_timeline`, and `metadata_strip` are marked "no demo coverage".
+- [ ] Exactly 9 types are authored, one per widget kind, each derived from the abstract base `gts.frontx.v.widget_data.widget_data.v1~`, which is authored too.
+- [ ] No widget data type declares an `id` field.
+- [ ] Each shape is described as the response of a widget's own data request; no shape is described as part of the dashboard definition.
+- [ ] The grid shape accepts either flat `rows` or ordered `groups`, each group with a label and its rows.
+- [ ] The two shapes for `metric_card` and `markdown_card` are marked "no demo coverage".
