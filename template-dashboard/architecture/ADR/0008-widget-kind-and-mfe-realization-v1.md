@@ -2,6 +2,7 @@
 status: accepted
 date: 2026-10-24
 decision-makers: template-dashboard architecture maintainers
+description: "Decision record for how widget kinds relate to MFE entries and how widget MFEs ship: design-time widget kinds and runtime MFE entries as parallel hierarchies linked by realizes, and one widget-library package with one MFE entry per kind."
 ---
 
 # ADR-0008: Widget kind and MFE realization hierarchy
@@ -31,7 +32,7 @@ decision-makers: template-dashboard architecture maintainers
 
 Two artifact families describe a widget: the widget kind, a design-time GTS type that says what the placement configuration looks like and which widget data shape it consumes, and the MFE entry, the runtime manifest that the Viewer host loads and mounts. The question is whether they form one hierarchy or two linked by an explicit pointer, and whether widgets ship as their own MFEs at all or inside the viewer MFE.
 
-In the DevExpert prototype the split was driven by four consumers, one of them a Node backend report generator that had to produce widget data without loading any MFE bundle. That driver does not exist in the template: there is no generator and no report. Dashboards still outlive MFE bundles, and a widget kind can have zero, one or several realizations.
+Dashboards outlive MFE bundles, and a widget kind can have zero, one or several realizations.
 
 ## Decision Drivers
 
@@ -55,9 +56,9 @@ Chosen option: "Parallel hierarchies linked by `realizes:`", because it keeps da
 
 Design-time widget kinds are `gts.frontx.m.widget.widget.v1~frontx.m.widget.<kind>.v1~`. Runtime MFE entries are instances of `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.v.mfe.entry.v1~`, each carrying `realizes:`, a type reference to a widget kind ([ADR-0003](0003-shared-data-types-and-schemas-v1.md)). Dashboard configuration persists widget instances, never MFE entry identifiers. A widget instance identifier carries its kind in its type chain, and the Viewer host resolves that kind to an entry through `realizes:`.
 
-The `.m` to `.v` references are kept deliberately: a widget kind names its `v.widget_data` shape through its `data_type` trait, and `v.mfe.entry.realizes` refers to `m.widget`. The generator driver of the prototype no longer applies; the split is kept for faithfulness to the prototype and so that MFE re-releases can happen independently of dashboard configurations.
+The `.m` to `.v` references are kept deliberately: a widget kind names its `v.widget_data` shape through its `data_type` trait, and `v.mfe.entry.realizes` refers to `m.widget`. The split is kept so that MFE re-releases can happen independently of dashboard configurations.
 
-**Packaging.** One widget-library package ships one `mf_manifest` and 9 MFE entries, each exposing its own module. Each widget MFE requests its own data with its kind and `params` ([ADR-0011](0011-backend-delivered-dashboard-v1.md)). FrontX ADR-0011 isolates every MFE instance in its own module graph, so the package declares no shared singletons. The template also assumes, as a product-owner decision, that Module Federation is used only for bundling and that FrontX resolves dependencies itself; this is a template assumption, not a statement of FrontX ADR-0011. Consumer widget kinds come as separate packages.
+**Packaging.** One widget-library package ships one `mf_manifest` and 9 MFE entries, each exposing its own module. Each widget MFE requests its own data through the FrontX API package with its kind and `params` ([ADR-0011](0011-backend-delivered-dashboard-v1.md)). FrontX ADR-0011 isolates every MFE instance in its own module graph, so the package declares no shared singletons. The template also assumes, as a product-owner decision, that Module Federation is used only for bundling and that FrontX resolves dependencies itself; this is a template assumption. Consumer widget kinds come as separate packages.
 
 ### Consequences
 
@@ -67,7 +68,7 @@ The `.m` to `.v` references are kept deliberately: a widget kind names its `v.wi
 * Good, because one manifest keeps the widget package simple to build and version.
 * Bad, because two hierarchies must be maintained, and an unrealized kind or an orphan entry are possible states needing catalog reporting.
 * Bad, because the Viewer host performs a kind-to-entry lookup on every mount.
-* Bad, because the main prototype justification is gone, so the split is a deliberate cost carried for continuity and independent releases, not for a present consumer requirement.
+* Bad, because the split is a deliberate cost carried for independent MFE releases and for realizations that no consumer needs yet.
 * Bad, because every MFE instance loads its own copy of heavy libraries under isolation, which weighs on the bundle budget.
 
 ### Confirmation
@@ -130,8 +131,6 @@ The viewer MFE contains every widget kind as an internal component; there are no
 **Scope.** This record decides how widget kinds relate to MFE entries and how widget MFEs are packaged. It does not decide which kinds exist (ADR-0009), the extension domains widgets mount into (ADR-0007), or the isolation behavior (FrontX ADR-0011).
 
 **Checklist applicability.** ARCH applicable and addressed above. PERF applicable: the lookup cost is a map access, and per-instance isolation affects bundle size, tracked by `cpt-frontx-dashboard-nfr-bundle-budget`. SEC not applicable here; isolation is decided in FrontX ADR-0011. REL not applicable because no failure-handling mechanism is decided; an unrealized kind is a catalog state reported by the catalog check. DATA applicable at the contract level: dashboard configuration persists widget kinds, never MFE entry identifiers. INT applicable: consumer packages integrate by adding kinds and entries with `realizes:`. OPS not applicable because no operational procedure is governed. MAINT applicable: two hierarchies and one manifest must be maintained. TEST applicable: the schema review and catalog check confirm the decision. COMPL not applicable because no regulatory or licensing obligation is involved. UX not applicable because no user-facing interaction is decided. BIZ not applicable because no business rule is decided.
-
-**Revision.** Revised on 2026-10-23 for the render-only scope ([ADR-0011](0011-backend-delivered-dashboard-v1.md)). Revised again on 2026-10-23: the catalog has 9 kinds (ADR-0009), so the widget package has 9 entries. Revised on 2026-10-24: `realizes:` is a type reference, the kind is read from the widget instance identifier, and each widget MFE requests its own data ([ADR-0011](0011-backend-delivered-dashboard-v1.md)). The revised decision is accepted.
 
 **Related decisions.** The subject-agnostic widget catalog (ADR-0009) defines which 9 kinds exist. FrontX ADR-0011 defines the per-instance isolation behavior. The Module Federation bundling-only point is a template assumption recorded above.
 

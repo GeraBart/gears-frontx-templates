@@ -2,6 +2,7 @@
 status: accepted
 date: 2026-10-23
 decision-makers: template-dashboard architecture maintainers
+description: "Decision record for the charting library of the chart widgets: Apache ECharts through echarts-for-react, themed per chart widget instance from the template-owned theme, with its per-instance cost under FrontX isolation recorded for the bundle budget."
 ---
 
 # ADR-0004: Charting library
@@ -29,7 +30,7 @@ decision-makers: template-dashboard architecture maintainers
 
 Chart widgets must draw cartesian charts (bar, line, area, scatter), pie charts, and heatmaps from a JSON-friendly description. Which charting library should they use, and how does it receive the dashboard theme?
 
-The earlier DevExpert prototype chose Apache ECharts through the echarts-for-react wrapper. It assumed Module Federation would share the library between widgets, which held the widget bundle under 100 KB gzipped. Its size anchor for ECharts itself was about 300 KB minified and gzipped. In FrontX each MFE load gets its own module graph, so MFE instances share no singletons (FrontX ADR-0011), and that assumption no longer holds.
+In FrontX each MFE load gets its own module graph, so MFE instances share no singletons (FrontX ADR-0011). Every chart widget instance therefore evaluates its own copy of the charting library, and the library's size counts once per instance. For scale, the full Apache ECharts library is about 300 KB minified and gzipped.
 
 ## Decision Drivers
 
@@ -51,7 +52,7 @@ Chosen option: "Apache ECharts with echarts-for-react", because it covers cartes
 
 Chart theme values come from the template-owned theme instance, an instance of the type `gts.frontx.m.dashboard.theme.v1~` (ADR-0006). Light or dark mode follows the host theme mode, and the theme instance supplies the palette for that mode. Each chart widget registers its own ECharts theme from the theme shared property. The Viewer host does not register ECharts themes, because under isolation each widget has its own ECharts module. The mapping effort is one theme builder that turns the palette and typography of the theme instance into an ECharts theme for all chart kinds.
 
-Under per-instance isolation, each chart MFE instance evaluates its own copy of ECharts, so the size anchor from the Context (about 300 KB minified and gzipped for the full library) is paid per instance. Two mitigations apply. Chart widgets import only the chart types and components they need through `echarts/core`. FrontX ADR-0034 reuses the source text of a shared dependency when its content hash matches, which reduces network fetches but does not share the evaluated module. The bundle budget for chart widgets is an open question and is resolved in the DESIGN, after measurement.
+Under per-instance isolation, each chart MFE instance evaluates its own copy of ECharts, so the size from the Context (about 300 KB minified and gzipped for the full library) is paid per instance. The mitigation is that chart widgets import only the chart types and components they need through `echarts/core`. FrontX ADR-0034 reuses the source text of a shared dependency when its content hash matches; it does not lower the per-instance cost, because each MFE load still gets its own module graph and evaluates its own copy (FrontX ADR-0011). The bundle budget for chart widgets is an open question and is resolved in the DESIGN, after measurement.
 
 ### Consequences
 
@@ -59,12 +60,12 @@ Under per-instance isolation, each chart MFE instance evaluates its own copy of 
 * Good, because one JSON option object describes a chart, which suits dashboards defined as data.
 * Good, because one library covers all required chart kinds.
 * Bad, because ECharts is large, and every chart MFE instance evaluates it again.
-* Bad, because the earlier budgets may not hold, and the new figures are not yet known.
+* Bad, because the per-instance cost of a chart widget is not yet measured, so its budget is still provisional.
 * Bad, because echarts-for-react is a small community wrapper maintained outside the Apache ECharts project, so it may fall behind ECharts or React releases. Fallback: the chart widget calls ECharts directly (initialize, set the option, dispose) inside its own component, and widget configuration is not affected because the library already sits behind the widget's typed props.
 
 ### Confirmation
 
-Confirmed by rendering sample charts of each supported kind in the light and the dark theme, by inspecting them against the design-system tokens, and by measuring chart MFE size and memory per instance for the DESIGN budget (`cpt-frontx-dashboard-nfr-bundle-budget`).
+Confirmed by rendering a chart of each supported kind in the light and the dark theme, by inspecting them against the design-system tokens, and by measuring chart MFE size and memory per instance for the DESIGN budget (`cpt-frontx-dashboard-nfr-bundle-budget`).
 
 ## Pros and Cons of the Options
 
@@ -100,9 +101,8 @@ A React component library built on SVG.
 
 * **Review trigger**: if the measured per-instance cost of a chart widget exceeds the budget set in the DESIGN, reconsider Chart.js.
 * **Scope**: this decision covers the charting library, its React wrapper, and how charts take the dashboard theme. It does not cover the bundle budget figures (DESIGN), theme distribution (ADR-0006), or the data grid (ADR-0005).
-* **Checklist applicability**: ARCH applicable (library choice for all chart widgets); PERF applicable (per-instance library cost and its mitigations); SEC N/A (charts render widget data delivered by the backend ([ADR-0011](0011-backend-delivered-dashboard-v1.md)) and add no trust boundary); REL N/A (no failure mode beyond the widget's own loading and error states); DATA N/A (chart options are built from existing widget data); INT applicable (theme shared property from ADR-0006); OPS N/A (no deployment or operational change); MAINT applicable (wrapper maintenance risk and the direct-ECharts fallback); TEST applicable (rendering in both themes and size measurement); COMPL applicable (ECharts is Apache-2.0 and echarts-for-react is MIT, both compatible with the template); UX applicable (token-driven visual quality in light and dark); BIZ N/A (no business trade-off beyond the bundle cost).
+* **Checklist applicability**: ARCH applicable (library choice for all chart widgets); PERF applicable (per-instance library cost and its mitigation); SEC N/A (charts render widget data delivered by the backend ([ADR-0011](0011-backend-delivered-dashboard-v1.md)) and add no trust boundary); REL N/A (no failure mode beyond the widget's own loading and error states); DATA N/A (chart options are built from existing widget data); INT applicable (theme shared property from ADR-0006); OPS N/A (no deployment or operational change); MAINT applicable (wrapper maintenance risk and the direct-ECharts fallback); TEST applicable (rendering in both themes and size measurement); COMPL applicable (ECharts is Apache-2.0 and echarts-for-react is MIT, both compatible with the template); UX applicable (token-driven visual quality in light and dark); BIZ N/A (no business trade-off beyond the bundle cost).
 * Related decisions: FrontX ADR-0011 (each MFE load gets its own module graph) and FrontX ADR-0034 (shared dependency source-text reuse by content hash).
-* **Revision.** Revised on 2026-10-23 for the render-only scope ([ADR-0011](0011-backend-delivered-dashboard-v1.md)); the revised decision is accepted.
 * ADR-0001 explains the isolation model that causes the bundle consequence. ADR-0006 decides how the theme reaches widgets.
 
 ## Traceability

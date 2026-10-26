@@ -2,6 +2,7 @@
 status: accepted
 date: 2026-10-23
 decision-makers: template-dashboard architecture maintainers
+description: "Decision record for the library behind the render-only grid widget kind: TanStack Table as a typed column and row model with virtualized rows, so up to 5,000 supplied rows show without paging at a small per-instance cost."
 ---
 
 # ADR-0005: Data grid library
@@ -30,7 +31,7 @@ decision-makers: template-dashboard architecture maintainers
 
 ## Context and Problem Statement
 
-The `grid` widget kind shows tabular data, for example the pull request list of the demo dashboard. It renders rows and columns exactly as the backend supplies them, with each cell's value shown as text, and keeps frozen columns, column header groups, row coloring and optional row groups as supplied. The browser does not sort, group, paginate, filter or otherwise rearrange the rows, and the viewer offers no control that changes the presentation: the backend-supplied layout and widget configuration fully define how the grid is composed and presented, and the rows arrive in the order to show. They come as the grid's `widget_data`, which the grid widget requests once when it mounts ([ADR-0011](0011-backend-delivered-dashboard-v1.md)); after that the grid only renders. The earlier DevExpert prototype made this choice for widgets that were built as separate bundles; the template keeps the choice and has to restate it for FrontX, where each MFE instance is isolated.
+The `grid` widget kind shows tabular data. It renders rows and columns exactly as the backend supplies them, with each cell's value shown as text, and keeps frozen columns, column header groups, row coloring and optional row groups as supplied. The browser does not sort, group, paginate, filter or otherwise rearrange the rows, and the viewer offers no control that changes the presentation: the backend-supplied layout and widget configuration fully define how the grid is composed and presented, and the rows arrive in the order to show. They come as the grid's `widget_data`, which the grid widget requests through the FrontX API package once when it mounts ([ADR-0011](0011-backend-delivered-dashboard-v1.md)); after that the grid only renders and makes no further request on the dashboard, other than Retry after a failure and any request its own larger view needs, and what that view shows is the grid's own detail (ADR-0011). In FrontX each MFE instance is isolated, so whatever library the grid uses is paid by every grid widget instance.
 
 Which library, if any, renders the `grid` widget kind?
 
@@ -72,7 +73,7 @@ The `grid` widget kind uses TanStack Table only as a typed column and row model 
 * Good, because every feature the widget uses is MIT-licensed, with no commercial tier.
 * Good, because the headless design keeps the design system in charge of appearance, with no style conflicts.
 * Good, because virtualized rows keep a 5,000-row grid responsive without paging, and the rows stay DOM elements.
-* Good, because the library is small (about 15 KB gzipped). FrontX isolates each MFE instance and shares no singletons (FrontX ADR-0011), so every grid widget instance loads its own copy. A small library keeps that repeated cost low. Source-text reuse by content hash (FrontX ADR-0034) may reduce parsing further. This does not remove the per-instance cost.
+* Good, because the library is small (about 15 KB gzipped). FrontX isolates each MFE instance and shares no singletons (FrontX ADR-0011), so every grid widget instance evaluates its own copy. A small library keeps that repeated cost low. FrontX ADR-0034 reuses the source text of a shared dependency when its content hash matches, but each instance still evaluates its own copy (FrontX ADR-0011), so the per-instance cost remains.
 * Bad, because headless means the header and row markup must be built once. Mitigation: it lives in one grid shell component that all grid configurations share.
 * Bad, because accessibility (ARIA table semantics, including row counts and positions for virtualized rows) must be implemented in that shell by hand.
 * Bad, because virtualization adds a second small library and means off-screen rows are not in the DOM. Mitigation: it is the TanStack virtualizer, used only inside the grid shell.
@@ -86,8 +87,8 @@ Confirmed by code review and by checks on the `grid` widget:
 * The widget builds its table with TanStack Table and no other grid library appears in the dependency list of the widget package.
 * Cells show their value as text, and no column configuration selects a cell renderer.
 * A grid with 5,000 supplied rows renders only the rows in view plus the group heading rows, scrolls through all rows without paging, and keeps the supplied order and groups.
-* The grid renders the `widget_data` rows in the supplied order and makes no request after its data has arrived, and the shell uses no sorting, grouping, pagination, filtering or column-resizing feature of the library and offers no control for them.
-* The measured gzipped size of the `grid` widget, library included and counted once per instance, is recorded. Until open question Q1 sets the budget in `cpt-frontx-dashboard-nfr-bundle-budget`, the check confirms that the grid library stays in the low tens of KB gzipped. Once Q1 is resolved, the recorded size is checked against that budget. Source-text reuse by content hash (FrontX ADR-0034) is a mitigation for repeated fetches and is not counted as a reduction of the per-instance size.
+* The grid renders the `widget_data` rows in the supplied order and makes no request after its data has arrived other than Retry after a failure and any request its own larger view needs (what that view shows is the grid's own detail, ADR-0011), and the shell uses no sorting, grouping, pagination, filtering or column-resizing feature of the library and offers no control for them.
+* The measured gzipped size of the `grid` widget, library included and counted once per instance, is recorded. Until open question Q1 sets the budget in `cpt-frontx-dashboard-nfr-bundle-budget`, the check confirms that the grid library stays in the low tens of KB gzipped. Once Q1 is resolved, the recorded size is checked against that budget. Source-text reuse by content hash (FrontX ADR-0034) is not counted as a reduction of the per-instance size, because each instance still evaluates its own copy (FrontX ADR-0011).
 * The grid shell exposes ARIA table semantics, including row counts and positions for virtualized rows, checked by an automated accessibility check and a keyboard test (traces `cpt-frontx-dashboard-nfr-accessibility`).
 
 ## Pros and Cons of the Options
@@ -149,7 +150,6 @@ The widget renders a plain `<table>` from its configuration and data.
 
 ## More Information
 
-* **Revision.** Revised on 2026-10-23 for the render-only scope ([ADR-0011](0011-backend-delivered-dashboard-v1.md)): the grid no longer sorts, groups, paginates or resizes in the browser, the options were re-checked against that, and the no-library option was added. Revised again on 2026-10-23: cell renderers were removed (cells show their value as text), and virtualized row rendering for large grids was decided. The revised decision is accepted.
 * This ADR covers the grid library only. Chart rendering is a separate decision.
 * Evolution path: the grid shell hides TanStack Table behind typed props. If the library changes or is replaced, only the shell changes, and grid widget configurations stay the same.
 * Review trigger: the measured benefit of the typed column model no longer outweighs the library cost in the render-only scope (the no-library option becomes preferable); data sets regularly exceed 10,000 rows; a TanStack Table major version forces a large shell rewrite; the measured per-instance size exceeds the budget set by Q1.
@@ -162,7 +162,7 @@ The widget renders a plain `<table>` from its configuration and data.
   * REL: N/A, because the grid library has no external dependency; data request failures are shown per widget ([ADR-0011](0011-backend-delivered-dashboard-v1.md)).
   * DATA: N/A, because the grid reads `widget_data` and persists nothing.
   * INT: applicable, the grid consumes its `widget_data` through its own typed props; the library adds no external API.
-  * OPS: N/A, because the template is a source overlay with no deployed service; the consuming application owns operations.
+  * OPS: N/A, because the template has no deployed service; the consuming product owns operations.
   * MAINT: applicable, the shell hides the library, and AI guidance names version 8.
   * TEST: applicable, see Confirmation.
   * COMPL: applicable, every used feature must be MIT-licensed.
@@ -176,7 +176,7 @@ The widget renders a plain `<table>` from its configuration and data.
 
 This decision directly addresses the following requirements or design elements:
 
-* `cpt-frontx-dashboard-fr-grid-presentation` — the grid shell built on TanStack Table renders the supplied rows, columns and row groups as given, with virtualized rows for large grids.
-* `cpt-frontx-dashboard-fr-widget-catalog` — the `grid` widget kind is one of the catalog kinds this decision implements.
+* `cpt-frontx-dashboard-fr-widget-catalog` — the `grid` widget kind is one of the catalog kinds this decision implements; its grid shell built on TanStack Table renders the supplied rows, columns and row groups as given.
+* `cpt-frontx-dashboard-nfr-large-table` — virtualized row rendering keeps a grid of up to 5,000 supplied rows responsive while scrolling, without paging.
 * `cpt-frontx-dashboard-nfr-bundle-budget` — the per-instance library cost counts against the bundle budget.
 * `cpt-frontx-dashboard-nfr-accessibility` — accessibility of the grid is delivered by the grid shell.

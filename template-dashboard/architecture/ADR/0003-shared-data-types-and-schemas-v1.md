@@ -2,6 +2,7 @@
 status: accepted
 date: 2026-10-24
 decision-makers: template-dashboard architecture maintainers
+description: "Decision record for the type system of the template's domain model: GTS under gts-spec v0.17 on the FrontX base types, with the frontx vendor, the v and m packages, combined instance identifiers, the data_type trait and registry validation of generated dashboard definitions."
 ---
 
 # ADR-0003: Shared data types and schemas
@@ -17,7 +18,7 @@ decision-makers: template-dashboard architecture maintainers
   - [Consequences](#consequences)
   - [Confirmation](#confirmation)
 - [Pros and Cons of the Options](#pros-and-cons-of-the-options)
-  - [GTS (gts-spec) rebased onto FrontX base types](#gts-gts-spec-rebased-onto-frontx-base-types)
+  - [GTS (gts-spec) on FrontX base types](#gts-gts-spec-on-frontx-base-types)
   - [Hand-maintained TypeScript interfaces](#hand-maintained-typescript-interfaces)
   - [Plain JSON Schema or OpenAPI documents without a type system](#plain-json-schema-or-openapi-documents-without-a-type-system)
 - [More Information](#more-information)
@@ -27,9 +28,9 @@ decision-makers: template-dashboard architecture maintainers
 
 ## Context and Problem Statement
 
-The viewer, the widgets, the backend that delivers dashboard definitions and widget data, and consumer code exchange dashboards (with their embedded layout and widget instances) and widget data. A consuming backend may also generate dashboard definitions, for example from a user's chat request, and must be able to validate what it generates before it stores or returns it. All parties need one governed set of types and schemas, so that contracts do not drift. Which type system should define them, and under which version of its rules?
+The viewer, the widgets, the backend that delivers dashboard definitions and widget data, and consumer code exchange dashboards (with their embedded layout and widget instances) and widget data. A consuming product backend may also generate dashboard definitions, for example from a user's chat request, and must be able to validate what it generates before it stores or returns it. All parties need one governed set of types and schemas, so that contracts do not drift. Which type system should define them, and under which version of its rules?
 
-The earlier DevExpert prototype used GTS (the Global Type System, specified by gts-spec) with identifiers in a `de` vendor namespace on hai3 base types. FrontX already builds its micro-frontend contracts on GTS, with base types under `gts.frontx.mfes.*`. The template must reuse that system and rebase its own types onto the FrontX base types.
+FrontX builds its micro-frontend contracts on GTS (the Global Type System, specified by gts-spec), with base types under `gts.frontx.mfes.*`. The template's types must build on those FrontX base types.
 
 ## Decision Drivers
 
@@ -37,26 +38,24 @@ The earlier DevExpert prototype used GTS (the Global Type System, specified by g
 * Identifiers must be readable and must encode vendor, package, and version.
 * Schema evolution must be safe, so that published identifiers never change meaning.
 * Consumers must be able to extend widget and dashboard types without editing the template.
-* The sample content must be clearly separate from the reusable engine types.
 * Identifiers from this template must not collide with FrontX identifiers or with identifiers from other templates.
 * A generated dashboard definition must be checkable against registered types alone, including which widget data type each widget kind returns, without template code.
 
 ## Considered Options
 
-* GTS (gts-spec) rebased onto FrontX base types
+* GTS (gts-spec) on FrontX base types
 * Hand-maintained TypeScript interfaces
 * Plain JSON Schema or OpenAPI documents without a type system
 
 ## Decision Outcome
 
-Chosen option: "GTS (gts-spec) rebased onto FrontX base types", because FrontX already uses it for its own contracts, so the template types compose with extension, domain, entry, and action types.
+Chosen option: "GTS (gts-spec) on FrontX base types", because FrontX already uses it for its own contracts, so the template types compose with extension, domain, entry, and action types.
 
 The conventions are:
 
 * Vendor is `frontx`. Package `v` holds the view runtime types and package `m` holds the model types. Identifiers look like `gts.frontx.v.*` and `gts.frontx.m.*`.
-* Namespace ownership: the FrontX project owns the `frontx` vendor and all of `gts.frontx.*`. Under it, this template reserves the packages `v`, `m`, and `demo`. The `mfes` package (`gts.frontx.mfes.*`) stays owned by the FrontX mfes package.
+* Namespace ownership: the FrontX project owns the `frontx` vendor and all of `gts.frontx.*`. Under it, this template reserves the packages `v` and `m`. The `mfes` package (`gts.frontx.mfes.*`) stays owned by the FrontX mfes package.
 * Base types come from `gts.frontx.mfes.*`. Derived types are chained after a base, for example an action type derived from the base action type.
-* Sample content lives under `gts.frontx.demo.*`, separate from the engine types.
 * ID form: type identifiers end with `~`, and instance identifiers do not.
 * Target rules: gts-spec v0.17. The conventions below use its identifier forms (§2, §3.7), reference keywords (§9.6), traits (§9.7), modifiers (§9.11) and registry operations (§5.3, OP#6, OP#13).
 * Instance identifiers always carry their type chain. Dashboards and widget instances use the combined anonymous form `<type chain>~<UUID>`, with the UUID generated by the backend that creates the instance. Instances never carry a separate `type` field: the type is the identifier prefix up to the last `~`. The `id` of a dashboard and of a widget instance is constrained with `x-gts-instance-ref: "/$id"`, so it must be an instance of the type it is validated against.
@@ -64,8 +63,8 @@ The conventions are:
 * Base types that only serve derivation are `x-gts-abstract: true`: the widget base `gts.frontx.m.widget.widget.v1~` and the widget data base `gts.frontx.v.widget_data.widget_data.v1~`. Each widget kind and each widget data shape is a concrete type derived from its base.
 * Type-level facts are traits, not instance fields. The widget base declares `x-gts-traits-schema` with a required `data_type` (an `x-gts-type-ref` to the widget data base), and each widget kind sets `x-gts-traits` with its own widget data type. The registry checks that every concrete kind closes this trait (OP#13).
 * Widget data is computed for each request and is not stored, so it carries no `id`. A response is validated against the `data_type` of the requesting widget's kind.
-* Validation runs against a GTS registry (§5.3): instances under OP#6 and trait values under OP#13. The template ships the type schemas; a consuming backend that generates definitions validates them against the registered types.
-* Every rebased identifier starts at `v1`. Identifiers are frozen from the first non-alpha release of the template. Alpha releases may still change them. After the freeze, a change to a published identifier creates a new version.
+* Validation runs against a GTS registry (§5.3): instances under OP#6 and trait values under OP#13. The template ships the type schemas; a consuming product backend that generates definitions validates them against the registered types.
+* Every template identifier starts at `v1`. Identifiers are frozen from the first non-alpha release of the template. Alpha releases may still change them. After the freeze, a change to a published identifier creates a new version.
 * Types that stay inside TypeScript, such as internal view-model state, are not given GTS identifiers.
 
 ### Consequences
@@ -73,7 +72,6 @@ The conventions are:
 * Good, because widget, domain, and action types compose with FrontX types through chaining.
 * Good, because identifiers make vendor, package, and version visible to readers and tools.
 * Good, because the frozen `v1` rule gives consumers stable contracts from the first non-alpha release.
-* Good, because separating `demo` content lets consumers remove the sample without touching the engine.
 * Good, because generated definitions can be validated against registered types, and the kind-to-data pairing is a type-level trait checked once per type instead of a convention.
 * Good, because an identifier alone tells its type, so no `type` field can disagree with it.
 * Bad, because contributors must learn GTS syntax and its reference annotations.
@@ -83,11 +81,11 @@ The conventions are:
 
 ### Confirmation
 
-Confirmed by validating all type and instance files against the GTS v0.17 rules in CI, including trait completeness of every widget kind, and by a review check that every new identifier uses the `frontx` vendor, one of the reserved packages `v`, `m`, or `demo` for its own segment, a `v1` start, and the correct `~` form. Review also confirms that no schema uses `x-gts-ref`, that no instance carries a separate `type` field, and that demo dashboards and widget instances use combined identifiers.
+Confirmed by validating all type and instance files against the GTS v0.17 rules in CI, including trait completeness of every widget kind, and by a review check that every new identifier uses the `frontx` vendor, one of the reserved packages `v` or `m` for its own segment, a `v1` start, and the correct `~` form. Review also confirms that no schema uses `x-gts-ref`, that no instance carries a separate `type` field, and that dashboards and widget instances use combined identifiers.
 
 ## Pros and Cons of the Options
 
-### GTS (gts-spec) rebased onto FrontX base types
+### GTS (gts-spec) on FrontX base types
 
 Types and instances are JSON files with GTS identifiers, chained from FrontX bases.
 
@@ -116,11 +114,10 @@ Schemas are standalone documents without identifiers or chaining.
 ## More Information
 
 * **Review trigger**: revisit this decision when gts-spec moves past v0.17 or the FrontX mfes package changes its base types or chaining rules, and confirm the identifiers before the first non-alpha release freezes them.
-* **Revision.** Revised on 2026-10-24: gts-spec v0.17 is the target, with combined instance identifiers, kind-specific reference keywords, abstract bases, the `data_type` trait and registry validation of generated definitions. The widget data types were renamed under the new abstract base, which the alpha rule allows. The revised decision is accepted.
-* **Scope**: this decision covers the type system, the vendor and package namespace, identifier form, and versioning. It does not cover the content of the type catalog, which the DESIGN describes, or the types that stay inside TypeScript.
-* **Checklist applicability**: ARCH applicable (one type system for all contracts); PERF N/A (validation cost is not decided here); SEC N/A (no trust boundary or credentials are introduced; run-time validation is covered under DATA); REL N/A (no run-time failure mode is decided here); DATA applicable (schemas, identifiers, versioning, and the freeze point); INT applicable (composition with FrontX base types and consumer extensions); OPS N/A (no deployment or operational change); MAINT applicable (namespace ownership, collision rule, and version governance); TEST applicable (GTS validation in CI); COMPL N/A (no regulated data or new license); UX N/A (no user-facing behavior); BIZ applicable (consumers extend types without editing the template, and the demo can be removed).
+* **Scope**: this decision covers the type system, the vendor and package namespace, identifier form, and versioning. It does not cover the content of the domain model, which the DESIGN describes, or the types that stay inside TypeScript.
+* **Checklist applicability**: ARCH applicable (one type system for all contracts); PERF N/A (validation cost is not decided here); SEC N/A (no trust boundary or credentials are introduced; run-time validation is covered under DATA); REL N/A (no run-time failure mode is decided here); DATA applicable (schemas, identifiers, versioning, and the freeze point); INT applicable (composition with FrontX base types and consumer extensions); OPS N/A (no deployment or operational change); MAINT applicable (namespace ownership, collision rule, and version governance); TEST applicable (GTS validation in CI); COMPL N/A (no regulated data or new license); UX N/A (no user-facing behavior); BIZ applicable (consumers extend types without editing the template).
 * Related decision: FrontX ADR-0007 (action dispatch) routes actions by target and action type, which is how the template's host actions reach their targets. It does not define the action base type. That base type is the `gts.frontx.mfes.comm.action.v1~` schema of the FrontX mfes package, and the template's host actions are derived from it.
-* The full type catalog is described in the DESIGN, not here.
+* The full domain model is described in the DESIGN, not here.
 
 ## Traceability
 
@@ -129,8 +126,7 @@ Schemas are standalone documents without identifiers or chaining.
 
 This decision directly addresses the following requirements or design elements:
 
-* `cpt-frontx-dashboard-fr-domain-model` — the catalog is published as GTS types and instances under the `frontx` vendor.
-* `cpt-frontx-dashboard-interface-domain-model` — consumers extend the catalog through GTS chaining.
-* `cpt-frontx-dashboard-fr-demo-opt-in` — sample content sits under `gts.frontx.demo.*`.
+* `cpt-frontx-dashboard-fr-domain-model` — the domain model is published as GTS types and instances under the `frontx` vendor.
+* `cpt-frontx-dashboard-interface-domain-model` — consumers extend the domain model through GTS chaining.
 * `cpt-frontx-dashboard-fr-widget-catalog` — widget kinds are typed through the chain from the abstract widget base and name their widget data type through the `data_type` trait.
 * `cpt-frontx-dashboard-principle-gts-contracts` — definitions and widget data are validated against registered GTS v0.17 types.

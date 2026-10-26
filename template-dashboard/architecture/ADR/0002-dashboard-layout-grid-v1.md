@@ -2,6 +2,7 @@
 status: accepted
 date: 2026-10-05
 decision-makers: template-dashboard architecture maintainers
+description: "Decision record for how the dashboard viewer stores and renders layout: integer {x, y, w, h} cells on a 60-column grid, rendered with CSS Grid and no layout library, with invalid layouts rejected by schema validation and a viewer-side layout check."
 ---
 
 # ADR-0002: Dashboard layout grid
@@ -29,7 +30,7 @@ decision-makers: template-dashboard architecture maintainers
 
 A dashboard places widgets in cells. The viewer needs a layout model that is easy to store as data and easy to render. How should layout be represented and rendered in the viewer?
 
-The earlier DevExpert prototype used a 60-column grid. Each cell is stored as integer `{x, y, w, h}` coordinates, with one widget per cell. Its authoring editor used react-grid-layout (a React drag-and-resize grid component). Its viewer rendered the same coordinates with plain CSS Grid and no layout library. This template ports the viewer half only. Authoring is a later stage.
+A layout is a set of cells, each stored as integer `{x, y, w, h}` coordinates with one widget per cell. The template covers the viewer only: it renders stored layouts and does not edit them. Authoring is out of scope for this template: the consuming product writes or generates layouts, and the stored format does not depend on any editor library.
 
 ## Decision Drivers
 
@@ -53,12 +54,12 @@ The layout-to-CSS mapping is direct. The container is a grid with 60 equal colum
 
 Invalid layouts are caught in two places. Schema validation of the layout cell type checks the bounds of each coordinate (non-negative integers, `x` below 60, `w` from 1 to 60, `h` at least 1). A viewer-side layout check runs when the Viewer host opens a dashboard. It rejects cells that overlap or that extend past column 60 (`x + w` greater than 60), and the Viewer host shows a diagnostic instead of rendering the dashboard.
 
-The authoring editor, including react-grid-layout, is a non-goal for this template. It may be added in a later stage, because the stored format does not depend on it.
+Authoring is out of scope for this template, and the consuming product writes or generates layouts. The stored format does not depend on any editor library, so the consuming product can use any editor without a format change.
 
 ### Consequences
 
 * Good, because the viewer has no layout dependency, so there is no extra code to load in each instance.
-* Good, because the same stored coordinates can later feed an editor without a format change.
+* Good, because the same stored coordinates can feed any editor the consuming product uses, without a format change.
 * Good, because 60 columns divide evenly into halves, thirds, quarters, fifths, sixths, tenths, and twelfths.
 * Bad, because overlapping or out-of-range cells are not repaired at run time. Schema validation and the viewer-side layout check reject them, so one bad cell blocks the whole dashboard until its data is fixed.
 * Bad, because coordinates on 60 columns are larger numbers than on 12 columns, so hand-written layouts are more prone to small gaps.
@@ -66,7 +67,7 @@ The authoring editor, including react-grid-layout, is a non-goal for this templa
 
 ### Confirmation
 
-Confirmed by rendering the sample dashboard and checking that each cell lands on the column and row range given by its coordinates. Two fixtures confirm rejection: an overlapping fixture, where two cells share a grid area, and an out-of-range fixture, where a cell has `x + w` greater than 60. For each fixture the viewer renders no cells and shows a diagnostic. A review confirms that the viewer package has no layout library dependency.
+Confirmed by rendering a test dashboard and checking that each cell lands on the column and row range given by its coordinates. Two fixtures confirm rejection: an overlapping fixture, where two cells share a grid area, and an out-of-range fixture, where a cell has `x + w` greater than 60. For each fixture the viewer renders no cells and shows a diagnostic. A review confirms that the viewer package has no layout library dependency.
 
 ## Pros and Cons of the Options
 
@@ -78,7 +79,7 @@ Cells are integer coordinates on a fixed 60-column grid, mapped to CSS grid line
 * Good, because the grid styles live in the viewer's own shadow root and need no document-level stylesheet.
 * Good, because the stored model is simple and library-independent.
 * Good, because 60 is divisible by 2, 3, 4, 5, 6, 10, 12, 15, 20, and 30, so five equal widgets in a row fit exactly.
-* Neutral, because the editing experience is deferred.
+* Neutral, because authoring is out of scope and left to the consuming product.
 * Bad, because collisions are not resolved at run time and need a separate layout check.
 * Bad, because the larger coordinates are harder to write by hand.
 
@@ -104,10 +105,10 @@ The viewer would render and position cells through a drag-and-resize grid librar
 
 ## More Information
 
-* **Review trigger**: revisit this decision when an authoring editor is taken up, or when responsive layouts for narrow screens become a requirement.
-* **Scope**: this decision covers the stored cell model, the column count, the rendering technique, and where invalid layouts are caught. It does not cover an authoring editor, responsive reflow for narrow screens, or the layout domain and cell types, which the DESIGN specifies.
-* **Checklist applicability**: ARCH applicable (layout model and rendering technique); PERF applicable (no layout library per instance, native layout at first render); SEC N/A (coordinates are validated integers and add no trust boundary); REL applicable (invalid layouts are rejected with a diagnostic); DATA applicable (stored coordinate format and its validation); INT N/A (no external system is involved); OPS N/A (no deployment or operational change); MAINT applicable (no layout library to upgrade, and the format is independent of a future editor); TEST applicable (overlapping and out-of-range fixtures); COMPL N/A (no regulated data or new license); UX applicable (placement precision and the missing visual editor); BIZ N/A (the deferred editor is recorded in Scope, with no other business trade-off).
-* The decision about an authoring editor is deferred and needs its own ADR if it is taken up.
+* **Review trigger**: revisit this decision when responsive layouts for narrow screens become a requirement.
+* **Scope**: this decision covers the stored cell model, the column count, the rendering technique, and where invalid layouts are caught. It does not cover authoring, responsive reflow for narrow screens, or the layout domain and cell types, which the DESIGN specifies.
+* **Checklist applicability**: ARCH applicable (layout model and rendering technique); PERF applicable (no layout library per instance, native layout at first render); SEC N/A (coordinates are validated integers and add no trust boundary); REL applicable (invalid layouts are rejected with a diagnostic); DATA applicable (stored coordinate format and its validation); INT N/A (no external system is involved); OPS N/A (no deployment or operational change); MAINT applicable (no layout library to upgrade, and the format is independent of any editor library); TEST applicable (overlapping and out-of-range fixtures); COMPL N/A (no regulated data or new license); UX applicable (placement precision and the missing visual editor); BIZ N/A (authoring out of scope is recorded in Scope, with no other business trade-off).
+* Authoring is out of scope for this template; the consuming product writes or generates layouts.
 
 ## Traceability
 
@@ -116,7 +117,7 @@ The viewer would render and position cells through a drag-and-resize grid librar
 
 This decision directly addresses the following requirements or design elements:
 
-* `cpt-frontx-dashboard-fr-domain-model` — the layout and cell types in the catalog store integer `{x, y, w, h}` coordinates on the 60-column grid.
+* `cpt-frontx-dashboard-fr-domain-model` — the layout and cell types of the domain model store integer `{x, y, w, h}` coordinates on the 60-column grid.
 * `cpt-frontx-dashboard-fr-widget-catalog` — each cell holds one widget of the catalog.
 * `cpt-frontx-dashboard-nfr-bundle-budget` — the viewer carries no layout library.
 * `cpt-frontx-dashboard-nfr-initial-render` — native CSS Grid keeps layout cost low at first render.

@@ -2,6 +2,7 @@
 status: accepted
 date: 2026-10-24
 decision-makers: template-dashboard architecture maintainers
+description: Decision record on how template-dashboard splits into a viewer package and a widget package, depends on template-shell only, and states by role what it requires from the host - a screen, and a place to show modals with focus kept inside and dismissal.
 ---
 
 # ADR-0010: Template packages and host contract
@@ -17,8 +18,7 @@ decision-makers: template-dashboard architecture maintainers
   - [Consequences](#consequences)
   - [Confirmation](#confirmation)
 - [Pros and Cons of the Options](#pros-and-cons-of-the-options)
-  - [Add-only overlay with its own manifest, three packages](#add-only-overlay-with-its-own-manifest-three-packages)
-  - [Preset bundling shell and dashboard](#preset-bundling-shell-and-dashboard)
+  - [Two packages on `template-shell`, host contract by role](#two-packages-on-template-shell-host-contract-by-role)
   - [Dependency on `template-mfe`](#dependency-on-template-mfe)
   - [Own host application](#own-host-application)
 - [More Information](#more-information)
@@ -28,114 +28,92 @@ decision-makers: template-dashboard architecture maintainers
 
 ## Context and Problem Statement
 
-The dashboard must reach a consumer's project as a FrontX template. The consumer already has a FrontX application shell from `template-shell` and wants the dashboard added without forking or editing the shell. The dashboard also has parts with different audiences: the engine and viewer every consumer needs, a widget library, and demo content that only evaluators want. Dashboard content itself comes from the consuming backend at run time ([ADR-0011](0011-backend-delivered-dashboard-v1.md)), so packaging decides only how types and code reach the project. The prototype viewer ran in a host application of its own; here the viewer is a nested host in a consumer's shell, so its packaging and host requirements are new decisions.
+The dashboard runs inside a consuming product's FrontX application, which is built on `template-shell`. The viewer is a nested host inside that application, not an application of its own. The template's code has parts with different roles: the engine and the viewer that every consuming product needs, and a library of widgets. Dashboard content itself comes from the consuming product backend at run time ([ADR-0011](0011-backend-delivered-dashboard-v1.md)), so the packages carry only types and code.
 
 The dashboard has to mount inside the shell's existing extension domains: a screen domain for the Viewer host and a modal domain for the widget modal. Those domains belong to the shell and their identifiers may change. The shell registers both, but today it renders only the screen domain through a slot; the modal domain has no rendered slot. Docs and code need a stable way to refer to these domains, and the template needs a stated list of what it requires from the host.
 
-How is the template packaged and applied, what does it depend on, and what does it require from the host?
+How does the template split into packages, what does it depend on, and what does it require from the host?
 
 ## Decision Drivers
 
-* Add-only installation: nothing in `template-shell` is changed or removed (`cpt-frontx-dashboard-fr-overlay-install`).
-* Conformance with FrontX template mechanics: a template is a directory with a manifest; ownership is declared by exclusive subtrees (FrontX ADR-0018, ADR-0020, ADR-0030).
-* Minimal dependencies: the template depends on the shell only and takes nothing from `template-mfe`.
-* Demo content stays out of a normal install (`cpt-frontx-dashboard-fr-demo-opt-in`).
-* Dashboard content is not packaged: it comes from the backend, so the manifest channel carries only GTS types and MFE entries.
+* Minimal dependencies: the template depends on `template-shell` only and takes nothing from `template-mfe`.
+* Dashboard content is not packaged: it comes from the consuming product backend, so the manifest channel carries only GTS types and MFE entries.
 * Stability against shell changes: host domain IDs are resolved from shell constants, never typed as literals.
-* Isolation of widgets: each widget MFE instance is isolated by FrontX (FrontX ADR-0011), so packaging must not rely on shared singletons.
+* Isolation of widgets: each widget MFE instance is isolated by FrontX (FrontX ADR-0011), so the packages must not rely on shared singletons.
 
 ## Considered Options
 
-1. **Add-only overlay with its own manifest, three packages** — `template-dashboard/` applied onto a project with `template-shell`.
-2. **Preset bundling shell and dashboard** — one template referencing `template-shell` and the dashboard parts.
-3. **Dependency on `template-mfe`** — build the dashboard on the reference MFE scaffold.
-4. **Own host application** — the dashboard ships its own shell.
+1. **Two packages on `template-shell`, host contract by role** — a viewer package and a widget package, a dependency on `template-shell` only, and host requirements stated by role.
+2. **Dependency on `template-mfe`** — build the dashboard on the reference MFE scaffold.
+3. **Own host application** — the dashboard ships its own shell.
 
 ## Decision Outcome
 
-Chosen option: "Add-only overlay with its own manifest, three packages", because it installs onto an existing shell without changing it, follows the FrontX manifest rules and keeps the dependency set to the shell alone.
+Chosen option: "Two packages on `template-shell`, host contract by role", because the dashboard runs in the consuming product's existing shell-based application, depends on the shell alone, and names what it needs from the host by role, so a change of a shell identifier stays contained.
 
 The decision:
 
-* **Manifest.** `template-dashboard/` is an add-only overlay with its own `frontx-template.json` and no references. It is discovered by the presence of the manifest, as for other templates (FrontX ADR-0018, ADR-0020, ADR-0030), and applied with `frontx add` onto a project that has `template-shell`. `template-dashboard/frontx-template.json` is authoritative for the template name, version and exclusive subtrees.
-* **Dependencies.** It depends on `template-shell` only. It takes nothing from `template-mfe`.
-* **Ownership.** The template declares exclusive subtrees for its three packages and its AI guidance, and writes nothing outside them.
-* **Manifest channel.** Each package's `mfe.json` carries only GTS types and MFE entries. Dashboard content (dashboards with their embedded layout and widget instances, and widget data) never travels through `mfe.json`; it comes from the backend: the dashboard definition, and each widget's data on its own request ([ADR-0011](0011-backend-delivered-dashboard-v1.md)).
-* **Packages, split by audience.**
-  * `dashboard-viewer`: the engine schemas (`frontx.v.*` and `frontx.m.*`), the viewer entry with its routed extension in the host screen domain through `Extension.route` (FrontX ADR-0036), and the modal-container entry.
+* **Dependencies.** The template requires `template-shell` and depends on it only. It takes nothing from `template-mfe`.
+* **Manifest channel.** Each package's `mfe.json` carries only GTS types and MFE entries. Dashboard content (dashboards with their embedded layout and widget instances, and widget data) never travels through `mfe.json`; it comes from the consuming product backend: the dashboard definition, and each widget's data on its own request ([ADR-0011](0011-backend-delivered-dashboard-v1.md)).
+* **Packages, split by role.**
+  * `dashboard-viewer`: the engine schemas (`frontx.v.*` and `frontx.m.*`), the viewer entry, and the modal-container entry. The viewer entry's extension in the host screen domain is a routed extension (FrontX ADR-0036); it uses the shell's screen extension type and its `route` field.
   * `dashboard-widgets`: one `mf_manifest` and 9 widget entries.
-  * `dashboard-demo`: marked `templateExample: true`; ships static JSON for the sample dashboard's definition and its widgets' data, which the dev server serves in place of a project backend, and contributes any `gts.frontx.demo.*` types through its own `mfe.json`. `dashboard-viewer` has no build-time dependency on `dashboard-demo`. It is included only when the consumer opts in with `FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1`.
 * **Host contract.** The template names host domains by role: the host screen domain and the host modal domain. Their current `template-shell` IDs are resolved from shell framework constants and never written as literals. Requirements on the host:
   * The host screen domain accepts routed extensions of the shell screen extension type and mounts one screen at a time.
   * The host modal domain accepts plain extensions and uses the optional mount strategy (zero or one occupant).
-  * The host renders the host modal domain through a domain slot with modal chrome, focus trap and dismissal. Current `template-shell` registers this domain but renders no slot for it, so the slot is a prerequisite `template-shell` change tracked outside `template-dashboard`. Without it the template installs and builds and the dashboard works, but the widget modal cannot be shown.
+  * The host renders the host modal domain through a domain slot with modal chrome, focus kept inside the modal (focus trap) and dismissal. Current `template-shell` registers this domain but renders no slot for it, so the slot is a prerequisite `template-shell` change tracked outside `template-dashboard`. Without it the template builds and the dashboard works, but the widget modal cannot be shown.
   * The shell serves the aggregated MFE manifest that the Viewer host's registry reads.
   * The theme shared property carries the host theme id, and only the id; the template derives light or dark mode from it through its own theme-id map (ADR-0006). The language shared property is provided.
-* **Not done now.** A shell-plus-dashboard preset is a later option.
 
 ### Consequences
 
-* Good, because the template changes no shell file and the dashboard can be added to any shell-based project; the widget modal additionally needs the host modal-domain slot.
-* Good, because ownership is declared and checked by the existing manifest mechanics.
-* Good, because a normal install carries no demo code or sample data.
+* Good, because the dashboard runs in any `template-shell`-based application that meets the host requirements; the widget modal additionally needs the host modal-domain slot.
 * Good, because the manifests carry only types and MFE entries, so a new dashboard needs no package change.
 * Good, because role-based references survive a rename of shell domain IDs; only the constant lookup tracks it.
-* Bad, because a consumer runs two steps, seed the shell and add the dashboard, until a preset exists.
 * Bad, because the contract with the host is by role and depends on the shell exposing its domain constants and accepting plain extensions in its modal domain.
 * Bad, because the widget modal depends on a host prerequisite that current `template-shell` does not meet: a rendered modal-domain slot with modal chrome, focus trap and dismissal, delivered by a shell change outside this template.
-* Neutral, because the demo dashboard depends on the dev server serving the static JSON; outside development a consumer backend must serve the definitions and widget data.
-* Bad, because widgets cannot share module singletons; each widget instance loads its own dependencies, which affects bundle size (`cpt-frontx-dashboard-nfr-bundle-budget`). Mitigation: FrontX ADR-0034 reuses shared-dependency source text across MFEs when content hashes match, which saves repeated fetches but not repeated evaluation; ADR-0004 records the per-instance cost of the charting library for the budget.
+* Bad, because widgets cannot share module singletons: each widget instance evaluates its own dependencies (FrontX ADR-0011), which affects bundle size (`cpt-frontx-dashboard-nfr-bundle-budget`). Mitigation: FrontX ADR-0034 reuses the source text of a shared dependency across MFEs when content hashes match, which can save repeated fetches; evaluation stays per instance (FrontX ADR-0011). ADR-0004 records the per-instance cost of the charting library for the budget.
 * Neutral, because the 9 widget entries share one manifest and one package, so consumer widget kinds ship as separate packages.
 
 ### Confirmation
 
 Confirmed when:
 
-* `frontx validate` passes for `template-dashboard/` and the repository's template discovery lists it by manifest.
-* Applying the template onto a shell project adds files only under the exclusive subtrees and changes no `template-shell` file.
+* A dependency check finds that the template's packages depend on `template-shell` and the FrontX packages only, and on nothing from `template-mfe`.
 * A grep over template code finds no literal host domain IDs; they come from shell framework constants.
-* A normal install contains no `dashboard-demo` content; setting `FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1` adds it.
 * The viewer mounts in the host screen domain through `Extension.route`, and the modal container mounts in the host modal domain with theme and language shared properties.
 * On a host that renders the modal-domain slot, the open modal shows modal chrome, traps focus and closes on dismissal.
-* `dashboard-viewer` builds without `dashboard-demo`; with the demo included, the dev server serves the static JSON and the sample dashboard renders from it.
 * No package's `mfe.json` contains a dashboard, widget instance or widget data.
 * Bundle sizes are measured and checked against the provisional figures of `cpt-frontx-dashboard-nfr-bundle-budget` in the DESIGN (§3.9), with the modal container entry counted separately from the Viewer host MFE.
 
 ## Pros and Cons of the Options
 
-### Add-only overlay with its own manifest, three packages
+### Two packages on `template-shell`, host contract by role
 
-* Good, because it matches how FrontX composes templates and changes no shell file.
-* Good, because audiences are split: viewer, widgets, optional demo.
-* Neutral, because the install is two commands.
-* Bad, because it relies on the host contract holding.
-
-### Preset bundling shell and dashboard
-
-* Good, because a consumer would get a running dashboard application in one step.
-* Bad, because the preset would reference templates that change on their own schedule and create a pinning burden.
-* Bad, because it is not needed to prove the overlay; it can be added later without changing the overlay.
+* Good, because the dashboard runs in the consuming product's existing shell-based application and depends on the shell alone.
+* Good, because the packages are split by role: the engine and viewer that every consuming product needs, and the widget library.
+* Good, because naming host domains by role keeps shell identifier changes out of template code.
+* Bad, because it relies on the host contract holding, including a modal-domain slot that current `template-shell` does not render.
 
 ### Dependency on `template-mfe`
 
 * Good, because it provides a working MFE scaffold to copy from.
-* Bad, because the dashboard would require consumers to install an example package set they do not need.
+* Bad, because the dashboard would make consuming products carry an example package set they do not need.
 * Bad, because it ties the dashboard's release to the scaffold's version and ownership.
 
 ### Own host application
 
 * Good, because the dashboard controls its domains and has no host contract.
-* Bad, because consumers already have a shell and would have to run two applications or migrate.
+* Bad, because consuming products already have a shell and would have to run two applications or migrate.
 * Bad, because it duplicates what `template-shell` provides.
 
 ## More Information
 
-* [ADR-0011](0011-backend-delivered-dashboard-v1.md) decides that the dashboard definition and each widget's data come from the backend; this record keeps that content out of the packages.
-* Related FrontX records (upstream, not this template's ADRs): FrontX ADR-0011 (per-load isolation), FrontX ADR-0018 (manifest), FrontX ADR-0020 (composed template resolution), FrontX ADR-0030 (template classification), FrontX ADR-0034 (shared-dependency source-text reuse by content hash), FrontX ADR-0036 (extension routing port).
-* **Revision.** Revised on 2026-10-23 for the render-only scope ([ADR-0011](0011-backend-delivered-dashboard-v1.md)). Revised again on 2026-10-23: the widget package has 9 entries, and the demo serves the dashboard definition and widget data separately. Revised on 2026-10-24: the layout is embedded in the dashboard definition ([ADR-0011](0011-backend-delivered-dashboard-v1.md)). The revised decision is accepted.
-* **Review trigger:** revisit if `template-shell` stops exposing its domain constants or stops accepting plain extensions in its modal domain, if the shell change that renders the modal-domain slot is rejected or takes a different form, if measured per-widget sizes cannot meet the bundle budget, or if a shell-plus-dashboard preset is requested.
-* **Scope:** how the template is packaged and applied, what it depends on and what it requires from the host. Domain taxonomy and the modal container are in ADR-0007; where dashboard content comes from is in [ADR-0011](0011-backend-delivered-dashboard-v1.md).
-* **Checklist applicability:** ARCH applicable and addressed above. INT applicable: the host contract by role and the FrontX manifest mechanics. MAINT applicable: one dependency and declared ownership. PERF applicable: per-instance isolation affects bundle size, checked in Confirmation. TEST applicable: install and grep checks in Confirmation. OPS applicable in one respect: installation is two commands until a preset exists. UX applicable in one respect: modal chrome, focus trap and dismissal are a host requirement on the rendered modal-domain slot. SEC not applicable because isolation is decided in FrontX ADR-0011 and no credential is involved. REL, DATA, COMPL and BIZ not applicable because packaging decides no runtime failure handling, stored data, regulated processing or business rule.
+* [ADR-0011](0011-backend-delivered-dashboard-v1.md) decides that the dashboard definition and each widget's data come from the consuming product backend; this record keeps that content out of the packages.
+* Related FrontX records (FrontX's own decisions, not this template's ADRs): FrontX ADR-0011 (per-load isolation), FrontX ADR-0034 (shared-dependency source-text reuse by content hash), FrontX ADR-0036 (extension routing).
+* **Review trigger:** revisit if `template-shell` stops exposing its domain constants or stops accepting plain extensions in its modal domain, if the shell change that renders the modal-domain slot is rejected or takes a different form, or if measured per-widget sizes cannot meet the bundle budget.
+* **Scope:** how the template splits into packages, what it depends on and what it requires from the host. Domain taxonomy and the modal container are in ADR-0007; where dashboard content comes from is in [ADR-0011](0011-backend-delivered-dashboard-v1.md).
+* **Checklist applicability:** ARCH applicable and addressed above. INT applicable: the host contract by role and the manifest channel. MAINT applicable: one template dependency and role-based host references. PERF applicable: per-instance isolation affects bundle size, checked in Confirmation. TEST applicable: dependency and grep checks in Confirmation. UX applicable in one respect: modal chrome, focus trap and dismissal are a host requirement on the rendered modal-domain slot. SEC not applicable because isolation is decided in FrontX ADR-0011 and no credential is involved. OPS, REL, DATA, COMPL and BIZ not applicable because the package split decides no operational procedure, runtime failure handling, stored data, regulated processing or business rule.
 
 ## Traceability
 
@@ -144,14 +122,13 @@ Confirmed when:
 
 This decision directly addresses the following requirements or design elements:
 
-* `cpt-frontx-dashboard-fr-overlay-install` — the overlay and its dependency on the shell only.
-* `cpt-frontx-dashboard-fr-demo-opt-in` — the demo package and its opt-in.
 * `cpt-frontx-dashboard-fr-viewer-host` — the routed viewer in the host screen domain.
 * `cpt-frontx-dashboard-fr-widget-catalog` — the widgets package with 9 entries.
 * `cpt-frontx-dashboard-contract-host-domains` — the host contract by role, including the rendered modal-domain slot.
 * `cpt-frontx-dashboard-fr-widget-modal` — the widget modal requires the host modal-domain slot.
-* `cpt-frontx-dashboard-fr-backend-source` — dashboard content comes from the backend, not from the manifests.
-* `cpt-frontx-dashboard-component-demo-package` — the demo package ships the static definition and widget data.
+* `cpt-frontx-dashboard-fr-backend-source` — dashboard content comes from the consuming product backend, not from the manifests.
+* `cpt-frontx-dashboard-constraint-shell-only-dependency` — the template depends on `template-shell` only.
+* `cpt-frontx-dashboard-constraint-role-based-host-ids` — host domains are named by role and resolved from shell constants.
 * `cpt-frontx-dashboard-nfr-compatibility` — compatibility with the shell and FrontX.
 * `cpt-frontx-dashboard-nfr-bundle-budget` — isolation without shared singletons affects size.
 * `cpt-frontx-dashboard-actor-host-application` — the host that must meet the listed requirements.
