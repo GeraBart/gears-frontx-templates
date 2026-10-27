@@ -466,6 +466,11 @@ describe('runDesignDefectCheck console output', () => {
     const findings = await runDesignDefectCheck();
 
     expect(findings).toEqual([expect.objectContaining({ id: 'axe-incomplete/color-contrast', kind: 'needs-review' })]);
+    // Both kinds in full: axe keeps one node per result for a type left out.
+    expect(axeRun).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ resultTypes: ['violations', 'incomplete'] }),
+    );
     expect(info).not.toHaveBeenCalled();
     expect(warn.mock.calls.map(([line]) => line)).toEqual([
       '[design-defects] 1 item(s) need review — undecided, so this state is not clean:',

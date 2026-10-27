@@ -33,7 +33,7 @@ cleanliness are distinguishable — trust the lines, not guesses:
 - `[verify-packages] … failed to load: …` — a real error; report it as a
   blocking environment finding with the logged cause.
 - `[design-defects] clean: no objective design defects detected` (or
-  `[design-defects]` finding or needs-review lines) — the checker is
+  `[design-defects]` finding or `needs review` lines) — the checker is
   running; proceed.
 
 ## Run
