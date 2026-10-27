@@ -523,7 +523,7 @@ The host modal domain declares no extension actions, so a widget mounted there c
 
 ### 3.3 API Contracts
 
-The template exposes one public contract to consumers, its domain model (`cpt-frontx-dashboard-interface-domain-model`), with the six catalogs listed in section 3.1. Two boundary interfaces connect it to its surroundings: the backend interface that the consuming product backend implements (`cpt-frontx-dashboard-interface-dashboard-payload`, below, decided in `cpt-frontx-dashboard-adr-backend-delivered-dashboard`) and the host domains (`cpt-frontx-dashboard-contract-host-domains`, section 3.5). The interfaces below give the architecture-level form of the backend interface and of the template's internal action and domain contracts. Field-level schemas belong to the `extension-domain-catalog` and `mfe-entries` FEATURE documents.
+The template exposes one public contract to consumers, its domain model (`cpt-frontx-dashboard-interface-domain-model`), with the six catalogs listed in section 3.1. Two boundary interfaces connect it to its surroundings: the backend interface that the consuming product backend implements (`cpt-frontx-dashboard-interface-dashboard-payload`, below, decided in `cpt-frontx-dashboard-adr-backend-delivered-dashboard`, and required by the PRD contract `cpt-frontx-dashboard-contract-consuming-backend`) and the host domains (`cpt-frontx-dashboard-contract-host-domains`, section 3.5). The interfaces below give the architecture-level form of the backend interface and of the template's internal action and domain contracts. Field-level schemas belong to the `extension-domain-catalog` and `mfe-entries` FEATURE documents.
 
 #### Dashboard Definition and Widget Data
 
@@ -1037,9 +1037,8 @@ The budget is re-measured under these conditions and then confirmed or revised.
 | Question | Resolution | Status |
 |----------|------------|--------|
 | Q1 bundle budget | Section 3.9 table | provisional, re-measured |
-| Q2 loading UX states | Skeletons in place of the dashboard, a dashboard error banner with Retry for the dashboard request, and a diagnostic when the dashboard cannot be shown; per-widget skeleton, error with Retry, and cannot-show state; default wording (`cpt-frontx-dashboard-seq-failure-handling`) | resolved |
 
-The PRD tracks only these two questions. Design-level questions are owned by this design and its FEATURE documents; the open ones are listed under "Remaining open items" below.
+The PRD tracks one question (Q1). Design-level questions are owned by this design and its FEATURE documents; the open ones are listed under "Remaining open items" below.
 
 **Handoffs to the FEATURE documents.**
 
@@ -1103,6 +1102,7 @@ The PRD tracks only these two questions. Design-level questions are owned by thi
 | `cpt-frontx-dashboard-fr-theme`, `cpt-frontx-dashboard-nfr-visual-quality` | `cpt-frontx-dashboard-seq-theme-switch`, `cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-component-modal-container` |
 | `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-interface-domain-model` | Section 3.1, `cpt-frontx-dashboard-constraint-gts-id-convention`, `cpt-frontx-dashboard-seq-consumer-generation` |
 | `cpt-frontx-dashboard-contract-host-domains` | Host contract in section 3.5, `cpt-frontx-dashboard-constraint-role-based-host-ids` |
+| `cpt-frontx-dashboard-contract-consuming-backend` | `cpt-frontx-dashboard-interface-dashboard-payload`, `cpt-frontx-dashboard-feature-backend-contract`, section 3.3 |
 | `cpt-frontx-dashboard-nfr-initial-render`, `cpt-frontx-dashboard-nfr-bundle-budget`, `cpt-frontx-dashboard-nfr-accessibility` | Section 3.9 |
 | `cpt-frontx-dashboard-nfr-consumer-docs` | `cpt-frontx-dashboard-topology-overlay-packages` (consumer guide) |
 | `cpt-frontx-dashboard-adr-frontend-framework`, `cpt-frontx-dashboard-adr-template-packages-and-host-contract` | `cpt-frontx-dashboard-principle-per-instance-isolation`, `cpt-frontx-dashboard-constraint-shell-only-dependency`, `cpt-frontx-dashboard-topology-overlay-packages`, `cpt-frontx-dashboard-constraint-licensing-compliance-resources`, section 3.5 |
