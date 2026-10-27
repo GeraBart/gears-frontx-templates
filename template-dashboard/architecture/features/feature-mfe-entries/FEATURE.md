@@ -173,7 +173,7 @@ The aggregate reaches every registry through the manifest channel; the shell boo
 
 ```json
 {
-  "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.v.mfe.entry.v1~frontx.v.summary_card.v1",
+  "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.v.mfe.entry.v1~frontx.v.mfe.summary_card.v1",
   "requiredProperties": [
     "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~"
   ],
@@ -198,17 +198,17 @@ The aggregate reaches every registry through the manifest channel; the shell boo
 
 | # | Kind | Instance segment | `exposedModule` | `realizes` segment |
 |---|------|------------------|-----------------|--------------------|
-| 1 | `summary_card` | `frontx.v.summary_card.v1` | `./summary_card` | `frontx.m.widget.summary_card.v1~` |
-| 2 | `metric_card` | `frontx.v.metric_card.v1` | `./metric_card` | `frontx.m.widget.metric_card.v1~` |
-| 3 | `ranked_list_card` | `frontx.v.ranked_list_card.v1` | `./ranked_list_card` | `frontx.m.widget.ranked_list_card.v1~` |
-| 4 | `progress_list_card` | `frontx.v.progress_list_card.v1` | `./progress_list_card` | `frontx.m.widget.progress_list_card.v1~` |
-| 5 | `grid` | `frontx.v.grid.v1` | `./grid` | `frontx.m.widget.grid.v1~` |
-| 6 | `cartesian_chart` | `frontx.v.cartesian_chart.v1` | `./cartesian_chart` | `frontx.m.widget.cartesian_chart.v1~` |
-| 7 | `pie_chart` | `frontx.v.pie_chart.v1` | `./pie_chart` | `frontx.m.widget.pie_chart.v1~` |
-| 8 | `heatmap` | `frontx.v.heatmap.v1` | `./heatmap` | `frontx.m.widget.heatmap.v1~` |
-| 9 | `markdown_card` | `frontx.v.markdown_card.v1` | `./markdown_card` | `frontx.m.widget.markdown_card.v1~` |
+| 1 | `summary_card` | `frontx.v.mfe.summary_card.v1` | `./summary_card` | `frontx.m.widget.summary_card.v1~` |
+| 2 | `metric_card` | `frontx.v.mfe.metric_card.v1` | `./metric_card` | `frontx.m.widget.metric_card.v1~` |
+| 3 | `ranked_list_card` | `frontx.v.mfe.ranked_list_card.v1` | `./ranked_list_card` | `frontx.m.widget.ranked_list_card.v1~` |
+| 4 | `progress_list_card` | `frontx.v.mfe.progress_list_card.v1` | `./progress_list_card` | `frontx.m.widget.progress_list_card.v1~` |
+| 5 | `grid` | `frontx.v.mfe.grid.v1` | `./grid` | `frontx.m.widget.grid.v1~` |
+| 6 | `cartesian_chart` | `frontx.v.mfe.cartesian_chart.v1` | `./cartesian_chart` | `frontx.m.widget.cartesian_chart.v1~` |
+| 7 | `pie_chart` | `frontx.v.mfe.pie_chart.v1` | `./pie_chart` | `frontx.m.widget.pie_chart.v1~` |
+| 8 | `heatmap` | `frontx.v.mfe.heatmap.v1` | `./heatmap` | `frontx.m.widget.heatmap.v1~` |
+| 9 | `markdown_card` | `frontx.v.mfe.markdown_card.v1` | `./markdown_card` | `frontx.m.widget.markdown_card.v1~` |
 
-For example, row 5 is the instance `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.v.mfe.entry.v1~frontx.v.grid.v1`, which realizes `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~`.
+For example, row 5 is the instance `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.v.mfe.entry.v1~frontx.v.mfe.grid.v1`, which realizes `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~`.
 
 The template ships exactly one entry per widget kind. A widget kind with no entry, or with more than one, is a configuration error that the Viewer host handles per cell (`feature-extension-domain-catalog` section 3).
 
