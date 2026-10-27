@@ -1,7 +1,7 @@
 ---
-status: proposed
-version: 6
-date: 2026-10-24
+status: accepted
+version: 1
+date: 2026-10-27
 description: Domain-model types of the 60-column Layout, embedded in the Dashboard, and of the LayoutCell that embeds one widget instance, with the layout checks, declared by dashboard-viewer.
 ---
 
@@ -60,7 +60,7 @@ N/A — domain-model feature. The types are consumed by the runtime type system 
 - **Design**: [DESIGN.md](../../DESIGN.md#31-domain-model); the layout arrives embedded in the dashboard that the consuming product backend provides (`cpt-frontx-dashboard-interface-dashboard-payload`), which carries no widget data
 - **ADRs**: [ADR-0002](../../ADR/0002-dashboard-layout-grid-v1.md), [ADR-0003](../../ADR/0003-shared-data-types-and-schemas-v1.md), [ADR-0011](../../ADR/0011-backend-delivered-dashboard-v1.md)
 - **Dependencies**: None that blocks this feature. `LayoutCell.widget` embeds one widget instance, presentation configuration plus `params`, checked against the Widget base `gts.frontx.m.widget.widget.v1~` (`feature-widget-catalog`) by `$ref`. `gts.frontx.m.dashboard.dashboard.v1~` (`feature-dashboard-root-types`) embeds the Layout. Dependency graph: layout-types depends on widget-catalog (reference only); dashboard-root-types depends on layout-types.
-- **Related**: `feature-backend-contract` (its section 6.1 runs the layout checks of section 6.3 on the layout of each dashboard response, and its section 6.3 states what the viewer shows when a check fails).
+- **Related**: `feature-backend-contract` (its section 6.1 runs the layout checks of section 6.3 on the layout of each dashboard response, and its section 6.3 states what the Viewer host shows when a check fails).
 
 ## 2. Actor Flows (CDSL)
 
@@ -197,7 +197,7 @@ A layout is valid only when it passes all of these checks (DESIGN section 3.1, L
 - no two cells overlap: no grid area lies both in the columns `x` to `x + w - 1` and rows `y` to `y + h - 1` of one cell and in those of another;
 - for each cell, `x + w` is not greater than 60.
 
-Schema validation of the LayoutCell type (section 6.2) checks the bounds. The Viewer host checks overlaps and `x + w` when it opens a dashboard, because each of these checks spans more than one field or more than one cell. The viewer repairs nothing: a dashboard whose layout fails any check is a dashboard that cannot be shown, so the viewer renders no cells and shows a diagnostic (`feature-backend-contract` sections 6.1 and 6.3).
+Schema validation of the LayoutCell type (section 6.2) checks the bounds. The Viewer host checks overlaps and `x + w` when it opens a dashboard, because each of these checks spans more than one field or more than one cell. The Viewer host repairs nothing: a dashboard whose layout fails any check is a dashboard that cannot be shown, so the Viewer host renders no cells and shows a diagnostic (`feature-backend-contract` sections 6.1 and 6.3).
 
 The diagnostic names each failing cell by its zero-based index in `cells`, the same index `<c>` as in `feature-extension-domain-catalog` section 6.9. Bounds failures and `x + w` failures are reported together, each naming its cell. The overlap check runs only when every cell passes both the bounds check and the `x + w` check; an overlap names both cells of the pair. An empty `cells` array is valid: no cell is rendered and no diagnostic is shown.
 
@@ -208,7 +208,7 @@ The diagnostic names each failing cell by its zero-based index in `cells`, the s
 - [ ] Every type identifier ends with `~`, every instance identifier does not, and every identifier carries `v1`
 - [ ] No field of Layout or LayoutCell is changed in the browser; the rendered dashboard matches the delivered layout.
 - [ ] A cell whose `x`, `y`, `w` or `h` lies outside its bounds fails schema validation of the LayoutCell type.
-- [ ] A layout with two overlapping cells, or with a cell whose `x + w` is greater than 60, fails the Viewer host layout check: the viewer renders no cells and shows a diagnostic naming the failing cells by index.
+- [ ] A layout with two overlapping cells, or with a cell whose `x + w` is greater than 60, fails the Viewer host layout check: the Viewer host renders no cells and shows a diagnostic naming the failing cells by index.
 - [ ] Given a layout in which the cell at index 2 has `w` of 0, when the Viewer host checks the layout, then the diagnostic names cell index 2 as a bounds failure and no cells are rendered.
 - [ ] Given a layout in which the cells at indexes 0 and 3 overlap, when the Viewer host checks the layout, then the diagnostic names both cell indexes 0 and 3.
 - [ ] Given a layout with one cell that fails the bounds check and two other cells that overlap, when the Viewer host checks the layout, then the diagnostic names the bounds failure at its index and the overlap check is skipped.

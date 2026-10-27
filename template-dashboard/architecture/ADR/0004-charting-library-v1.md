@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-23
+date: 2026-10-27
 decision-makers: template-dashboard architecture maintainers
 description: "Decision record for the charting library of the chart widgets: Apache ECharts through echarts-for-react, themed per chart widget instance from the template-owned theme, with its per-instance cost under FrontX isolation recorded for the bundle budget."
 ---

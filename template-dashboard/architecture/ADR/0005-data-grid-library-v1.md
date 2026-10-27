@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-23
+date: 2026-10-27
 decision-makers: template-dashboard architecture maintainers
 description: "Decision record for the library behind the render-only grid widget kind: TanStack Table as a typed column and row model with virtualized rows, so up to 5,000 supplied rows show without paging at a small per-instance cost."
 ---
@@ -31,7 +31,7 @@ description: "Decision record for the library behind the render-only grid widget
 
 ## Context and Problem Statement
 
-The `grid` widget kind shows tabular data. It renders rows and columns exactly as the backend supplies them, with each cell's value shown as text, and keeps frozen columns, column header groups, row coloring and optional row groups as supplied. The browser does not sort, group, paginate, filter or otherwise rearrange the rows, and the viewer offers no control that changes the presentation: the backend-supplied layout and widget configuration fully define how the grid is composed and presented, and the rows arrive in the order to show. They come as the grid's `widget_data`, which the grid widget requests through the FrontX API package once when it mounts ([ADR-0011](0011-backend-delivered-dashboard-v1.md)); after that the grid only renders and makes no further request on the dashboard, other than Retry after a failure and any request its own larger view needs, and what that view shows is the grid's own detail (ADR-0011). In FrontX each MFE instance is isolated, so whatever library the grid uses is paid by every grid widget instance.
+The `grid` widget kind shows tabular data. It renders rows and columns exactly as the backend supplies them, with each cell's value shown as text, and keeps frozen columns, column header groups, row coloring and optional row groups as supplied. The browser does not sort, group, paginate, filter or otherwise rearrange the rows, and the Viewer host offers no control that changes the presentation: the backend-supplied layout and widget configuration fully define how the grid is composed and presented, and the rows arrive in the order to show. They come as the grid's `widget_data`, which the grid widget requests through the FrontX API package once when it mounts ([ADR-0011](0011-backend-delivered-dashboard-v1.md)); after that the grid only renders and makes no further request on the dashboard, other than Retry after a failure and any request its own larger view needs, and what that view shows is the grid's own detail (ADR-0011). In FrontX each MFE instance is isolated, so whatever library the grid uses is paid by every grid widget instance.
 
 Which library, if any, renders the `grid` widget kind?
 

@@ -1,7 +1,7 @@
 ---
-status: proposed
-version: 6
-date: 2026-10-24
+status: accepted
+version: 1
+date: 2026-10-27
 description: Domain-model types of the abstract widget data base and the 9 widget data types derived from it, one per widget kind, each the response of a widget's own data request to the consuming product backend, declared by dashboard-viewer.
 ---
 
@@ -339,7 +339,7 @@ The system **MUST** author every concrete type of this catalog under the FrontX 
 - Source: `cpt-frontx-dashboard-fr-widget-catalog` anchors the grid shape with its optional row groups; `cpt-frontx-dashboard-nfr-large-table` anchors large grids.
 - Presentation: how the grid shows these rows and groups, including frozen columns, column groups, row coloring, and group heading rows, is specified with the `grid` kind (feature-widget-catalog section 6.5).
 - Key checks: when a key of the widget's `columns` is absent from these `columns`, or the response carries both `rows` and `groups`, the widget data cannot be shown: an error state in that widget with a diagnostic, nothing of the response rendered, and no Retry (feature-widget-catalog section 6.5; feature-backend-contract section 6.3).
-- Large grids: the grid shows up to 5,000 rows, counted across all groups, without paging and stays responsive while the viewer scrolls (`cpt-frontx-dashboard-nfr-large-table`; feature-widget-catalog section 6.5).
+- Large grids: the grid shows up to 5,000 rows, counted across all groups, without paging and stays responsive while the dashboard viewer scrolls (`cpt-frontx-dashboard-nfr-large-table`; feature-widget-catalog section 6.5).
 
 ### 6.6 CartesianChartData
 

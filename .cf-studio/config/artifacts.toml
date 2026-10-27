@@ -48,7 +48,7 @@
 # the @cpt- markers there trace to that template's own documents; cfs does
 # not report a registered code path that does not exist, so review checks
 # the paths. The three template blocks below register none, because they
-# have no documents yet for a marker to trace to. ADR-0033 of gears-frontx
+# have no documents yet for a marker to trace to. FrontX ADR-0033
 # (template-territory traceability) only rules that markers in template code
 # bind nothing to gears-frontx artifacts.
 

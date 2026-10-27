@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-24
+date: 2026-10-27
 decision-makers: template-dashboard architecture maintainers
 description: "Decision record for what the widget catalog contains: 9 subject-agnostic rendering-primitive widget kinds, each naming its widget data type through the data_type trait, with a widget's subject carried in consumer-owned params and its data supplied by the backend."
 ---

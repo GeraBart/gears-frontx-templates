@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-23
+date: 2026-10-27
 decision-makers: template-dashboard architecture maintainers
 description: "Decision record for where the dashboard theme comes from and how it reaches styling: a template-owned theme instance on the frontend, projected to CSS variables by the Viewer host and the modal container, and registered as an ECharts theme inside each chart widget."
 ---
@@ -134,10 +134,10 @@ A backend resolves the theme into CSS and ECharts JSON and sends both.
 
 ### Separate theme bundle delivered as its own artifact
 
-The theme is a standalone artifact, cached apart from other data.
+The theme is a standalone artifact, fetched apart from other data.
 
 * Good, because the theme can change without touching other data.
-* Bad, because a theme is only a few KB, so the caching gain is negligible.
+* Bad, because a theme is only a few KB, so separating it gains little.
 * Bad, because it adds an extra fetch and a second failure point, and a new type adds no domain value.
 
 ## More Information

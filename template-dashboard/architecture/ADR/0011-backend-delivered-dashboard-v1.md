@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-24
+date: 2026-10-27
 decision-makers: template-dashboard architecture maintainers
 description: Decision record on where a dashboard and its data come from - the consuming product backend returns each dashboard definition with its layout and widgets embedded, and each widget requests its own data through the FrontX API package.
 ---
@@ -37,12 +37,12 @@ What does the backend store and return for a dashboard, who requests each widget
 
 ## Decision Drivers
 
-* The backend is the only data source; the viewer shows widget data as delivered and computes, aggregates or narrows nothing (`cpt-frontx-dashboard-fr-backend-source`).
+* The backend is the only data source; the Viewer host shows widget data as delivered and computes, aggregates or narrows nothing (`cpt-frontx-dashboard-fr-backend-source`).
 * Contracts stay GTS-typed: the dashboard with its embedded layout and widgets, and each widget's data, are validated against types of the template's domain model (`cpt-frontx-dashboard-fr-domain-model`).
 * A slow or failing widget must not hold back or break the rest of the dashboard; loading, error and retry are shown per widget (`cpt-frontx-dashboard-fr-loading-error-states`).
 * Widgets are isolated MFE instances (FrontX ADR-0011); a widget requests its data through the FrontX API package.
 * The dashboard is static after render; a widget opened in its larger view may need data for that view (`cpt-frontx-dashboard-fr-widget-modal`).
-* A consuming product adds a dashboard or new data by changing its backend, without changing the viewer or the widget library (`cpt-frontx-dashboard-fr-backend-source`).
+* A consuming product adds a dashboard or new data by changing its backend, without changing the Viewer host or the widget library (`cpt-frontx-dashboard-fr-backend-source`).
 * A generated dashboard must be complete as a definition alone: the backend should not have to store queries or compute data when the dashboard is created.
 * The theme is part of the template and lives on the frontend; the backend does not supply it (ADR-0006).
 
@@ -51,7 +51,7 @@ What does the backend store and return for a dashboard, who requests each widget
 * **Dashboard definition from the backend, per-widget data fetch** — the backend stores and returns only the dashboard definition, with its layout and widgets embedded; each widget requests its own data once when it mounts, naming its kind and its `params`.
 * **Per-widget data reference to stored queries or pre-computed data** — each widget carries a `data_ref` that points to a query or to data the backend stored when the dashboard was created; the widget requests its data by that reference.
 * **One dashboard payload with all widget data** — the backend returns the dashboard, its layout, its widgets and every widget's data in one payload; the Viewer host fetches it once and sends each widget its data.
-* **Client-side query layer in a Web Worker** — the viewer fetches entity data from registered sources, indexes it in a Worker and runs per-widget queries with filters in the browser.
+* **Client-side query layer in a Web Worker** — the Viewer host fetches entity data from registered sources, indexes it in a Worker and runs per-widget queries with filters in the browser.
 
 ## Decision Outcome
 
@@ -61,19 +61,22 @@ Chosen option: "Dashboard definition from the backend, per-widget data fetch", b
 
 **Per-widget data.** The template ships the MFEs for all 9 widget kinds ([ADR-0008](0008-widget-kind-and-mfe-realization-v1.md)), and each of them knows how to get its data. A widget's MFE instance requests its data through the FrontX API package from the consuming product backend, naming its widget kind, taken from the type chain of its `id`, and its `params` ([ADR-0009](0009-subject-agnostic-widget-catalog-v1.md)). It requests once, when it mounts, and again only on Retry after a failure in that widget. The endpoint location comes from configuration, like the definition endpoint. The backend computes the data from its own sources on that request and returns one instance of the widget data type that the kind declares, which the widget renders as delivered. Loading skeleton, error and Retry are shown per widget, so one failing widget affects one cell.
 
+**Failure handling.** There are two dashboard-level classes and one widget-level class (feature-backend-contract section 6.3). A failed dashboard request shows a message with Retry. A dashboard that cannot be shown, because its description, its layout or a widget's settings fail the Viewer host's checks, is replaced as a whole, with no Retry. Widget data that cannot be shown stays in that widget, with no Retry.
+
 **Larger view.** A widget can be opened in its larger view, in the modal (ADR-0007). What that view shows, and its data, are each widget's implementation detail. The widget may make its own data request for what the view needs, through the FrontX API package; the backend answers it like any widget data request.
 
 **After render.** Nothing is requested after render except Retry after a failure and a widget's own request for what its larger view needs. There is no refresh while the dashboard is open, no filtering, no client-side query or aggregation, and no client-side sorting, grouping or pagination; the dashboard's layout and widget configuration fully define how widgets are composed and presented. A theme change re-themes the mounted widgets and requests nothing.
 
-**Interface and specification.** DESIGN section 3.3 describes this interface at architecture level (`cpt-frontx-dashboard-interface-dashboard-payload`). [feature-backend-contract](../features/feature-backend-contract/FEATURE.md) (`cpt-frontx-dashboard-feature-backend-contract`) is its exact specification: the dashboard request and response, the widget data request and response, the errors and what the viewer shows, the consumer widget types, the open items, and the conformance cases.
+**Interface and specification.** DESIGN section 3.3 describes this interface at architecture level (`cpt-frontx-dashboard-interface-dashboard-payload`). [feature-backend-contract](../features/feature-backend-contract/FEATURE.md) (`cpt-frontx-dashboard-feature-backend-contract`) is its exact specification: the dashboard request and response, the widget data request and response, the errors and what the Viewer host shows, the consumer widget types, the open items, and the conformance cases.
 
 ### Consequences
 
-* Good, because the viewer contains no Worker, query engine, filter state or entity-source registry.
+* Good, because the Viewer host contains no Worker, query engine, filter state or entity-source registry.
 * Good, because a slow or failing widget affects only its own cell, and Retry reloads only that widget.
 * Good, because the contract with the consuming product is GTS-typed: one dashboard definition plus one widget data response per widget request, which the consuming product can produce from any backend and validate against the domain model types.
 * Good, because a generated dashboard is complete once its definition is stored: the backend keeps no queries or pre-computed data per dashboard.
 * Good, because the Viewer host holds no widget data, so it has no data-delivery action and holds no data for a widget's larger view.
+* Good, because each failure has one defined outcome: a failed dashboard request shows a message with Retry, a dashboard that cannot be shown is replaced as a whole with no Retry, and widget data that cannot be shown stays in its widget with no Retry (feature-backend-contract section 6.3).
 * Bad, because a dashboard costs one definition request plus one data request per widget, and widgets finish loading at different times.
 * Bad, because every widget carries data-request logic, and the backend must compute every aggregate the widgets show from `params` on each request.
 * Bad, because the dashboard is static after render: fresher data needs the user to open the dashboard again, and interactive exploration needs a new decision.
@@ -83,11 +86,12 @@ Chosen option: "Dashboard definition from the backend, per-widget data fetch", b
 * An integration test opens a dashboard and checks that the Viewer host issues exactly one definition request naming the dashboard identifier, that each mounted widget issues exactly one data request through the FrontX API package, and that no request follows render or a theme change other than Retry after a failure and a widget's own larger-view request.
 * A test makes one widget's data request fail and checks that only that cell shows the error with Retry, that the other cells render, and that Retry issues one new request for that widget only.
 * A test checks that a failed definition request shows the dashboard error with Retry.
+* A test feeds a dashboard whose description, layout or a widget's settings fail the Viewer host's checks and checks that the dashboard is replaced as a whole with no Retry, and a widget data response that cannot be shown and checks that the error stays in that widget with no Retry (feature-backend-contract section 6.3).
 * A test checks that each widget's data request names its widget kind and its `params`.
 * A test feeds a definition or a widget data response that violates the domain model types and checks that a diagnostic is reported instead of rendering it.
 * A test opens a widget in its larger view and checks that any data request the widget makes for that view names its kind and `params` and is answered as a widget data request.
 * Review confirms that the definition embeds its layout and widgets and carries no widget data, no data reference, no stored query and no theme.
-* A build check confirms that the viewer package has no Worker entry and no query or filter code.
+* A build check confirms that the `dashboard-viewer` package has no Worker entry and no query or filter code.
 * The conformance cases of feature-backend-contract (section 7) pass.
 
 ## Pros and Cons of the Options
@@ -124,7 +128,7 @@ One GTS-typed payload per dashboard, fetched once by the Viewer host and deliver
 Entity data from registered sources, indexed in a Worker and queried per widget in the browser.
 
 * Good, because filters and time windows could re-query without a backend round trip.
-* Bad, because it adds a Worker, a query language, an in-memory index and filter state to every viewer instance.
+* Bad, because it adds a Worker, a query language, an in-memory index and filter state to every Viewer host instance.
 * Bad, because the browser's memory and indexing time limit the data a dashboard can show.
 * Bad, because the render-only scope has no filter or reload that would use it.
 
@@ -133,7 +137,7 @@ Entity data from registered sources, indexed in a Worker and queried per widget 
 * **Open items.** The path and request form of the dashboard request and of a widget's data request, the validation of embedded widgets under GTS 0.17, how consumer widget types reach the browser, and how a consuming product checks that presentation keys are producible from `params` are the open items of feature-backend-contract (section 6.5).
 * **Review trigger.** Revisit if a dashboard needs interaction that changes data after render, such as filters or time windows, or if the number of per-widget requests makes first render miss `cpt-frontx-dashboard-nfr-initial-render`.
 * **Scope.** This record decides what the backend stores and returns for a dashboard, that the layout is embedded in it, that each widget requests its own data through the FrontX API package with its kind and `params`, that a widget may make its own request for what its larger view needs, and that nothing else is requested after render. It does not decide how a consuming product generates definitions, the meaning of `params` (ADR-0009), the type conventions (ADR-0003), the exact request form (feature-backend-contract), what a widget's larger view shows, the extension domains and the modal container (ADR-0007), the theme (ADR-0006) or the packages (ADR-0010). Access to dashboards and data is out of scope.
-* **Checklist applicability.** ARCH applicable: data source and responsibility split between Viewer host and widgets. PERF applicable: one definition request plus one parallel request per widget. REL applicable: per-widget failure with Retry, and one failure path for the definition. DATA applicable: GTS-typed definition and widget data validated against the domain model; no stored queries or pre-computed data. INT applicable: the definition and widget data contracts with the consuming product backend. MAINT applicable: no query layer to maintain; data requests go through the FrontX API package. TEST applicable: Confirmation tests. UX applicable: per-widget skeletons, errors and Retry; static dashboard. SEC, OPS, COMPL and BIZ not applicable because access is out of scope and no operational procedure, regulated processing or business rule is decided.
+* **Checklist applicability.** ARCH applicable: data source and responsibility split between Viewer host and widgets. PERF applicable: one definition request plus one parallel request per widget. REL applicable: a failed dashboard request shows a message with Retry, a dashboard that cannot be shown is replaced as a whole with no Retry, and widget failure stays in its widget, with Retry for a failed request and none for data that cannot be shown (feature-backend-contract section 6.3). DATA applicable: GTS-typed definition and widget data validated against the domain model; no stored queries or pre-computed data. INT applicable: the definition and widget data contracts with the consuming product backend. MAINT applicable: no query layer to maintain; data requests go through the FrontX API package. TEST applicable: Confirmation tests. UX applicable: per-widget skeletons, errors and Retry; static dashboard. SEC, OPS, COMPL and BIZ not applicable because access is out of scope and no operational procedure, regulated processing or business rule is decided.
 
 ## Traceability
 
@@ -142,7 +146,7 @@ Entity data from registered sources, indexed in a Worker and queried per widget 
 
 This decision directly addresses the following requirements or design elements:
 
-* `cpt-frontx-dashboard-fr-backend-source` — the backend is the only source: it stores and returns each dashboard's definition and computes each widget's data on request; the viewer shows them as delivered.
+* `cpt-frontx-dashboard-fr-backend-source` — the backend is the only source: it stores and returns each dashboard's definition and computes each widget's data on request; the Viewer host shows them as delivered.
 * `cpt-frontx-dashboard-fr-viewer-host` — the Viewer host requests the dashboard definition by its identifier and renders it.
 * `cpt-frontx-dashboard-fr-loading-error-states` — skeletons, errors and Retry per widget, and for the definition.
 * `cpt-frontx-dashboard-fr-widget-modal` — a widget opened in its larger view may make its own data request for what that view needs; what the view shows is the widget's own detail.

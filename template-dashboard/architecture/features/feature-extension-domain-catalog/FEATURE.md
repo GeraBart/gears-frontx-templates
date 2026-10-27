@@ -1,8 +1,8 @@
 ---
-status: proposed
-version: 7
-date: 2026-10-24
-description: Domain model of the render-only viewer's two host actions, two extension domains, two extension types, the modal container extension, the template theme payload, and the widget extension identifier rule, declared by dashboard-viewer, with how the Viewer host creates the widget extensions of both domains.
+status: accepted
+version: 1
+date: 2026-10-27
+description: Domain model of the render-only Viewer host's two host actions, two extension domains, two extension types, the modal container extension, the template theme payload, and the widget extension identifier rule, declared by dashboard-viewer, with how the Viewer host creates the widget extensions of both domains.
 ---
 
 # Feature: Extension Domain Catalog
@@ -48,7 +48,7 @@ description: Domain model of the render-only viewer's two host actions, two exte
 
 ### 1.1 Overview
 
-This is a **domain-model feature**: it declares the template's host actions, extension domains, extension types, the modal container extension, and the template theme payload of the render-only viewer, and it specifies how the Viewer host creates the widget extensions of both template domains from the dashboard's widgets. Their abstract bases and structural prose live in DESIGN section 3.1 and section 3.3. The actor-flow and state sections of the FEATURE template are reduced to short not-applicable notes; section 3 holds the two extension creation processes, and the types live in section 6 Domain Model.
+This is a **domain-model feature**: it declares the template's host actions, extension domains, extension types, the modal container extension, and the template theme payload of the render-only Viewer host, and it specifies how the Viewer host creates the widget extensions of both template domains from the dashboard's widgets. Their abstract bases and structural prose live in DESIGN section 3.1 and section 3.3. The actor-flow and state sections of the FEATURE template are reduced to short not-applicable notes; section 3 holds the two extension creation processes, and the types live in section 6 Domain Model.
 
 ### 1.2 Purpose
 
@@ -550,11 +550,12 @@ All lifecycle actions referenced below are the FrontX actions `gts.frontx.mfes.c
 | Widget data failure | A widget's data request fails | no chain; only that cell shows its error with Retry; the other cells render; Retry repeats that widget's request only | `cpt-frontx-dashboard-seq-failure-handling` |
 | Widget data that cannot be shown | A widget's response fails validation against the widget data type its kind names in the `data_type` trait, or fails a kind-specific check such as the grid column-key check (`feature-widget-catalog` section 6.5) | no chain; only that cell shows an error state with a diagnostic; nothing of the response is rendered; Retry does not apply; the other cells render | `cpt-frontx-dashboard-seq-failure-handling` |
 | Definition fetch failure | The dashboard definition request fails | no chain; dashboard-level error banner with Retry; no cell is mounted | `cpt-frontx-dashboard-seq-failure-handling` |
-| Dashboard that cannot be shown | The dashboard or an embedded widget fails validation against its type, the layout fails a layout check (`feature-layout-types` section 6.3), or a grid widget fails a grid configuration check (`feature-widget-catalog` section 6.5) | no chain; no cell is mounted; a diagnostic names the failing instances or cells; Retry does not apply | `cpt-frontx-dashboard-seq-failure-handling` |
+| Dashboard that cannot be shown | The dashboard or an embedded widget fails validation against its type, the layout fails a layout check (`feature-layout-types` section 6.3), or a grid widget fails a grid configuration check (`feature-widget-catalog` section 6.5) | no chain; no cell is mounted; a diagnostic names the failing instances, cells, or grid columns and groups; Retry does not apply | `cpt-frontx-dashboard-seq-failure-handling` |
 | Cell without a single realizing entry | No widget entry, or more than one, realizes the kind of a cell's widget, or the FrontX registry rejects a registration for it | no chain; the Viewer host shows that cell's cannot-show state with a diagnostic and no Retry; the other cells are unaffected | `cpt-frontx-dashboard-seq-initial-load` |
-| Modal open | `mount_widget` to `layout_cells` from a widget's modal button | The Viewer host makes no request; one escalated chain, every step after the container's mount with fallback `unmount_ext` of the container: `mount_ext` of the container in the host modal domain, `mount_ext` of the widget's modal extension in `modal_panel`, `set_subject` with the same widget instance as its cell; the widget shows its larger view and may make its own data request through the FrontX API package | `cpt-frontx-dashboard-seq-widget-modal-open` |
+| Cell whose widget fails to load or mount | The `load_ext`, `mount_ext`, or `set_subject` of a cell fails | no chain continues for that cell; the Viewer host shows that cell's cannot-show state with a diagnostic; the other cells are unaffected; whether Retry applies, and what the cell shows before `set_subject`, are open (section 6.11) | `cpt-frontx-dashboard-seq-failure-handling` |
+| Modal open | `mount_widget` to `layout_cells` from a widget's modal button | The Viewer host makes no request; one escalated chain, every step after the container's mount with fallback `unmount_ext` of the container: `mount_ext` of the container in the host modal domain, `mount_ext` of the widget's modal extension in `modal_panel`, `set_subject` with the same widget instance as its cell; when a widget already occupies the modal, its occupant is unmounted first, and who does that and how the Viewer host knows the occupant are open (modal occupant, section 6.11); the widget shows its larger view and may make its own data request through the FrontX API package | `cpt-frontx-dashboard-seq-widget-modal-open` |
 | Theme switch | Host theme id changes | Viewer host updates the theme payload of `layout_cells`; when the modal is open, the container receives the change through the theme shared property of the host modal domain and updates the theme payload of `modal_panel`; the Viewer host sends the container nothing | `cpt-frontx-dashboard-seq-theme-switch` |
-| Close and teardown | Close, host dismissal, or dashboard close | `unmount_ext` of the container in the host modal domain; on teardown also `unmount_ext` of every cell and unregistration of the dashboard's widget extensions | `cpt-frontx-dashboard-seq-teardown` |
+| Close and teardown | Close, host dismissal, or dashboard close | `unmount_ext` of the container in the host modal domain; who unmounts the widget that occupies `modal_panel` on Close and on host dismissal is open (modal occupant, section 6.11); on teardown also `unmount_ext` of every cell and unregistration of the dashboard's widget extensions | `cpt-frontx-dashboard-seq-teardown` |
 
 **Invariants**:
 - A widget receives `set_subject` only after it is mounted, and requests its data only after it has its configuration.
@@ -565,6 +566,8 @@ All lifecycle actions referenced below are the FrontX actions `gts.frontx.mfes.c
 ### 6.11 Open Questions
 
 - **Modal extension registration path** (DESIGN section 4). The Viewer host creates each widget's modal extension when it resolves the dashboard (section 3), but `modal_panel` exists only after the container's first mount. How those registrations reach `modal_panel` is not chosen yet; whatever the mechanism, opening a widget's larger view only mounts, and the identifier rule of section 6.9 does not change. Owner: template architect. Blocked by this item: the modal_panel parts of the acceptance criteria and of both Definitions of Done (`cpt-frontx-dashboard-dod-extension-domain-catalog-extension-creation` and `cpt-frontx-dashboard-dod-extension-domain-catalog-catalog-complete`).
+- **Modal occupant** (DESIGN section 4). Decided: the modal holds at most one widget, and Close and host dismissal run `unmount_ext` of the container in the host modal domain. Open: who unmounts the widget that occupies `modal_panel` on Close and on host dismissal, and how the Viewer host knows the current occupant of `modal_panel`, given that a chain reports nothing back to its sender (FrontX ADR-0007). The occupied-modal branch of section 3 (`inst-unmount-occupant`) and the Close step (`inst-close-unmounts-occupant`) depend on it. Owner: template architect. Blocked by this item: the acceptance criteria that unmount the current occupant and that close the modal.
+- **Cell widget that fails to load or mount** (DESIGN section 4). Decided: a cell whose `load_ext`, `mount_ext`, or `set_subject` fails shows its cannot-show state with a diagnostic, and the other cells are unaffected. Open: whether Retry applies to such a cell, and what the cell shows before `set_subject`. Owner: template architect. Blocked by this item: any criterion on Retry for such a cell or on what a cell shows before `set_subject`.
 - **Widget data request form.** The path and request form of a widget's data request, including a widget's own request for its larger view, are open item 1 of `cpt-frontx-dashboard-feature-backend-contract` section 6.5; whatever the form, no host action carries widget data.
 
 ## 7. Acceptance Criteria

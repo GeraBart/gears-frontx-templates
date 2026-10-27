@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-24
+date: 2026-10-27
 decision-makers: template-dashboard architecture maintainers
 description: "Decision record for the extension domains of the dashboard template: the layout_cells domain of the Viewer host and a static modal container that occupies the host modal domain and shows a widget's larger view in its own modal_panel domain, with two host actions and the host prerequisite of a rendered modal-domain slot."
 ---
@@ -114,7 +114,7 @@ Amend `template-shell` so the host modal domain declares `extensionsActions`.
 A template-shipped static extension occupies the host modal domain and hosts the widget in its own `modal_panel` domain, which the Viewer host drives through forwarded actions.
 
 * Good, because the template changes no `template-shell` file and owns no modal surface; modal chrome, focus trap and dismissal stay with the host.
-* Good, because the container is a regular entry in the viewer package and is declared once, so opening the modal registers no extension.
+* Good, because the container is a regular entry in the Viewer host package and is declared once, so opening the modal registers no extension.
 * Neutral, because the container entry requires theme and language, since the host modal domain shares both, while widget entries require theme only.
 * Bad, because it adds a nested host, and every action for the modal widget depends on forwarding across it.
 * Bad, because it requires the host to render its modal domain through a slot, which current `template-shell` does not do yet.

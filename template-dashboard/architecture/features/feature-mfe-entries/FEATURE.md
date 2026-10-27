@@ -1,8 +1,8 @@
 ---
-status: proposed
-version: 5
-date: 2026-10-24
-description: Domain model of the template MFE entry type with realizes, the widget manifest, and the 9 widget entries declared by dashboard-widgets, plus the viewer manifest, viewer and modal container entries, and the Viewer host routed extension declared by dashboard-viewer.
+status: accepted
+version: 1
+date: 2026-10-27
+description: Domain model of the template MFE entry type with realizes, the widget manifest, and the 9 widget entries declared by dashboard-widgets, plus the Viewer host manifest, Viewer host and modal container entries, and the Viewer host routed extension declared by dashboard-viewer.
 ---
 
 # Feature: MFE Entries
@@ -27,7 +27,7 @@ description: Domain model of the template MFE entry type with realizes, the widg
   - [6.1 Template MFE Entry Type](#61-template-mfe-entry-type)
   - [6.2 Widget Manifest](#62-widget-manifest)
   - [6.3 Widget Entries](#63-widget-entries)
-  - [6.4 Viewer Package Entries (declared by `dashboard-viewer`)](#64-viewer-package-entries-declared-by-dashboard-viewer)
+  - [6.4 Viewer Host Package Entries (declared by `dashboard-viewer`)](#64-viewer-host-package-entries-declared-by-dashboard-viewer)
   - [6.5 Admission Summary](#65-admission-summary)
   - [6.6 Isolation and Packaging Notes](#66-isolation-and-packaging-notes)
   - [6.7 Open Questions](#67-open-questions)
@@ -52,12 +52,12 @@ The entries follow the DESIGN and ADR-0008:
 
 - The template ships the widget MFEs for all 9 widget kinds, one entry per kind. Each widget MFE requests its own data from the consuming product backend through the FrontX API package: it sends its widget kind (type identifier) and its `params` in a widget data request and receives one widget data instance of its kind's `data_type`.
 - One widget manifest `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.v.widgets.manifest.v1` is defined here, and all 9 widget entries point to it.
-- The `dashboard-viewer` package entries are listed here as well: the viewer manifest, the viewer entry, the modal container entry, and the Viewer host routed extension.
+- The `dashboard-viewer` package entries are listed here as well: the Viewer host manifest, the Viewer host entry, the modal container entry, and the Viewer host routed extension.
 - Per-instance isolation; Module Federation is used for bundling only, as a template assumption.
 
 **Declaring packages**:
 - `dashboard-widgets` (`src-app/mfe_packages/dashboard-widgets/`) declares the widget manifest and the 9 widget entries through its own `mfe.json`.
-- `dashboard-viewer` (`src-app/mfe_packages/dashboard-viewer/`) declares the template MFE entry type schema, as an engine `frontx.v` type (DESIGN section 3.1, Location), and the viewer manifest, the viewer entry, the modal container entry, and the Viewer host routed extension (section 6.4).
+- `dashboard-viewer` (`src-app/mfe_packages/dashboard-viewer/`) declares the template MFE entry type schema, as an engine `frontx.v` type (DESIGN section 3.1, Location), and the Viewer host manifest, the Viewer host entry, the modal container entry, and the Viewer host routed extension (section 6.4).
 
 **Requirements**: `cpt-frontx-dashboard-fr-widget-catalog`, `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-viewer-host`, `cpt-frontx-dashboard-fr-widget-modal`, `cpt-frontx-dashboard-nfr-bundle-budget`
 
@@ -105,7 +105,7 @@ The system **MUST** register the entry type, the two manifests, the 11 entry ins
 
 - The template MFE entry type extends the FrontX `entry_mf` type and adds exactly one required field, `realizes`.
 - Each of the 9 widget entries validates against the entry type, points to the single widget manifest, requires theme only, lists `set_subject`, and realizes exactly one of the 9 widget kinds.
-- The viewer and container entries are plain FrontX `entry_mf` instances that realize no widget kind.
+- The Viewer host and container entries are plain FrontX `entry_mf` instances that realize no widget kind.
 - No package declares shared singletons.
 
 **Covers (PRD)**: `cpt-frontx-dashboard-fr-widget-catalog`, `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-viewer-host`, `cpt-frontx-dashboard-nfr-bundle-budget`
@@ -115,7 +115,7 @@ The system **MUST** register the entry type, the two manifests, the 11 entry ins
 **Constraints**: `cpt-frontx-dashboard-constraint-gts-id-convention`, `cpt-frontx-dashboard-constraint-role-based-host-ids`, `cpt-frontx-dashboard-constraint-shell-only-dependency`
 
 **Touches**:
-- Entities: template MFE entry type, widget manifest, viewer manifest, widget entries, viewer entry, modal container entry, Viewer host routed extension
+- Entities: template MFE entry type, widget manifest, Viewer host manifest, widget entries, Viewer host entry, modal container entry, Viewer host routed extension
 
 ## 6. Domain Model
 
@@ -214,13 +214,13 @@ The template ships exactly one entry per widget kind. A widget kind with no entr
 
 **Cross-references**: DESIGN `cpt-frontx-dashboard-component-widget-library`; widget kinds in `feature-widget-catalog`.
 
-### 6.4 Viewer Package Entries (declared by `dashboard-viewer`)
+### 6.4 Viewer Host Package Entries (declared by `dashboard-viewer`)
 
-**Description**: The entries and manifest of the `dashboard-viewer` package and the Viewer host's routed extension. The viewer and container entries realize no widget kind, so they are plain instances of the FrontX `entry_mf` type and carry no `realizes`. The modal container's static extension itself is owned by `feature-extension-domain-catalog` (section 6.7 there).
+**Description**: The entries and manifest of the `dashboard-viewer` package and the Viewer host's routed extension. The Viewer host and container entries realize no widget kind, so they are plain instances of the FrontX `entry_mf` type and carry no `realizes`. The modal container's static extension itself is owned by `feature-extension-domain-catalog` (section 6.7 there).
 
-**Viewer manifest**: `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.v.viewer.manifest.v1`. The single manifest of `dashboard-viewer`, used by the viewer entry and the container entry. Authored fields are `id` and `remoteEntry`; the manifest pipeline produces the rest, as for the widget manifest in section 6.2.
+**Viewer host manifest**: `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.v.viewer.manifest.v1`. The single manifest of `dashboard-viewer`, used by the Viewer host entry and the container entry. Authored fields are `id` and `remoteEntry`; the manifest pipeline produces the rest, as for the widget manifest in section 6.2.
 
-**Viewer entry**:
+**Viewer host entry**:
 
 ```json
 {
@@ -276,7 +276,7 @@ It requires theme and language, which the host modal domain shares, and declares
 |-------|--------|-----------------|-------------------------------|--------|
 | 9 widget entries | `layout_cells`, `modal_panel` | theme | `set_subject` | admitted |
 | modal container entry | host modal domain | theme, language | none | admitted |
-| viewer entry | host screen domain | theme, language | none | admitted |
+| Viewer host entry | host screen domain | theme, language | none | admitted |
 
 ### 6.6 Isolation and Packaging Notes
 
@@ -292,7 +292,7 @@ It requires theme and language, which the host modal domain shares, and declares
 
 - **Routed extension route and label.** The DESIGN fixes that the route carries the dashboard instance identifier but not the route pattern or the presentation label of the Viewer host routed extension; both are fixed with the routing setup of `dashboard-viewer`.
 - **Entry for consumer-derived widget types.** A consuming product may derive a widget type from a kind to close its `params` (for example `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~acme.gh.widget.pr_list.v1~`). How the Viewer host resolves such a type to the entry that realizes the kind it derives from is not fixed yet. The consumer widget type itself is specified in `cpt-frontx-dashboard-feature-backend-contract` section 6.4, and how it reaches the browser is open item 3 of section 6.5 there. Owner: template architect.
-- **Viewer entry module name.** The DESIGN names the container's exposed module (`./modal-container`) but not the viewer entry's; this feature uses `./viewer`, to be confirmed at implementation.
+- **Viewer host entry module name.** The DESIGN names the container's exposed module (`./modal-container`) but not the Viewer host entry's; this feature uses `./viewer`, to be confirmed at implementation.
 
 ## 7. Acceptance Criteria
 
@@ -301,7 +301,7 @@ It requires theme and language, which the host modal domain shares, and declares
 - [ ] Every one of the 9 widget kinds has exactly one entry in that manifest, and each entry's `realizes` names that kind.
 - [ ] Each widget MFE requests its widget data with its kind and `params` through the FrontX API package, and no entry action carries widget data.
 - [ ] Every widget entry requires only the theme shared property, lists only `set_subject` in `actions`, has an empty `domainActions`, and is admitted to `layout_cells` and `modal_panel`.
-- [ ] The viewer entry and the modal container entry are FrontX `entry_mf` instances without `realizes`, point to the viewer manifest, require theme and language, and declare no custom actions.
+- [ ] The Viewer host entry and the modal container entry are FrontX `entry_mf` instances without `realizes`, point to the Viewer host manifest, require theme and language, and declare no custom actions.
 - [ ] The Viewer host routed extension is an instance of the shell screen extension type in the host screen domain with a route that carries the dashboard instance identifier.
 - [ ] Every identifier of this feature follows the template ID-form convention: types end with `~`, instances do not, and every template segment is at `v1`.
 - [ ] Build review confirms that no package declares shared singletons.

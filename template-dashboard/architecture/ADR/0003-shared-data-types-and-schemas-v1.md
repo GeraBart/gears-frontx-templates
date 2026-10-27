@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-24
+date: 2026-10-27
 decision-makers: template-dashboard architecture maintainers
 description: "Decision record for the type system of the template's domain model: GTS under gts-spec v0.17 on the FrontX base types, with the frontx vendor, the v and m packages, combined instance identifiers, the data_type trait and registry validation of generated dashboard definitions."
 ---
@@ -28,7 +28,7 @@ description: "Decision record for the type system of the template's domain model
 
 ## Context and Problem Statement
 
-The viewer, the widgets, the backend that delivers dashboard definitions and widget data, and consumer code exchange dashboards (with their embedded layout and widget instances) and widget data. A consuming product backend may also generate dashboard definitions, for example from a user's chat request, and must be able to validate what it generates before it stores or returns it. All parties need one governed set of types and schemas, so that contracts do not drift. Which type system should define them, and under which version of its rules?
+The Viewer host, the widgets, the backend that delivers dashboard definitions and widget data, and consumer code exchange dashboards (with their embedded layout and widget instances) and widget data. A consuming product backend may also generate dashboard definitions, for example from a user's chat request, and must be able to validate what it generates before it stores or returns it. All parties need one governed set of types and schemas, so that contracts do not drift. Which type system should define them, and under which version of its rules?
 
 FrontX builds its micro-frontend contracts on GTS (the Global Type System, specified by gts-spec), with base types under `gts.frontx.mfes.*`. The template's types must build on those FrontX base types.
 

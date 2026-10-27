@@ -1,8 +1,8 @@
 ---
 status: accepted
-date: 2026-10-24
+date: 2026-10-27
 decision-makers: template-dashboard architecture maintainers
-description: Decision record on how template-dashboard splits into a viewer package and a widget package, depends on template-shell only, and states by role what it requires from the host - a screen, and a place to show modals with focus kept inside and dismissal.
+description: Decision record on how template-dashboard splits into a Viewer host package and a widget package, depends on template-shell only, and states by role what it requires from the host - a screen, and a place to show modals with focus kept inside and dismissal.
 ---
 
 # ADR-0010: Template packages and host contract
@@ -28,7 +28,7 @@ description: Decision record on how template-dashboard splits into a viewer pack
 
 ## Context and Problem Statement
 
-The dashboard runs inside a consuming product's FrontX application, which is built on `template-shell`. The viewer is a nested host inside that application, not an application of its own. The template's code has parts with different roles: the engine and the viewer that every consuming product needs, and a library of widgets. Dashboard content itself comes from the consuming product backend at run time ([ADR-0011](0011-backend-delivered-dashboard-v1.md)), so the packages carry only types and code.
+The dashboard runs inside a consuming product's FrontX application, which is built on `template-shell`. The Viewer host is a nested host inside that application, not an application of its own. The template's code has parts with different roles: the engine and the Viewer host that every consuming product needs, and a library of widgets. Dashboard content itself comes from the consuming product backend at run time ([ADR-0011](0011-backend-delivered-dashboard-v1.md)), so the packages carry only types and code.
 
 The dashboard has to mount inside the shell's existing extension domains: a screen domain for the Viewer host and a modal domain for the widget modal. Those domains belong to the shell and their identifiers may change. The shell registers both, but today it renders only the screen domain through a slot; the modal domain has no rendered slot. Docs and code need a stable way to refer to these domains, and the template needs a stated list of what it requires from the host.
 
@@ -43,7 +43,7 @@ How does the template split into packages, what does it depend on, and what does
 
 ## Considered Options
 
-1. **Two packages on `template-shell`, host contract by role** — a viewer package and a widget package, a dependency on `template-shell` only, and host requirements stated by role.
+1. **Two packages on `template-shell`, host contract by role** — a Viewer host package and a widget package, a dependency on `template-shell` only, and host requirements stated by role.
 2. **Dependency on `template-mfe`** — build the dashboard on the reference MFE scaffold.
 3. **Own host application** — the dashboard ships its own shell.
 
@@ -56,7 +56,7 @@ The decision:
 * **Dependencies.** The template requires `template-shell` and depends on it only. It takes nothing from `template-mfe`.
 * **Manifest channel.** Each package's `mfe.json` carries only GTS types and MFE entries. Dashboard content (dashboards with their embedded layout and widget instances, and widget data) never travels through `mfe.json`; it comes from the consuming product backend: the dashboard definition, and each widget's data on its own request ([ADR-0011](0011-backend-delivered-dashboard-v1.md)).
 * **Packages, split by role.**
-  * `dashboard-viewer`: the engine schemas (`frontx.v.*` and `frontx.m.*`), the viewer entry, and the modal-container entry. The viewer entry's extension in the host screen domain is a routed extension (FrontX ADR-0036); it uses the shell's screen extension type and its `route` field.
+  * `dashboard-viewer`: the engine schemas (`frontx.v.*` and `frontx.m.*`), the Viewer host entry, and the modal-container entry. The Viewer host entry's extension in the host screen domain is a routed extension (FrontX ADR-0036); it uses the shell's screen extension type and its `route` field.
   * `dashboard-widgets`: one `mf_manifest` and 9 widget entries.
 * **Host contract.** The template names host domains by role: the host screen domain and the host modal domain. Their current `template-shell` IDs are resolved from shell framework constants and never written as literals. Requirements on the host:
   * The host screen domain accepts routed extensions of the shell screen extension type and mounts one screen at a time.
@@ -81,7 +81,7 @@ Confirmed when:
 
 * A dependency check finds that the template's packages depend on `template-shell` and the FrontX packages only, and on nothing from `template-mfe`.
 * A grep over template code finds no literal host domain IDs; they come from shell framework constants.
-* The viewer mounts in the host screen domain through `Extension.route`, and the modal container mounts in the host modal domain with theme and language shared properties.
+* The Viewer host mounts in the host screen domain through `Extension.route`, and the modal container mounts in the host modal domain with theme and language shared properties.
 * On a host that renders the modal-domain slot, the open modal shows modal chrome, traps focus and closes on dismissal.
 * No package's `mfe.json` contains a dashboard, widget instance or widget data.
 * Bundle sizes are measured and checked against the provisional figures of `cpt-frontx-dashboard-nfr-bundle-budget` in the DESIGN (§3.9), with the modal container entry counted separately from the Viewer host MFE.
@@ -91,7 +91,7 @@ Confirmed when:
 ### Two packages on `template-shell`, host contract by role
 
 * Good, because the dashboard runs in the consuming product's existing shell-based application and depends on the shell alone.
-* Good, because the packages are split by role: the engine and viewer that every consuming product needs, and the widget library.
+* Good, because the packages are split by role: the engine and Viewer host that every consuming product needs, and the widget library.
 * Good, because naming host domains by role keeps shell identifier changes out of template code.
 * Bad, because it relies on the host contract holding, including a modal-domain slot that current `template-shell` does not render.
 
@@ -122,7 +122,7 @@ Confirmed when:
 
 This decision directly addresses the following requirements or design elements:
 
-* `cpt-frontx-dashboard-fr-viewer-host` — the routed viewer in the host screen domain.
+* `cpt-frontx-dashboard-fr-viewer-host` — the routed Viewer host in the host screen domain.
 * `cpt-frontx-dashboard-fr-widget-catalog` — the widgets package with 9 entries.
 * `cpt-frontx-dashboard-contract-host-domains` — the host contract by role, including the rendered modal-domain slot.
 * `cpt-frontx-dashboard-fr-widget-modal` — the widget modal requires the host modal-domain slot.

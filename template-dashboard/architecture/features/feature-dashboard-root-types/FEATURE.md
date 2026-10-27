@@ -1,7 +1,7 @@
 ---
-status: proposed
-version: 6
-date: 2026-10-24
+status: accepted
+version: 1
+date: 2026-10-27
 description: Domain-model types of the Dashboard root with its embedded layout and of the Theme with its light and dark palettes, declared by dashboard-viewer.
 ---
 
@@ -149,7 +149,7 @@ The dashboard carries no widget data and no theme: each widget requests its own 
 - Related types: `gts.frontx.m.layout.layout.v1~` (`feature-layout-types`), embedded through `$ref`.
 - No report type exists: each widget requests its own data (`feature-backend-contract` section 6.2), so the dashboard carries no data payload.
 - Theme: the Dashboard does not reference a theme; the template applies its own frontend-owned Theme instance (section 6.2).
-- Dashboard response: the consuming product backend answers the dashboard request with one instance of this type, and the viewer validates it and runs the layout checks on its embedded layout (`feature-backend-contract` section 6.1; `feature-layout-types` section 6.3).
+- Dashboard response: the consuming product backend answers the dashboard request with one instance of this type, and the Viewer host validates it and runs the layout checks on its embedded layout (`feature-backend-contract` section 6.1; `feature-layout-types` section 6.3).
 
 ### 6.2 Theme
 

@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-24
+date: 2026-10-27
 decision-makers: template-dashboard architecture maintainers
 description: "Decision record for how widget kinds relate to MFE entries and how widget MFEs ship: design-time widget kinds and runtime MFE entries as parallel hierarchies linked by realizes, and one widget-library package with one MFE entry per kind."
 ---
@@ -22,7 +22,7 @@ description: "Decision record for how widget kinds relate to MFE entries and how
   - [Parallel hierarchies linked by `realizes:`](#parallel-hierarchies-linked-by-realizes)
   - [MFE hierarchy derived mechanically from the widget-kind hierarchy](#mfe-hierarchy-derived-mechanically-from-the-widget-kind-hierarchy)
   - [One MFE per widget kind, one package with 9 entries](#one-mfe-per-widget-kind-one-package-with-9-entries)
-  - [Widgets bundled inside the viewer MFE](#widgets-bundled-inside-the-viewer-mfe)
+  - [Widgets bundled inside the Viewer host MFE](#widgets-bundled-inside-the-viewer-host-mfe)
 - [More Information](#more-information)
 - [Traceability](#traceability)
 
@@ -30,7 +30,7 @@ description: "Decision record for how widget kinds relate to MFE entries and how
 
 ## Context and Problem Statement
 
-Two artifact families describe a widget: the widget kind, a design-time GTS type that says what the placement configuration looks like and which widget data shape it consumes, and the MFE entry, the runtime manifest that the Viewer host loads and mounts. The question is whether they form one hierarchy or two linked by an explicit pointer, and whether widgets ship as their own MFEs at all or inside the viewer MFE.
+Two artifact families describe a widget: the widget kind, a design-time GTS type that says what the placement configuration looks like and which widget data shape it consumes, and the MFE entry, the runtime manifest that the Viewer host loads and mounts. The question is whether they form one hierarchy or two linked by an explicit pointer, and whether widgets ship as their own MFEs at all or inside the Viewer host MFE.
 
 Dashboards outlive MFE bundles, and a widget kind can have zero, one or several realizations.
 
@@ -48,7 +48,7 @@ Dashboards outlive MFE bundles, and a widget kind can have zero, one or several 
 * **Parallel hierarchies linked by `realizes:`** — widget kinds in the `m` package, MFE entries in the `v` package, each entry pointing to its kind.
 * **MFE hierarchy derived mechanically from the widget-kind hierarchy** — same structure and segment names, no explicit pointer.
 * **One MFE per widget kind, one package with 9 entries** — packaging option: a widget-library package ships one manifest and one MFE entry per kind.
-* **Widgets bundled inside the viewer MFE** — packaging option: no widget MFEs; the viewer MFE renders every widget kind as an internal component.
+* **Widgets bundled inside the Viewer host MFE** — packaging option: no widget MFEs; the Viewer host MFE renders every widget kind as an internal component.
 
 ## Decision Outcome
 
@@ -109,20 +109,20 @@ The entry for a kind is found by matching structure and names.
 The widget library is one package with one manifest and 9 entries, one per kind.
 
 * Good, because widgets mount into `layout_cells` and the modal container's `modal_panel` through the same MFE lifecycle.
-* Good, because widgets can be released independently of the viewer, and consumers can add kinds as separate packages.
+* Good, because widgets can be released independently of the Viewer host, and consumers can add kinds as separate packages.
 * Good, because one manifest keeps the widget package simple to build and version.
 * Bad, because every widget instance loads its own module graph under isolation, including heavy libraries, which weighs on the bundle budget.
 * Bad, because it needs the `realizes:` indirection and a kind-to-entry lookup on every mount.
 
-### Widgets bundled inside the viewer MFE
+### Widgets bundled inside the Viewer host MFE
 
-The viewer MFE contains every widget kind as an internal component; there are no widget MFEs.
+The Viewer host MFE contains every widget kind as an internal component; there are no widget MFEs.
 
-* Good, because the browser fetches less: one bundle, and heavy libraries are evaluated once in the viewer's module graph instead of once per widget instance.
+* Good, because the browser fetches less: one bundle, and heavy libraries are evaluated once in the Viewer host's module graph instead of once per widget instance.
 * Good, because there is no `realizes:` indirection, no catalog of entries and no orphan or unrealized states.
-* Bad, because widgets cannot be released independently of the viewer.
-* Bad, because consumers cannot add widget kinds as separate packages; every new kind means rebuilding the viewer.
-* Bad, because the viewer bundle grows with every kind, and widgets no longer mount into extension domains as MFEs, so the widget modal needs a second, non-MFE rendering path.
+* Bad, because widgets cannot be released independently of the Viewer host.
+* Bad, because consumers cannot add widget kinds as separate packages; every new kind means rebuilding the Viewer host.
+* Bad, because the Viewer host bundle grows with every kind, and widgets no longer mount into extension domains as MFEs, so the widget modal needs a second, non-MFE rendering path.
 
 ## More Information
 

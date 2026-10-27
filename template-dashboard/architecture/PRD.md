@@ -82,7 +82,6 @@ This template provides a render-only Viewer host for FrontX applications. The co
 | Widget library | The set of widget kinds that the template ships. |
 | Larger view | A modal that shows one widget with more room than its place on the dashboard. |
 | Domain model | The published description of what a dashboard can contain: dashboards, their layouts, the widget kinds, and the data each widget kind shows. The consuming product describes its dashboards with it. |
-| Displays correctly | A dashboard displays correctly when the template can show it in full, as provided. |
 | p95 | The 95th percentile: 95% of measured cases are at or below the stated value. |
 
 ## 2. Actors
@@ -149,7 +148,6 @@ The rule for this release is **render-only**: the consuming product provides the
 - Drill-down from one widget to another, and moving between items.
 - Refreshing a dashboard or its data while it is open.
 - A way to shorten or hide widget content on the dashboard.
-- New widget kinds with their own rendering.
 - Rich cell formatting in a table shown in the `grid` widget, such as badges, links, or sparklines in cells.
 - Dashboard visibility, publication, sharing, and audience settings.
 
@@ -181,7 +179,7 @@ The system **MUST** show the dashboards that the consuming product provides, wit
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-fr-loading-error-states`
 
-The system **MUST** show skeletons in place of the dashboard while it loads. When the dashboard fails to load, the system **MUST** show an error banner with a Retry action, and a successful retry **MUST** show the dashboard. Each widget **MUST** then show its own skeleton while its data loads. When its data fails to load, the widget **MUST** show its own error with a Retry action, and a successful retry **MUST** show the widget. When a widget's data is provided but cannot be shown, that widget **MUST** show an error state that tells the dashboard viewer the content cannot be shown, and **MUST NOT** show wrong or misleading content in its place. A problem with the dashboard as a whole (its description or layout) **MUST** replace the dashboard with a message saying it cannot be shown, never with wrong content; a problem with one widget's settings or data **MUST** stay in that widget. Each widget **MUST** appear or fail on its own: a failing widget **MUST NOT** affect the other widgets.
+The system **MUST** show skeletons in place of the dashboard while it loads. When the dashboard fails to load, the system **MUST** show an error banner with a Retry action, and a successful retry **MUST** show the dashboard. Each widget **MUST** then show its own skeleton while its data loads. When its data fails to load, the widget **MUST** show its own error with a Retry action, and a successful retry **MUST** show the widget. When a widget's data is provided but cannot be shown, or a widget fails to load, that widget **MUST** show an error state that tells the dashboard viewer the content cannot be shown, and **MUST NOT** show wrong or misleading content in its place. When the dashboard's description, its layout, or a widget's settings fail the checks the Viewer host makes when it opens the dashboard, the dashboard as a whole cannot be shown: the system **MUST** replace it with a message saying so, never with wrong content. Only a widget's data that cannot be shown, or a widget that fails to load, **MUST** stay in that widget. Each widget **MUST** appear or fail on its own: a failing widget **MUST NOT** affect the other widgets.
 
 **Rationale**: Loading can be slow or can fail, for the whole dashboard or for one widget. Dashboard viewers must always know which is happening, where, and what they can do about it.
 
@@ -347,7 +345,7 @@ The template **MUST** ship a consumer guide that explains how to describe the da
 - **Nothing changes while the dashboard is open.** The Viewer host offers no filtering, search, sorting, grouping, paging, refresh, or navigation between widgets. To see newer data, the dashboard viewer reloads the page.
 - **No cutting off and no rich cell formatting.** A widget on the dashboard shows what the consuming product provides for it; it does not shorten or hide content (`cpt-frontx-dashboard-fr-backend-source`). Cells of a table shown in the `grid` widget show plain text, with no badges, links, or sparklines.
 - **Widgets show only what the consuming product provides.** A consuming product that cannot provide a widget's data cannot show that widget.
-- **Generated dashboards are the consuming product's job.** The template publishes the domain model, but generating a dashboard and checking whether the template can show it in full are the consuming product's job. A problem with one widget's settings or data stays in that widget, which shows an error state.
+- **Generated dashboards are the consuming product's job.** The template publishes the domain model, but generating a dashboard and checking whether the template can show it in full are the consuming product's job. A dashboard whose description, layout, or a widget's settings fail the Viewer host's checks cannot be shown as a whole and is replaced by a message saying so; only a widget's data that cannot be shown, or a widget that fails to load, stays in that widget, which shows an error state.
 - **The larger view needs a host change.** It needs host modal support (see the Host Application in section 2.2). Until the host provides it, the larger view cannot be shown; the dashboard itself works without it.
 
 ## 7. Public Library Interfaces
@@ -366,7 +364,7 @@ The template publishes one public surface, its domain model. It has two integrat
 
 **Description**: A versioned way to describe the dashboards that a consuming product provides: dashboards, their layouts, the widget kinds, and the data each widget kind shows. Consumers use it to write or generate dashboards and to check, before they are shown, whether the template can show them in full. A consuming product can use it to add the settings of its own widgets. Its format and structure are defined in the DESIGN.
 
-**Breaking Change Policy**: While the template is in alpha, changes are allowed and are announced in the template release notes. From the first stable release, a dashboard that worked keeps working in later releases of the same major version; breaking changes come only in a new major version.
+**Breaking Change Policy**: While the template is in alpha, changes are allowed and are announced in the template release notes. From the first stable release, breaking changes are controlled and announced.
 
 ### 7.2 External Integration Contracts
 
@@ -416,8 +414,8 @@ The template publishes one public surface, its domain model. It has two integrat
 **Alternative Flows**:
 - **The dashboard fails to load**: The system shows an error banner with a Retry action. After a successful retry, step 3 continues.
 - **A widget's data fails to load**: That widget shows an error with a Retry action; the other widgets are not affected. After a successful retry, the widget shows its data.
-- **A widget's settings or data cannot be shown**: That widget shows an error state that the content cannot be shown, instead of wrong or misleading content; the rest of the dashboard is not affected.
-- **The dashboard as a whole cannot be shown** (a problem with its description or layout): The system replaces the dashboard with a message saying it cannot be shown, never with wrong content.
+- **A widget's data cannot be shown, or a widget fails to load**: That widget shows an error state that the content cannot be shown, instead of wrong or misleading content; the rest of the dashboard is not affected.
+- **The dashboard as a whole cannot be shown** (its description, its layout, or a widget's settings fail the checks the Viewer host makes when it opens the dashboard): The system replaces the dashboard with a message saying it cannot be shown, never with wrong content.
 - **The host does not yet support modals**: The larger view cannot be opened; the dashboard stays usable.
 
 ## 9. Acceptance Criteria
@@ -428,9 +426,9 @@ The template publishes one public surface, its domain model. It has two integrat
 - [ ] Closing a widget's larger view returns the dashboard viewer to the unchanged dashboard.
 - [ ] Skeletons show while the dashboard loads. A dashboard that fails to load shows an error banner with Retry, and a successful retry shows the dashboard.
 - [ ] Each widget shows its own skeleton while its data loads. A widget whose data fails to load shows an error with Retry in that widget only, and a successful retry shows the widget. Widget data that cannot be shown produces an error state in that widget, not wrong or misleading content, and the other widgets are not affected.
-- [ ] A problem with the dashboard as a whole (its description or layout) replaces the dashboard with a message saying it cannot be shown, never with wrong content; a problem with one widget's settings or data stays in that widget.
+- [ ] A dashboard whose description, layout, or a widget's settings fail the checks the Viewer host makes when it opens the dashboard is replaced as a whole by a message saying it cannot be shown, never by wrong content; only a widget's data that cannot be shown, or a widget that fails to load, stays in that widget.
 - [ ] A dashboard that the consuming product generates is shown in the same way as one that it writes by hand, and the consuming product can check, before it shows either, whether the template can show it in full.
-- [ ] A consuming product can write or generate a dashboard of its own, including the settings of its own widgets, with the published domain model; from the first stable release, such a dashboard keeps working with later releases of the same major version.
+- [ ] A consuming product can write or generate a dashboard of its own, including the settings of its own widgets, with the published domain model; from the first stable release, breaking changes are controlled and announced.
 - [ ] A complete dashboard shows within 3 seconds at p95 (provisional) under the reference conditions fixed in the DESIGN, counted from the moment the dashboard viewer opens the dashboard address.
 - [ ] Switching between the light and dark theme updates the Viewer host, every shown widget, and a widget open in its larger view without a reload of the dashboard.
 - [ ] Two dashboards open at the same time (for example in two browser tabs) each show only their own content.
@@ -466,7 +464,7 @@ The template publishes one public surface, its domain model. It has two integrat
 | Loading states prove unclear in use | Dashboard viewers may see unclear states during loading and failure | Take the requirements in this PRD as the baseline, review the loading and failure states in use, and refine them. |
 | Large dashboards from the consuming product | Initial render can exceed its budget, because the Viewer host shows whatever the consuming product provides | State in the consumer guide that the consuming product owns dashboard size and data size. Measure the initial render with the reference dashboard. |
 | Host modal support is a prerequisite outside this template (section 2.2) | Until the host provides host modal support, the larger view cannot be shown | Track it as that prerequisite. State it in the consumer guide. The dashboard works without the larger view until the host supports it. |
-| A generated dashboard has a problem the template cannot show | A problem with the dashboard as a whole replaces it with the cannot-be-shown message; a problem with one widget's settings or data leaves an error state in that widget only | The consumer guide states that the consuming product makes sure, before it shows a generated dashboard, that the template can show it in full. |
+| A generated dashboard has a problem the template cannot show | A dashboard whose description, layout, or a widget's settings fail the Viewer host's checks is replaced as a whole by the cannot-be-shown message; only a widget's data that cannot be shown, or a widget that fails to load, leaves an error state in that widget | The consumer guide states that the consuming product makes sure, before it shows a generated dashboard, that the template can show it in full. |
 
 **Open questions**:
 
