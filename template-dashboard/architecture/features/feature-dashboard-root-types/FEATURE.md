@@ -2,7 +2,7 @@
 status: accepted
 version: 1
 date: 2026-10-27
-description: Domain-model types of the Dashboard root with its embedded layout and of the Theme with its light and dark palettes, declared by dashboard-viewer.
+description: Domain-model type of the Dashboard root with its embedded layout, declared by dashboard-viewer.
 ---
 
 # Feature: Dashboard Root Types
@@ -25,7 +25,6 @@ description: Domain-model types of the Dashboard root with its embedded layout a
   - [Domain Model Definition of Done](#domain-model-definition-of-done)
 - [6. Domain Model](#6-domain-model)
   - [6.1 Dashboard](#61-dashboard)
-  - [6.2 Theme](#62-theme)
 - [7. Acceptance Criteria](#7-acceptance-criteria)
 
 <!-- /toc -->
@@ -37,15 +36,17 @@ description: Domain-model types of the Dashboard root with its embedded layout a
 
 ### 1.1 Overview
 
-This is a **domain-model feature**, not an actor-flow feature. It declares the Dashboard root, which embeds its layout, and the Theme type. The FEATURE template's flow, process, and state sections are reduced to stubs; the types live in section 6, Domain Model.
+This is a **domain-model feature**, not an actor-flow feature. It declares the Dashboard root, which embeds its layout, and no other type. The FEATURE template's flow, process, and state sections are reduced to stubs; the types live in section 6, Domain Model.
 
 ### 1.2 Purpose
 
-Concrete declaration of the dashboard root types of the domain model in DESIGN section 3.1: the Dashboard root and the Theme. The Dashboard root holds `id`, `name`, `description`, and the embedded `layout`, and no report type exists. A Dashboard instance is one dashboard as the consuming product backend provides it, GTS-typed (`cpt-frontx-dashboard-interface-dashboard-payload`; the dashboard request and response are specified in `feature-backend-contract` section 6.1). The consuming product writes or generates its dashboards; authoring is out of scope for the template. Either way, a dashboard validates against these types, so a consuming product can check the root of a dashboard it generates, and its embedded layout, before the dashboard is shown. The theme lives on the frontend: the template owns its Theme instance, and the consuming product backend does not provide it.
+Concrete declaration of the dashboard root type of the domain model in DESIGN section 3.1: the Dashboard root. It holds `id`, `name`, `description`, and the embedded `layout`, and no report type exists. A Dashboard instance is one dashboard as the consuming product backend provides it, GTS-typed (`cpt-frontx-dashboard-interface-dashboard-payload`; the dashboard request and response are specified in `feature-backend-contract` section 6.1). The consuming product writes or generates its dashboards; authoring is out of scope for the template. Either way, a dashboard validates against these types, so a consuming product can check the root of a dashboard it generates, and its embedded layout, before the dashboard is shown. The dashboard carries no theme: the theme belongs to the host, and the dashboard follows the host theme (`cpt-frontx-dashboard-fr-theme` is covered by `feature-extension-domain-catalog` and `feature-mfe-entries`). A consuming product may derive a dashboard subtype that adds dashboard-level fields, which the Viewer host ignores; widget settings cannot be added in this version.
 
 **Declaring package**: `dashboard-viewer`.
 
-**Requirements**: `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-theme`, `cpt-frontx-dashboard-fr-backend-source`
+**Requirements**: `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-backend-source`
+
+**Use cases**: `cpt-frontx-dashboard-usecase-provide-dashboard` (the types that a consuming product describes and checks a dashboard with; the other features named in DECOMPOSITION cover the remaining steps)
 
 **Principles**: `cpt-frontx-dashboard-principle-gts-contracts`
 
@@ -57,8 +58,8 @@ N/A — domain-model feature. The types are consumed by the runtime type system 
 
 - **PRD**: [PRD.md](../../PRD.md)
 - **Design**: [DESIGN.md](../../DESIGN.md#31-domain-model)
-- **ADRs**: [ADR-0003](../../ADR/0003-shared-data-types-and-schemas-v1.md), [ADR-0006](../../ADR/0006-theme-distribution-v1.md), [ADR-0011](../../ADR/0011-backend-delivered-dashboard-v1.md)
-- **Dependencies**: `feature-layout-types` (the Dashboard embeds a `gts.frontx.m.layout.layout.v1~` object). Dependency graph: dashboard-root-types depends on layout-types; Theme has no dependency, and the Dashboard does not reference it.
+- **ADRs**: [ADR-0003](../../ADR/0003-shared-data-types-and-schemas-v1.md), [ADR-0006](../../ADR/0006-theme-distribution-v1.md) (the dashboard carries no theme), [ADR-0011](../../ADR/0011-backend-delivered-dashboard-v1.md)
+- **Dependencies**: `feature-layout-types` (the Dashboard embeds a `gts.frontx.m.layout.layout.v1~` object). Dependency graph: dashboard-root-types depends on layout-types only.
 - **Related**: `feature-backend-contract` (the dashboard response is one instance of the Dashboard type; its section 6.1 runs the layout checks on the embedded layout).
 
 ## 2. Actor Flows (CDSL)
@@ -85,16 +86,17 @@ N/A — domain-model feature. Type declarations are stateless.
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-dashboard-root-types-catalog-complete`
 
-The system **MUST** declare `gts.frontx.m.dashboard.dashboard.v1~` with only its four fields (`id`, `name`, `description`, `layout`) and `gts.frontx.m.dashboard.theme.v1~` in `dashboard-viewer`, and **MUST NOT** declare a report type.
+The system **MUST** declare `gts.frontx.m.dashboard.dashboard.v1~` with only its four fields (`id`, `name`, `description`, `layout`) in `dashboard-viewer`, and **MUST NOT** declare a report type, a theme type, or a theme instance.
 
-- Every concrete is authored with a full JSON Schema declaration.
+- The Dashboard is authored with a full JSON Schema declaration.
 - Every identifier follows the GTS identifier grammar and the ID-form convention of DESIGN section 3.1 (types end with `~`, instances do not).
 - Every `x-gts-instance-ref` operand is valid under GTS v0.17, and every `$ref` resolves to a declared type.
 - The Dashboard `id` is a combined anonymous instance identifier (`gts.frontx.m.dashboard.dashboard.v1~<uuid>`, UUID generated by the consuming product backend); the Dashboard declares no separate `type` field.
 - The layout is embedded in the Dashboard; no layout reference or separate layout instance exists.
 - The Dashboard root declares only these four fields, and no report type exists.
-- The Dashboard root declares no `theme` field; the Theme instance is template-owned frontend content and is not part of the dashboard.
-- Both palettes of the Theme declare the optional `row_tints` with the families `severity`, `status`, and `generic`.
+- The Dashboard root declares no `theme` field; the theme belongs to the host, and the template defines no theme type, instance, or palette.
+- A consuming product may derive a dashboard subtype that adds dashboard-level fields only; the Viewer host ignores them, and widget settings cannot be added in this version.
+- This feature declares no consumer widget types.
 
 **Constraints**: `cpt-frontx-dashboard-constraint-gts-id-convention`
 
@@ -108,9 +110,9 @@ The system **MUST** declare `gts.frontx.m.dashboard.dashboard.v1~` with only its
 
 - `id`, `name`, and the optional `description` identify and name the dashboard;
 - `layout` embeds the dashboard's layout on the 60-column grid (`feature-layout-types` section 6.1);
-- each layout cell places one widget and embeds that widget instance with its settings: its `id`, whose type chain names the widget kind, its `title`, its presentation configuration, and its `params` (`feature-layout-types` section 6.2; the widget base is `feature-widget-catalog` section 6.0).
+- each layout cell places one widget and embeds that widget instance with its settings: its `id`, whose type chain names the widget type, its `title`, its presentation configuration, and its `source` (`feature-layout-types` section 6.2; the widget base is `feature-widget-catalog` section 6.0).
 
-The dashboard carries no widget data and no theme: each widget requests its own data (`feature-backend-contract` section 6.2), and the template applies its own Theme (section 6.2). The consuming product backend answers the dashboard request with one instance of this type (`feature-backend-contract` section 6.1). Visibility, sharing, publication, and audience settings are not part of the Dashboard; a consuming product may derive a subtype that adds them.
+The dashboard carries no widget data and no theme: each widget requests its own data (`feature-backend-contract` section 6.2), and the dashboard follows the host theme, which the host supplies as the theme shared property (ADR-0006). The consuming product backend answers the dashboard request with one instance of this type (`feature-backend-contract` section 6.1). Visibility, sharing, publication, and audience settings are not part of the Dashboard; a consuming product may derive a subtype that adds them or other dashboard-level fields, which the Viewer host ignores. Widget settings cannot be added in this version.
 
 **Schema**:
 
@@ -148,136 +150,15 @@ The dashboard carries no widget data and no theme: each widget requests its own 
 - No abstract base (flat single-segment chain).
 - Related types: `gts.frontx.m.layout.layout.v1~` (`feature-layout-types`), embedded through `$ref`.
 - No report type exists: each widget requests its own data (`feature-backend-contract` section 6.2), so the dashboard carries no data payload.
-- Theme: the Dashboard does not reference a theme; the template applies its own frontend-owned Theme instance (section 6.2).
+- Theme: the Dashboard does not reference a theme; the theme belongs to the host (ADR-0006).
 - Dashboard response: the consuming product backend answers the dashboard request with one instance of this type, and the Viewer host validates it and runs the layout checks on its embedded layout (`feature-backend-contract` section 6.1; `feature-layout-types` section 6.3).
-
-### 6.2 Theme
-
-**GTS ID**: `gts.frontx.m.dashboard.theme.v1~`
-
-**Description**: Design system theme configuration. Defines all visual styling applied to dashboard widgets — light/dark palettes, typography, chart-type defaults, spacing. The template owns its Theme instance on the frontend; the consuming product backend does not provide it, and the active mode follows the host theme id (ADR-0006).
-
-**Schema**:
-
-```json
-{
-  "$id": "gts://gts.frontx.m.dashboard.theme.v1~",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "Design system theme configuration. Defines all visual styling applied to dashboard widgets. The template owns one theme instance on the frontend; the theme produces ECharts theme JSON for chart widgets and shadcn CSS variables for UI components. Widget schemas contain only semantic properties — all styling comes from the theme. Both palettes are carried by the template-owned theme instance. The active mode follows the host: the Viewer host maps the host theme id to light or dark through its theme-mode map and supplies the matching palette.",
-  "type": "object",
-  "required": ["light_palette", "dark_palette", "typography", "chart_defaults"],
-  "properties": {
-    "light_palette": {
-      "type": "object",
-      "description": "Color palette for light mode. Used to derive ECharts theme colors and shadcn CSS variables in light mode.",
-      "properties": {
-"primary": { "type": "string", "description": "Primary brand color (HSL or hex)." },
-"secondary": { "type": "string" },
-"accent": { "type": "string" },
-"background": { "type": "string" },
-"foreground": { "type": "string" },
-"muted": { "type": "string" },
-"destructive": { "type": "string" },
-"chart_categorical": {
-  "type": "array",
-  "items": { "type": "string" },
-  "description": "Ordered color palette for categorical chart series."
-},
-"chart_sequential": {
-  "type": "array",
-  "items": { "type": "string" },
-  "description": "Color ramp for sequential/heatmap data."
-},
-"row_tints": {
-  "type": "object",
-  "description": "Grid row tint colors per row_color_by_field palette family; each family maps a row value, matched exactly and case-sensitively on its string form, to a color.",
-  "additionalProperties": false,
-  "properties": {
-    "severity": { "type": "object", "additionalProperties": false, "properties": { "critical": { "type": "string" }, "high": { "type": "string" }, "medium": { "type": "string" }, "low": { "type": "string" }, "info": { "type": "string" } } },
-    "status": { "type": "object", "additionalProperties": false, "properties": { "success": { "type": "string" }, "warning": { "type": "string" }, "error": { "type": "string" }, "in_progress": { "type": "string" }, "neutral": { "type": "string" } } },
-    "generic": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Optional colors for chosen values; any other value takes the chart_categorical colors in order of first appearance in the rows, wrapping around." }
-  }
-}
-      }
-    },
-    "dark_palette": {
-      "type": "object",
-      "description": "Color palette for dark mode. Used to derive ECharts theme colors and shadcn CSS variables in dark mode.",
-      "properties": {
-"primary": { "type": "string", "description": "Primary brand color (HSL or hex)." },
-"secondary": { "type": "string" },
-"accent": { "type": "string" },
-"background": { "type": "string" },
-"foreground": { "type": "string" },
-"muted": { "type": "string" },
-"destructive": { "type": "string" },
-"chart_categorical": {
-  "type": "array",
-  "items": { "type": "string" },
-  "description": "Ordered color palette for categorical chart series."
-},
-"chart_sequential": {
-  "type": "array",
-  "items": { "type": "string" },
-  "description": "Color ramp for sequential/heatmap data."
-},
-"row_tints": {
-  "type": "object",
-  "description": "Grid row tint colors per row_color_by_field palette family; each family maps a row value, matched exactly and case-sensitively on its string form, to a color.",
-  "additionalProperties": false,
-  "properties": {
-    "severity": { "type": "object", "additionalProperties": false, "properties": { "critical": { "type": "string" }, "high": { "type": "string" }, "medium": { "type": "string" }, "low": { "type": "string" }, "info": { "type": "string" } } },
-    "status": { "type": "object", "additionalProperties": false, "properties": { "success": { "type": "string" }, "warning": { "type": "string" }, "error": { "type": "string" }, "in_progress": { "type": "string" }, "neutral": { "type": "string" } } },
-    "generic": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Optional colors for chosen values; any other value takes the chart_categorical colors in order of first appearance in the rows, wrapping around." }
-  }
-}
-      }
-    },
-    "typography": {
-      "type": "object",
-      "properties": {
-"font_family": { "type": "string" },
-"title_size": { "type": "integer", "description": "Font size in px for widget titles." },
-"label_size": { "type": "integer", "description": "Font size in px for axis labels and legends." },
-"value_size": { "type": "integer", "description": "Font size in px for KPI card values." }
-      }
-    },
-    "chart_defaults": {
-      "type": "object",
-      "description": "Per-chart-type visual defaults applied via ECharts registerTheme(). Controls properties that are styling concerns, not semantic widget configuration.",
-      "properties": {
-"bar_width": { "type": ["integer", "null"] },
-"line_smooth": { "type": "boolean" },
-"area_opacity": { "type": "number", "minimum": 0, "maximum": 1 },
-"scatter_symbol_size": { "type": "integer" },
-"scatter_symbol_shape": { "type": "string", "enum": ["circle", "rect", "triangle"] },
-"pie_label_position": { "type": "string", "enum": ["inside", "outside", "center"] },
-"animation_enabled": { "type": "boolean" },
-"animation_duration_ms": { "type": "integer" }
-      }
-    },
-    "spacing": {
-      "type": "object",
-      "properties": {
-"widget_padding": { "type": "integer", "description": "Inner padding in px for widget containers." },
-"grid_gap": { "type": "integer", "description": "Gap in px between layout cells." }
-      }
-    }
-  }
-}
-```
-
-**Cross-references**:
-- No abstract base (flat single-segment chain).
-- Row tints: the `grid` kind's `row_color_by_field` takes row colors from `row_tints` of the active palette, and for the `generic` family also from `chart_categorical`; a value with no color there shows no tint (`feature-widget-catalog` section 6.5).
 
 ## 7. Acceptance Criteria
 
-- [ ] Every concrete listed in this feature is authored with its full schema
-- [ ] Every concrete passes GTS identifier grammar and GTS v0.17 schema validation, including the `x-gts-instance-ref` operand of `id`
-- [ ] Every type identifier ends with `~`, every instance identifier does not, and every identifier carries `v1`
+- [ ] The Dashboard is authored with its full schema
+- [ ] The Dashboard passes GTS identifier grammar and GTS v0.17 schema validation, including the `x-gts-instance-ref` operand of `id`
+- [ ] The type identifier ends with `~`, every instance identifier does not, and every identifier carries `v1`
 - [ ] `cfs validate --artifact` on this file reports PASS
-- [ ] The Theme instance is template-owned frontend content and is not part of the dashboard
-- [ ] Both palettes of the Theme schema declare the optional `row_tints`, keyed by `severity` (`critical`, `high`, `medium`, `low`, `info`), `status` (`success`, `warning`, `error`, `in_progress`, `neutral`), and `generic` (any value), each mapping a value to a color
+- [ ] This feature declares no theme type, theme instance, palette, or consumer widget type
 - [ ] The Dashboard schema requires `id`, `name`, and `layout`, embeds `layout` as an object, declares only `id`, `name`, `description`, and `layout`, and declares no `theme` or `report` field
-- [ ] A dashboard whose cells each embed one widget instance with its `id`, `title`, presentation configuration, and `params`, and which carries no widget data, validates against the Dashboard type
+- [ ] A dashboard whose cells each embed one widget instance with its `id`, `title`, presentation configuration, and `source`, and which carries no widget data, validates against the Dashboard type

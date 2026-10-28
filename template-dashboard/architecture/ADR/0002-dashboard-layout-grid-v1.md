@@ -38,7 +38,7 @@ A layout is a set of cells, each stored as integer `{x, y, w, h}` coordinates wi
 * The Viewer host must not carry a layout library, to keep widget and Viewer host bundles small under per-instance isolation.
 * Layout must render the same way for every dashboard, with no hidden collision logic at run time.
 * Common row splits, including five equal widgets in a row, must fit without remainders, while coordinates stay easy to write by hand.
-* The rendered layout must work inside the Shadow DOM boundary of the layout domain without document-level stylesheets.
+* The rendered layout must work inside the Viewer host's own style scope without document-level stylesheets.
 
 ## Considered Options
 
@@ -54,7 +54,7 @@ The layout-to-CSS mapping is direct. The container is a grid with 60 equal colum
 
 Invalid layouts are caught in two places. Schema validation of the layout cell type checks the bounds of each coordinate (non-negative integers, `x` below 60, `w` from 1 to 60, `h` at least 1). A layout check by the Viewer host runs when the Viewer host opens a dashboard. It rejects cells that overlap or that extend past column 60 (`x + w` greater than 60), and the Viewer host shows a diagnostic instead of rendering the dashboard.
 
-Authoring is out of scope for this template, and the consuming product writes or generates layouts. The stored format does not depend on any editor library, so the consuming product can use any editor without a format change.
+The stored format does not depend on any editor library, so the consuming product can use any editor without a format change.
 
 ### Consequences
 
@@ -76,7 +76,7 @@ Confirmed by rendering a test dashboard and checking that each cell lands on the
 Cells are integer coordinates on a fixed 60-column grid, mapped to CSS grid lines.
 
 * Good, because it uses browser-native layout.
-* Good, because the grid styles live in the Viewer host's own shadow root and need no document-level stylesheet.
+* Good, because the grid styles live in the Viewer host's own style scope and need no document-level stylesheet.
 * Good, because the stored model is simple and library-independent.
 * Good, because 60 is divisible by 2, 3, 4, 5, 6, 10, 12, 15, 20, and 30, so five equal widgets in a row fit exactly.
 * Neutral, because authoring is out of scope and left to the consuming product.
@@ -87,7 +87,7 @@ Cells are integer coordinates on a fixed 60-column grid, mapped to CSS grid line
 
 The same model and rendering, with a coarser grid.
 
-* Good, because it uses browser-native layout and works inside the shadow root, like the 60-column option.
+* Good, because it uses browser-native layout and works inside the Viewer host's own style scope, like the 60-column option.
 * Good, because 12 columns is a familiar convention, and small coordinates are easy to write by hand.
 * Neutral, because 24 columns adds eighths but still gives fewer splits than 60.
 * Bad, because neither 12 nor 24 is divisible by 5, so five equal widgets in a row cannot fit.
@@ -101,14 +101,13 @@ The Viewer host would render and position cells through a drag-and-resize grid l
 * Good, because collision handling is built in.
 * Bad, because the Viewer host would load an editing library only to display fixed layouts.
 * Bad, because each isolated instance would pay for that code.
-* Bad, because the library ships document-level stylesheets that would have to be injected into each shadow root.
+* Bad, because the library ships document-level stylesheets that would have to be injected into the Viewer host's style scope.
 
 ## More Information
 
 * **Review trigger**: revisit this decision when responsive layouts for narrow screens become a requirement.
-* **Scope**: this decision covers the stored cell model, the column count, the rendering technique, and where invalid layouts are caught. It does not cover authoring, responsive reflow for narrow screens, or the layout domain and cell types, which the DESIGN specifies.
+* **Scope**: this decision covers the stored cell model, the column count, the rendering technique, and where invalid layouts are caught. It does not cover authoring, responsive reflow for narrow screens, or the `layout_cells` extension domain and the layout types, which the DESIGN specifies.
 * **Checklist applicability**: ARCH applicable (layout model and rendering technique); PERF applicable (no layout library per instance, native layout at first render); SEC N/A (coordinates are validated integers and add no trust boundary); REL applicable (invalid layouts are rejected with a diagnostic); DATA applicable (stored coordinate format and its validation); INT N/A (no external system is involved); OPS N/A (no deployment or operational change); MAINT applicable (no layout library to upgrade, and the format is independent of any editor library); TEST applicable (overlapping and out-of-range fixtures); COMPL N/A (no regulated data or new license); UX applicable (placement precision and the missing visual editor); BIZ N/A (authoring out of scope is recorded in Scope, with no other business trade-off).
-* Authoring is out of scope for this template; the consuming product writes or generates layouts.
 
 ## Traceability
 

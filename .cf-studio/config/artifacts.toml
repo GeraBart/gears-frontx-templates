@@ -224,7 +224,7 @@ artifacts = [
   { name = "ADR-0005: Data grid library", path = "template-dashboard/architecture/ADR/0005-data-grid-library-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
   { name = "ADR-0006: Theme distribution", path = "template-dashboard/architecture/ADR/0006-theme-distribution-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
   { name = "ADR-0007: Extension domain taxonomy with a modal container", path = "template-dashboard/architecture/ADR/0007-extension-domain-taxonomy-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
-  { name = "ADR-0008: Widget kind and MFE realization hierarchy", path = "template-dashboard/architecture/ADR/0008-widget-kind-and-mfe-realization-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0008: Widget type and MFE realization", path = "template-dashboard/architecture/ADR/0008-widget-type-and-mfe-realization-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
   { name = "ADR-0009: Subject-agnostic widget catalog", path = "template-dashboard/architecture/ADR/0009-subject-agnostic-widget-catalog-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
   { name = "ADR-0010: Template packages and host contract", path = "template-dashboard/architecture/ADR/0010-template-packages-and-host-contract-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
   { name = "ADR-0011: Backend-delivered dashboard", path = "template-dashboard/architecture/ADR/0011-backend-delivered-dashboard-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
