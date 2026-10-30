@@ -66,7 +66,7 @@ The decision has these parts:
 4. **Chart themes in each chart widget.** Each chart widget instance builds its ECharts theme `frontx-dashboard` from the kit tokens of the active scope and registers it in its own ECharts copy. It builds and registers it again on every theme change ([ADR-0004](0004-charting-library-v1.md)).
 5. **Grid row coloring.** The `grid` widget type colors rows with kit tokens of the active scope. Row colouring is keyed by a query member whose value names a row colour token, so row colors adapt to light and dark like every other color ([ADR-0005](0005-data-grid-library-v1.md)).
 6. **Theme switch.** A theme switch is a shared-property change only. The host updates the property; the dashboards root maps the new id for its own chrome and publishes the same value on `layout_cells`; the larger-view modal receives the new value from the shell's `popup` domain and publishes it on `larger_view`; each widget selects the new kit scope, and chart widgets re-register their chart theme. Nothing is fetched, no widget requests its data again, and nothing is remounted.
-7. **No template theme.** The template defines no theme type, no theme instance, no palettes or row tints, no theme-id-to-mode map with a consumer extension point, and no CSS-variable projection. The dashboard references no theme.
+7. **No template theme.** The template defines no theme type, no theme instance, no palettes or row tints, no theme-id-to-mode map that consumers add to, and no CSS-variable projection. The dashboard references no theme.
 
 ### Consequences
 
@@ -88,7 +88,7 @@ The decision has these parts:
 
 Confirmed by design review, tests and inspection:
 
-* Design review finds no theme type, theme instance, palette, row tint, theme-id map with an extension point or CSS-variable projection in the template packages, and no theme field or theme reference in the dashboard types.
+* Design review finds no theme type, theme instance, palette, row tint, theme-id map that consumers add to, or CSS-variable projection in the template packages, and no theme field or theme reference in the dashboard types.
 * A test checks that the dashboards root publishes on `layout_cells` exactly the value that it reads from the host's theme shared property, and publishes the new value on every change.
 * A test checks that a widget in the larger view receives the theme from the larger-view modal and follows a light and dark switch while the larger view is open.
 * A test checks that every template MFE selects the kit's light or dark scope for each host theme id that `template-shell` ships.
@@ -112,11 +112,11 @@ The template takes the host theme id from the host's theme shared property and f
 
 ### Template-owned theme instance with light and dark palettes
 
-The template ships a GTS theme instance with a light and a dark palette, chart defaults and row tints. It maps the host theme id to a mode through its own map with a consumer extension point, projects the active palette to CSS variables in the dashboards root, and passes the palette to widgets in its theme shared property.
+The template ships a GTS theme instance with a light and a dark palette, chart defaults and row tints. It maps the host theme id to a mode through its own map that consumers add to, projects the active palette to CSS variables in the dashboards root, and passes the palette to widgets in its theme shared property.
 
 * Good, because the template controls its look independently of the host.
 * Bad, because the dashboard would have a second look next to the host's design system, which the PRD rules out.
-* Bad, because it adds a theme type and instance that must be versioned, validated and frozen, and a mode map that every consumer must extend for its host themes, a cost the host-theme option also has in its small helper but without a consumer extension point.
+* Bad, because it adds a theme type and instance that must be versioned, validated and frozen, and a mode map that every consumer must extend for its host themes, a cost the host-theme option also has in its small helper but without a map that consumers add to.
 * Bad, because the CSS projection in the dashboards root does not reach the larger view, which is mounted outside the dashboards root, so a second projection would be needed there.
 * Bad, because the theme shared property of `layout_cells` would carry a palette, not the host theme id, so widgets could not use the same input in a cell and in the larger view.
 

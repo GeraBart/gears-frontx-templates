@@ -58,51 +58,51 @@ The questions are: what the catalog contains, how a widget type states the data 
 
 Chosen option: "Per-type data shapes with a closed set of fill modes", because the catalog stays bounded by presentation shapes, each widget type states exactly the data it needs, the data adapter implements five fill modes once and serves every widget type that reuses one, and the widget does no mapping.
 
-**Widget base and the abstract data widget.** The widget base `gts.frontx.dashboard_m.widget.widget.v1~` is abstract and carries `id` and `title` only. The abstract data widget type `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~` derives from it. It adds the required `data` field, whose type is the query base ([ADR-0012](0012-query-vocabulary-and-datasets-v1.md)), and declares these traits:
+**Widget base and the abstract data widget.** The widget base `gts.frontx.dashboard_m.widget.widget.v1~` is abstract and carries `id` and `title` only. The abstract data widget type `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~` derives from it. It adds the required `data` field, whose type is the query base ([ADR-0012](0012-query-vocabulary-and-datasets-v1.md)). The `data` field forbids `timezone`: an author never writes it, and the widget sets it in the query it sends ([ADR-0012](0012-query-vocabulary-and-datasets-v1.md)). The abstract data widget declares these traits:
 
 * `data_shape` (required): the id of the data shape the widget type needs.
 * `fill` (required): the fill mode and, for one mode, its fields.
-* `member_kinds` (optional): the allowed value kinds of the query's measures and dimensions. The owner of the widget's domain (the dashboards root for cell widgets, the larger-view modal for larger-view widgets) checks them against the member instances' `value_type`.
+* `member_kinds` (optional): which kinds of members a widget type accepts, as the allowed value kinds of the query's measures and dimensions. It does not decide whether a filter operator fits its member; that check is in [ADR-0012](0012-query-vocabulary-and-datasets-v1.md). The owner of the widget's domain (the dashboards root for cell widgets, the larger-view modal for larger-view widgets) checks them against the member instances' `value_type`.
 
 Each data widget type is a concrete type under the data widget, for example `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.pie_chart.v1~`. It sets the two required traits, limits the form of the query on its `data` field, adds its presentation fields, and is the target of a widget realization ([ADR-0008](0008-widget-type-and-mfe-realization-v1.md)). `markdown_card` derives from the widget base directly. It has no `data`, no traits and no query, and it never requests data. Its body is rendered as typical markdown (CommonMark), embedded HTML shown as text, never rendered (`cpt-frontx-dashboard-fr-backend-source`). Every GTS instance id is unique, so a dashboard never holds the same widget instance twice.
 
 **Nine widget types.** The catalog has 9 subject-agnostic widget types: 8 data widget types (`summary_card`, `metric_card`, `ranked_list_card`, `progress_list_card`, `grid`, `cartesian_chart`, `pie_chart`, `heatmap`) and `markdown_card`. No widget type gives its settings a subject: the subject is the query's measures and dimensions.
 
-**Eight data shapes.** The abstract data shape `gts.frontx.dashboard_m.widget_data.widget_data.v1~` carries `id`. Each data widget type has its own derived shape, for example `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~`. There are 8 shapes, one per type, even where two shapes are identical, so that they can differ. The combined id of a data instance and its validation are decided in [ADR-0003](0003-shared-data-types-and-schemas-v1.md); a widget never compares shapes. Measure-valued fields of a data shape (`value`, `previous_value`, `secondary`, `current`, `target`, sparkline points, and cartesian and heatmap values) accept `null`, and a widget shows a `null` as a gap or an empty value; for `metric_card`, a `null` `value` is the empty state.
+**Eight data shapes.** The abstract data shape `gts.frontx.dashboard_m.widget_data.widget_data.v1~` carries `id`. Each data widget type has its own derived shape, for example `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~`. There are 8 shapes, one per type, even where two shapes are identical, so that they can differ. The combined id of a data instance and its validation are decided in [ADR-0003](0003-shared-data-types-and-schemas-v1.md); a widget never compares shapes. Measure-valued fields of a data shape (`value`, `previous_value`, `secondary`, `current`, `target`, sparkline points, and cartesian and heatmap values) accept `null`, and a widget shows a `null` as a gap or an empty value; for `metric_card`, a `null` `value` is the empty state. Dimension-valued fields (`label`, `x`, `y`, `series`) accept `null` too, and a widget shows a `null` dimension value as an empty label.
 
 **Five fill modes.** A fill mode is a rule, defined by the template, that fills a data shape from a query result. The set is closed. A widget type that needs a new mode is a template change, and every data adapter implements the new mode once ([ADR-0011](0011-data-adapter-v1.md)).
 
 | Fill mode | Produces | Rule |
 |---|---|---|
 | `rows_by_member` | `rows: [{<field>: value, …}]`, one object per result row | Each `fields[i].field` takes the result value of `fields[i].from`. A field whose `from` names a member the query does not have is omitted. |
-| `x_series_value` | `rows: [{x, series?, value}]` | `x` is `time` when `granularity` is set, else the first dimension. With one measure, `series` is the first dimension not used for `x`, if any, and `value` is the measure. With several measures there is one row per measure: `series` is the measure id and `value` is that measure. |
+| `x_series_value` | `rows: [{x, series?, value}]` | `x` is `timeDimensions[0]` when its `granularity` is set, else the first dimension. With one measure, `series` is the first dimension not used for `x`, if any, and `value` is the measure. With several measures there is one row per measure: `series` is the measure id and `value` is that measure. |
 | `row_per_measure` | `rows: [{key, value}]` | One row per measure in query order: `key` is the measure id and `value` is its total over the query. |
 | `positional_table` | `rows: [[…]]` and `total` | One array per result row in the canonical member order defined in [ADR-0012](0012-query-vocabulary-and-datasets-v1.md). `total` is the row count ignoring `limit` and `offset`. |
-| `scalar_with_series` | `{value, previous_value?, sparkline?}` | `value` is the measure's total over the query, computed by the backend and never by summing the series. `previous_value` is the same total over the comparison period when `time.compare` is set. `sparkline` is the measure per granularity step when `granularity` is set. |
+| `scalar_with_series` | `{value, previous_value?, sparkline?}` | `value` is the measure's total over the query, from the backend at the query grain, never a sum of the series for a measure that the binding does not declare re-aggregatable. `previous_value` is the same total over the second range of `compareDateRange`, when it is set, and `value` is the total over its first range. `sparkline` is the measure per granularity step when `timeDimensions[0]` has a `granularity`; with `compareDateRange`, the sparkline covers range 1. |
 
-**The `from` grammar.** Only `rows_by_member` has `fields`. Each entry is `{field, from}`. `from` is one of `dimensions[i]`, `measures[i]` or `time`, where `i` is a position in the query's own lists. `positional_table` uses the canonical member order defined in [ADR-0012](0012-query-vocabulary-and-datasets-v1.md).
+**The `from` grammar.** Only `rows_by_member` has `fields`. Each entry is `{field, from}`. `from` is one of `dimensions[i]`, `measures[i]` or `timeDimensions[0]`, where `i` is a position in the query's own lists. `positional_table` uses the canonical member order defined in [ADR-0012](0012-query-vocabulary-and-datasets-v1.md).
 
 **Per-type table.** Each data widget type limits its query on its `data` field and names its shape and fill mode.
 
 | Widget type | Query limits | Fill mode and data shape |
 |---|---|---|
-| `summary_card` | 1 or more measures, no dimensions, no granularity | `row_per_measure`: `rows: [{key, value}]` |
-| `metric_card` | 1 measure, no dimensions; optional `time` with granularity for the sparkline; optional `time.compare` for the trend | `scalar_with_series`: `{value, previous_value?, sparkline?}` |
-| `ranked_list_card` | 1 dimension, 1 to 2 measures, no granularity; `order`, `limit` | `rows_by_member` (label from `dimensions[0]`, value from `measures[0]`, secondary from `measures[1]`): `rows: [{label, value, secondary?}]` |
-| `progress_list_card` | 1 dimension, 2 measures, no granularity; `order`, `limit` | `rows_by_member` (label, current from `measures[0]`, target from `measures[1]`): `rows: [{label, current, target}]` |
-| `pie_chart` | 1 dimension, 1 measure, no granularity | `rows_by_member` (label, value): `rows: [{label, value}]` |
-| `cartesian_chart` | 1 measure: either `time` with granularity and at most 1 dimension, or no granularity and 1 to 2 dimensions. Several measures: either `time` with granularity and no dimension, or no granularity and 1 dimension | `x_series_value`: `rows: [{x, series?, value}]` |
-| `heatmap` | 2 dimensions, 1 measure, no granularity | `rows_by_member` (x from `dimensions[0]`, y from `dimensions[1]`, value): `rows: [{x, y, value}]` |
-| `grid` | 1 or more members; `order`; paging by `limit` and `offset`, with `limit` required and one of the `page_sizes` values (rule in [ADR-0005](0005-data-grid-library-v1.md)) | `positional_table`: `rows: [[…]]`, `total` |
+| `summary_card` | 1 or more measures, no dimensions, no `granularity` on `timeDimensions` | `row_per_measure`: `rows: [{key, value}]` |
+| `metric_card` | 1 measure, no dimensions; optional `timeDimensions[0]` with `granularity` for the sparkline; optional `compareDateRange` with exactly 2 ranges for the trend, instead of `dateRange` | `scalar_with_series`: `{value, previous_value?, sparkline?}` |
+| `ranked_list_card` | 1 dimension, 1 to 2 measures, no `granularity`; `order` and `limit` optional | `rows_by_member` (label from `dimensions[0]`, value from `measures[0]`, secondary from `measures[1]`): `rows: [{label, value, secondary?}]` |
+| `progress_list_card` | 1 dimension, 2 measures, no `granularity`; `order` and `limit` optional | `rows_by_member` (label, current from `measures[0]`, target from `measures[1]`): `rows: [{label, current, target}]` |
+| `pie_chart` | 1 dimension, 1 measure, no `granularity` | `rows_by_member` (label, value): `rows: [{label, value}]` |
+| `cartesian_chart` | 1 measure: either `timeDimensions[0]` with `granularity` and at most 1 dimension, or no `granularity` and 1 to 2 dimensions. Several measures: either `timeDimensions[0]` with `granularity` and no dimension, or no `granularity` and 1 dimension | `x_series_value`: `rows: [{x, series?, value}]` |
+| `heatmap` | 2 dimensions, 1 measure, no `granularity` | `rows_by_member` (x from `dimensions[0]`, y from `dimensions[1]`, value): `rows: [{x, y, value}]` |
+| `grid` | 1 or more members; `order`; paging by `limit` and `offset`, with `limit` required and one of the `page_sizes` values, and `total: true` required (rule in [ADR-0005](0005-data-grid-library-v1.md)) | `positional_table`: `rows: [[…]]`, `total` |
 | `markdown_card` | not a data widget: no `data`, no traits | none; the body is a presentation field; renders right after `set_widget_context`, with none of the data states of [ADR-0011](0011-data-adapter-v1.md) |
 
-`time.compare` is allowed only for `metric_card`; every other data widget type rejects it.
+`compareDateRange` is allowed only for `metric_card`, and it is mutually exclusive with `dateRange`; every other data widget type rejects it. `total: true` is required for `grid`, and every other data widget type forbids `total`. `limit` is required only for `grid`. `offset` is allowed only on `grid`.
 
 **Widget types that compare values take more than one measure.** `ranked_list_card` takes 1 to 2 measures; the second is the secondary value of each row. `progress_list_card` takes 2 measures: the current value and the target. `cartesian_chart` takes one or more measures, and its presentation field `series` is a list of `{member, type, y_axis, stack_group}`, at most one entry per measure of the query, that sets how each measure is drawn; a measure with no entry is drawn as a bar on the primary axis. `metric_card` keeps an optional `value_label`; its default is the measure's title.
 
-**Metric trend.** `metric_card` shows a trend against the previous period. The query asks for it with `time.compare: previous_period`, the data adapter returns `previous_value`, and the widget computes the trend from `value` and `previous_value`.
+**Metric trend.** `metric_card` shows a trend against the previous period. The query asks for it with a `compareDateRange` of exactly 2 ranges; the data adapter returns `value` for range 1 and `previous_value` for range 2, and the widget computes the trend from `value` and `previous_value`. The author writes the previous period explicitly as the second range.
 
-**Grid presentation fields.** The grid's `columns` list every query member exactly once, in display order, with an optional title override, width, number format and sortability. `page_sizes` is the list of page sizes offered. The `page_sizes` rule, how the grid pages, the grid feature fields (`frozen_columns`, `column_groups`, `columns[].align`, `row_color`) and the grid checks are decided in [ADR-0005](0005-data-grid-library-v1.md).
+**Grid presentation fields.** The grid's `columns` list every result column exactly once (every member in the canonical member order), in display order, with an optional title override, width, number format and sortability. `page_sizes` is the list of page sizes offered. The `page_sizes` rule, how the grid pages, the grid feature fields (`frozen_columns`, `column_groups`, `columns[].align`, `row_color`) and the grid checks are decided in [ADR-0005](0005-data-grid-library-v1.md).
 
 **Member metadata.** Widgets use the metadata of their query members for default titles and formats. Presentation fields override these defaults. The `set_widget_context` payload that carries the metadata is decided in [ADR-0007](0007-extension-domain-taxonomy-v1.md).
 
@@ -120,6 +120,7 @@ Each data widget type is a concrete type under the data widget, for example `gts
 * Good, because a widget type without data never requests data, so the data states of [ADR-0011](0011-data-adapter-v1.md) do not apply to it.
 * Neutral, because eight shapes exist even where some are identical; this keeps them free to differ.
 * Bad, because a widget type that needs a new fill mode is a template change that reaches every consuming product's data adapter.
+* Bad, because a `metric_card` trend needs the author to write the previous period explicitly as the second `compareDateRange` range; the template does not derive it.
 * Bad, because each data widget type repeats its limits and traits in its own schema, so a change to the vocabulary must be checked against all eight.
 
 ### Confirmation
@@ -129,7 +130,11 @@ Each data widget type is a concrete type under the data widget, for example `gts
 * A test renders a `markdown_card` whose body contains CommonMark formatting, a link, an image and embedded HTML, and checks that the formatting, the link and the image are shown, that the HTML is shown as text and not rendered, and that a link with a script scheme is not active (`cpt-frontx-dashboard-fr-backend-source`).
 * A test with a data adapter that names no backend answers each data widget type with an instance of its shape, filled by its fill mode, and checks that FrontX accepts it. It also checks that an answer of another type's shape is rejected.
 * A test of each fill mode checks the produced fields, including an omitted field in `rows_by_member`, several measures in `x_series_value`, `total` in `positional_table`, and `previous_value` and `sparkline` in `scalar_with_series`.
-* A test checks that `metric_card` with `time.compare: previous_period` shows a trend from `value` and `previous_value`.
+* A test checks that `metric_card` with a `compareDateRange` of 2 ranges shows a trend from `value` and `previous_value`.
+* A schema test checks that `compareDateRange` is rejected on every widget type except `metric_card`.
+* A schema test checks that `total: true` is required on `grid` and that `total` is rejected on every other data widget type.
+* A schema test checks that an authored `timezone` in a widget's `data` is rejected.
+* A test checks that a `null` dimension value is shown as an empty label.
 * The test case from [ADR-0011](0011-data-adapter-v1.md) passes: a new widget type that reuses a fill mode needs no change to the data adapter.
 
 ## Pros and Cons of the Options
@@ -183,7 +188,7 @@ One widget type per subject and presentation shape combination.
 
 **Review trigger.** Revisit if a presentation shape cannot be served by any of the five fill modes without bending it, if two data shapes remain identical in practice so that one would do, or if the grid needs members the query vocabulary cannot express.
 
-**Scope.** This record decides the widget types and their split into data widget types and `markdown_card`; the data widget type's `data` field and traits; the 8 data shapes; the closed set of 5 fill modes and their `from` grammar; the per-type query limits; the multi-measure rule for types that compare values; the metric trend; the grid presentation fields `columns` and `page_sizes`; the use of member metadata for default titles and formats; and closed presentation fields. It does not decide:
+**Scope.** This record decides the widget types and their split into data widget types and `markdown_card`; the data widget type's `data` field and traits; the 8 data shapes; the closed set of 5 fill modes and their `from` grammar; the per-type query limits, including that `data` forbids `timezone`; the multi-measure rule for types that compare values; the metric trend; the grid presentation fields `columns` and `page_sizes`; the use of member metadata for default titles and formats; and closed presentation fields. It does not decide:
 
 * grid paging, the grid feature fields and the grid checks, including the `page_sizes` rule ([ADR-0005](0005-data-grid-library-v1.md));
 * loader, busy and empty states ([ADR-0011](0011-data-adapter-v1.md));

@@ -72,7 +72,7 @@ The feature addresses the domain model, the widget catalog, the data adapter, th
 
 N/A. This is a domain-model feature. The types are consumed by the FrontX validation of `set_data` and by the data adapter of the consuming product, which fills them. The calls of the data adapter are specified in `cpt-frontx-dashboard-feature-data-adapter-contract`.
 
-Not applicable as a pure data contract: performance (PERF), security (SEC), operations (OPS), compliance (COMPL) and user experience (UX) have no content in a type declaration. Reliability (REL) applies: shapes are closed, a wrong instance is rejected, and a null measure value is a legal value. Data (DATA) applies: section 6 holds the schemas and the value rules.
+Not applicable as a pure data contract: performance (PERF), security (SEC), operations (OPS), compliance (COMPL) and user experience (UX) have no content in a type declaration. Reliability (REL) applies: shapes are closed, a wrong instance is rejected, and a null measure value or a null dimension value is a legal value. Data (DATA) applies: section 6 holds the schemas and the value rules.
 
 ### 1.4 References
 
@@ -94,10 +94,14 @@ N/A. The shapes are consumed by the type system, not by an actor flow. The way a
 
 The algorithms below are rules that the template defines. The data adapter of a consuming product implements them once, for every widget type. Common terms:
 
-- **Query**: the `data` of the widget, as defined in `cpt-frontx-dashboard-feature-query-vocabulary`. It has `measures`, `dimensions`, an optional `time`, and an optional `limit` and `offset`.
-- **Result row**: one row of the grouped result that the data adapter gets for the query. It holds one value for each member that the query groups by or measures.
-- **Canonical member order**: the dimensions in query order, then the time dimension when `granularity` is set, then the measures in query order.
-- **Absent field**: a field of a shape that the fill mode cannot fill because the query has no member for it. An absent field is omitted. It is never set to null and never set to an empty value. A measure value that the backend reports as null is different: it is not an absent field, and the fill mode keeps it as `null`.
+- **Query**: the query that the widget sends in `request_data`, as defined in `cpt-frontx-dashboard-feature-query-vocabulary` and `cpt-frontx-dashboard-adr-query-vocabulary-and-datasets`. It has `measures`, `dimensions`, at most one `timeDimensions` entry, optional `filters`, `order`, `limit`, `offset` and `total`, and the `timezone` that the widget sets.
+- **`timeDimensions[0]`**: the single time entry of the query. Its `dimension` is the time dimension. It may set a `granularity`, and at most one of a `dateRange` and a `compareDateRange` of exactly 2 ranges.
+- **Result column**: a member that gives a column of the result: each dimension, the time dimension when `timeDimensions[0]` has a `granularity`, and each measure. A time dimension without a `granularity` limits the period and gives no column.
+- **Result row**: one row of the grouped result that the data adapter gets for the query. It holds one value for each result column.
+- **Canonical member order**: the order of the result columns: the dimensions in query order, then the time dimension when `timeDimensions[0]` has a `granularity`, then the measures in query order.
+- **Query grain**: the query's own filters and period, with no grouping by a dimension or by a `granularity` step. A total of a measure is the backend's value at the query grain. It is never a sum of grouped values for a measure that is not additive, such as a percentage or a distinct count.
+- **Fill input**: what a fill mode reads: the query, the grouped result, and the totals and count that the fill mode needs. These are the query-grain total of each measure, for `row_per_measure` and `scalar_with_series`; the query-grain total of the measure over range 2 of `compareDateRange`, for `scalar_with_series`; and the row count that ignores `limit` and `offset`, for `positional_table`. The data adapter obtains them from its backend, or derives them locally over a complete result only for a measure that the binding declares re-aggregatable and for the row count. When a needed value of a measure that is not declared re-aggregatable cannot be obtained at the needed grain, the adapter gives no answer, and a product does not offer that measure at that grain in a dataset, as `cpt-frontx-dashboard-feature-data-adapter-contract` states. A fill mode reads them from its input and computes none of them.
+- **Absent field**: a field of a shape that the fill mode cannot fill because the query has no member for it. An absent field is omitted. It is never set to null and never set to an empty value. A measure value or a dimension value that the backend reports as null is different: it is not an absent field, and the fill mode keeps it as `null`.
 
 ### Resolve a `from` Member
 
@@ -105,9 +109,9 @@ The algorithms below are rules that the template defines. The data adapter of a 
 
 **Input**: a `from` string and a query.
 
-**Output**: a member of the query, or nothing.
+**Output**: a result column (a member that gives a column), or nothing.
 
-The grammar of `from` is the pattern `^(dimensions\[(0|[1-9][0-9]*)\]|measures\[(0|[1-9][0-9]*)\]|time)$`. The index `i` is a position in the query's own list.
+The grammar of `from` is the pattern `^(dimensions\[(0|[1-9][0-9]*)\]|measures\[(0|[1-9][0-9]*)\]|timeDimensions\[0\])$`. The index `i` is a position in the query's own list. `timeDimensions[0]` names the time dimension of the query's single time entry.
 
 **Steps**:
 1. [ ] - `p1` - **IF** `from` does not match the grammar - `inst-from-grammar`
@@ -116,15 +120,15 @@ The grammar of `from` is the pattern `^(dimensions\[(0|[1-9][0-9]*)\]|measures\[
    1. [ ] - `p1` - **RETURN** that dimension - `inst-from-dimension-return`
 3. [ ] - `p1` - **IF** `from` is `measures[i]` and the query has an entry at position `i` in `measures` - `inst-from-measure`
    1. [ ] - `p1` - **RETURN** that measure - `inst-from-measure-return`
-4. [ ] - `p1` - **IF** `from` is `time` and the query has a `time` with `granularity` (`time` resolves only then) - `inst-from-time`
-   1. [ ] - `p1` - **RETURN** the time dimension of the query - `inst-from-time-return`
+4. [ ] - `p1` - **IF** `from` is `timeDimensions[0]` and the query has `timeDimensions[0]` with a `granularity` (`timeDimensions[0]` resolves only then, because only then is the time dimension a result column) - `inst-from-time`
+   1. [ ] - `p1` - **RETURN** the time dimension of the query, `timeDimensions[0].dimension` - `inst-from-time-return`
 5. [ ] - `p1` - **RETURN** nothing, because the query has no such member - `inst-from-none`
 
 ### Fill by `rows_by_member`
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-fill-rows-by-member`
 
-**Input**: a query, its result, and `fields`, a list of `{field, from}`.
+**Input**: the query, the grouped result, and `fields`, a list of `{field, from}`. This mode needs no total and no count.
 
 **Output**: `rows`, one object per result row.
 
@@ -144,12 +148,12 @@ The mode adds no field that `fields` does not name. Whether a required field of 
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-fill-x-series-value`
 
-**Input**: a query and its result.
+**Input**: the query and the grouped result. This mode needs no total and no count.
 
 **Output**: `rows`, in long format.
 
 **Steps**:
-1. [ ] - `p1` - Choose the `x` member: the time dimension when `time.granularity` is set, otherwise `dimensions[0]` - `inst-xsv-x`
+1. [ ] - `p1` - Choose the `x` member: the time dimension when `timeDimensions[0]` has a `granularity`, otherwise `dimensions[0]` - `inst-xsv-x`
 2. [ ] - `p1` - **IF** the query has one measure - `inst-xsv-single`
    1. [ ] - `p1` - Choose the `series` member: the first dimension that is not the `x` member, if there is one - `inst-xsv-series`
    2. [ ] - `p1` - **FOR EACH** result row in the delivered order, emit `{x, series?, value}`: `x` is the value of the `x` member, `series` is the value of the `series` member and is omitted when there is none, and `value` is the value of the measure - `inst-xsv-emit-single`
@@ -157,19 +161,19 @@ The mode adds no field that `fields` does not name. Whether a required field of 
    1. [ ] - `p1` - **FOR EACH** result row in the delivered order, **FOR EACH** measure in query order, emit `{x, series, value}`: `x` is the value of the `x` member, `series` is the id of the measure, and `value` is the value of that measure - `inst-xsv-emit-multi`
 4. [ ] - `p1` - **RETURN** `rows` - `inst-xsv-return`
 
-With several measures, the query limits of `cartesian_chart` allow either a time with granularity and no dimension, or no granularity and one dimension. In both cases the `x` member is the only grouping member, so every row of a measure has its own `x` value.
+With several measures, the query limits of `cartesian_chart` allow either `timeDimensions[0]` with a `granularity` and no dimension, or no `granularity` and one dimension. In both cases the `x` member is the only grouping member, so every row of a measure has its own `x` value.
 
 ### Fill by `row_per_measure`
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-fill-row-per-measure`
 
-**Input**: a query and its result.
+**Input**: the query, the grouped result, and the query-grain total of each measure.
 
 **Output**: `rows`, one `{key, value}` per measure.
 
 **Steps**:
 1. [ ] - `p1` - **FOR EACH** measure in query order - `inst-rpm-measure`
-   1. [ ] - `p1` - Compute the total of the measure over the query: the value that the backend returns for the measure with no grouping - `inst-rpm-total`
+   1. [ ] - `p1` - Take the query-grain total of the measure from the input. It is never a sum of grouped values for a measure that is not additive - `inst-rpm-total`
    2. [ ] - `p1` - Emit `{key, value}`: `key` is the id of the measure and `value` is the total - `inst-rpm-emit`
 2. [ ] - `p1` - **RETURN** `rows` - `inst-rpm-return`
 
@@ -177,7 +181,7 @@ With several measures, the query limits of `cartesian_chart` allow either a time
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-fill-positional-table`
 
-**Input**: a query and its result.
+**Input**: the query, the grouped result, which holds the rows of the requested page, and the row count that ignores `limit` and `offset`.
 
 **Output**: `rows`, one array per result row, and `total`.
 
@@ -185,7 +189,7 @@ With several measures, the query limits of `cartesian_chart` allow either a time
 1. [ ] - `p1` - Build the canonical member order of the query - `inst-pt-order`
 2. [ ] - `p1` - **FOR EACH** result row in the delivered order - `inst-pt-row`
    1. [ ] - `p1` - Emit one array whose entry at each position is the value of the member at that position of the canonical member order, or null when the result row has no value for it - `inst-pt-emit`
-3. [ ] - `p1` - Set `total` to the number of rows that the query would return with no `limit` and no `offset`. The adapter is bound to `total ≥ offset + rows.length`, and `cpt-frontx-dashboard-feature-data-adapter-contract` carries the conformance case - `inst-pt-total`
+3. [ ] - `p1` - Set `total` to the row count from the input: the number of rows that the query would return with no `limit` and no `offset`, which the grid query asks for with `total: true`. The adapter is bound to `total ≥ offset + rows.length`, and `cpt-frontx-dashboard-feature-data-adapter-contract` carries the conformance case - `inst-pt-total`
 4. [ ] - `p1` - **RETURN** `rows` and `total` - `inst-pt-return`
 
 `rows` holds only the rows of the requested page. Rows are arrays because GTS identifiers are never used as object keys (`cpt-frontx-dashboard-constraint-gts-id-convention`).
@@ -194,21 +198,21 @@ With several measures, the query limits of `cartesian_chart` allow either a time
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-fill-scalar-with-series`
 
-**Input**: a query with one measure, and its result.
+**Input**: the query, which has one measure, the grouped result, and the totals of the measure at the query grain: over the query, or over range 1 when `timeDimensions[0]` has a `compareDateRange`, and over range 2 in that case.
 
 **Output**: `{value, previous_value?, sparkline?}`.
 
 **Steps**:
-1. [ ] - `p1` - Set `value` to the total of the measure over the query, as the backend computes it - `inst-sws-value`
-2. [ ] - `p1` - **IF** the query has `time.compare` - `inst-sws-compare`
-   1. [ ] - `p1` - Set `previous_value` to the total of the measure over the comparison period - `inst-sws-previous`
+1. [ ] - `p1` - Set `value` to the query-grain total of the measure from the input. When `timeDimensions[0]` has a `compareDateRange`, it is the total over range 1. The total is never a sum of grouped values for a measure that is not additive - `inst-sws-value`
+2. [ ] - `p1` - **IF** `timeDimensions[0]` has a `compareDateRange` - `inst-sws-compare`
+   1. [ ] - `p1` - Set `previous_value` to the query-grain total of the measure over range 2 of `compareDateRange`, from the input - `inst-sws-previous`
 3. [ ] - `p1` - **ELSE** omit `previous_value` - `inst-sws-previous-omit`
-4. [ ] - `p1` - **IF** the query has `time.granularity` - `inst-sws-granularity`
-   1. [ ] - `p1` - Set `sparkline` to the value of the measure for each granularity step, in time order - `inst-sws-sparkline`
+4. [ ] - `p1` - **IF** `timeDimensions[0]` has a `granularity` - `inst-sws-granularity`
+   1. [ ] - `p1` - Set `sparkline` to the value of the measure in each row of the grouped result, one row per `granularity` step of `timeDimensions[0]`, in time order. With a `compareDateRange`, the steps are those of range 1 only - `inst-sws-sparkline`
 5. [ ] - `p1` - **ELSE** omit `sparkline` - `inst-sws-sparkline-omit`
 6. [ ] - `p1` - **RETURN** the object - `inst-sws-return`
 
-`value` is never the sum of the series. A sum is wrong for a measure that is not additive, such as a percentage or a distinct count.
+`value` and `previous_value` are never the sum of the series. A sum is wrong for a measure that is not additive, such as a percentage or a distinct count. The previous period is written out as range 2 of `compareDateRange`; the template does not derive it.
 
 ### Build the Data Instance
 
@@ -220,7 +224,7 @@ With several measures, the query limits of `cartesian_chart` allow either a time
 
 **Steps**:
 1. [ ] - `p1` - Generate a UUID - `inst-bi-uuid`
-2. [ ] - `p1` - Set `id` to the data shape type followed by the UUID, so the id has the form `<data shape type>~<uuid>` - `inst-bi-id`
+2. [ ] - `p1` - Set `id` to the data shape type followed by the UUID, so the id has the form `<data shape type><uuid>`, where the type id already ends with `~` - `inst-bi-id`
 3. [ ] - `p1` - Add the filled fields to the instance - `inst-bi-fields`
 4. [ ] - `p1` - **RETURN** the instance - `inst-bi-return`
 
@@ -273,6 +277,7 @@ The system **MUST** declare the abstract data shape base and exactly 8 derived d
 - Each shape is its own type, even where two shapes have the same fields.
 - `markdown_card` has no data shape.
 - Every shape ends with `unevaluatedProperties: false`.
+- Measure-valued fields and dimension-valued fields (`label`, `x`, `y`, `series`) accept `null`.
 - No schema declares an object whose keys are GTS ids. Grid rows are positional arrays.
 - Every schema passes GTS identifier grammar and GTS v0.17 schema validation through FrontX.
 
@@ -292,9 +297,12 @@ The system **MUST** define exactly 5 fill modes, `rows_by_member`, `x_series_val
 
 - Only `rows_by_member` has `fields`.
 - An absent field is omitted.
-- `x_series_value` with several measures gives one row per measure and result row, with the measure id as `series`.
+- `from` is one of `dimensions[i]`, `measures[i]` or `timeDimensions[0]`, and `timeDimensions[0]` resolves only when it has a `granularity`.
+- `x_series_value` takes `x` from the time dimension when `timeDimensions[0]` has a `granularity`. With several measures it gives one row per measure and result row, with the measure id as `series`.
 - `positional_table` follows the canonical member order and sets `total` to the row count with no `limit` and no `offset`.
-- `scalar_with_series` takes `value` and `previous_value` as totals from the backend and never sums the series.
+- `row_per_measure` and `scalar_with_series` take each total as the backend's value at the query grain. A total is never a sum of grouped values for a measure that is not additive.
+- `scalar_with_series` takes `value` from range 1 and `previous_value` from range 2 of `compareDateRange`, and takes `sparkline` per `granularity` step of `timeDimensions[0]`.
+- A null measure value and a null dimension value stay `null`.
 - A new fill mode is a change of the template.
 
 ### Data Instance Definition of Done
@@ -307,19 +315,19 @@ The system **MUST** give every data instance a combined id and **MUST** validate
 - `cpt-frontx-dashboard-algo-widget-data-catalog-build-instance`
 - `cpt-frontx-dashboard-algo-widget-data-catalog-validate-set-data`
 
-- The id has the form `<data shape type>~<uuid>`, and the data adapter generates the UUID.
+- The id has the form `<data shape type><uuid>`, where the type id already ends with `~`, and the data adapter generates the UUID.
 - FrontX applies the exact shape named by the id. A widget never compares shapes.
 - An instance that violates the shape its own id names is rejected. Data of another widget type's shape is dropped by the domain owner, which compares the instance's shape with the `data_shape` of the request before `set_data` (`cpt-frontx-dashboard-feature-extension-domain-catalog`).
 
 ## 6. Domain Model
 
-All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes derive from the base with `allOf` and a `$ref` to the base, and each ends with `unevaluatedProperties: false`. Value types: a measure value is a number or null (a measure that has no value for a row, a total or a time step is null); a dimension value, such as a label or an axis value, is a string or a number; a time dimension value is an ISO 8601 string in canonical form: for `day`, `week` and `month` granularity, the start of the period as an ISO 8601 date (`YYYY-MM-DD`). A positional grid cell that holds no value is null.
+All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes derive from the base with `allOf` and a `$ref` to the base, and each ends with `unevaluatedProperties: false`. Value types: a measure value is a number or null (a measure that has no value for a row, a total or a time step is null); a dimension value, such as a label or an axis value, is a string, a number or null (a row whose dimension has no value); a time dimension value is a date string in canonical form: for every `granularity` (`day`, `week`, `month`, `quarter` and `year`), the first day of the period as a `YYYY-MM-DD` date, in the query's `timezone`. A week starts on Monday. A positional grid cell that holds no value is null.
 
 ### 6.1 WidgetData (abstract base)
 
 **GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~`
 
-**Description**: The abstract base of every data shape. It carries the combined `id` of a data instance. No data instance belongs to the base itself. Every instance belongs to one of the 8 derived shapes. The `id` has the form `<data shape type>~<uuid>`, and the data adapter generates the UUID. The `id` field uses the literal base operand, never the self-reference operand, so every derived id is accepted.
+**Description**: The abstract base of every data shape. It carries the combined `id` of a data instance. No data instance belongs to the base itself. Every instance belongs to one of the 8 derived shapes. The `id` has the form `<data shape type><uuid>`, where the type id already ends with `~`, and the data adapter generates the UUID. The `id` field uses the literal base operand, never the self-reference operand, so every derived id is accepted.
 
 **Schema**:
 
@@ -370,7 +378,7 @@ All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes d
       "properties": {
         "rows": {
           "type": "array",
-          "description": "One row per measure in query order. An empty array gives the empty state.",
+          "description": "One row per measure in query order.",
           "items": {
             "type": "object",
             "required": [
@@ -403,7 +411,7 @@ All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes d
 
 **GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.metric_card.v1~`
 
-**Description**: The data of `metric_card`. Fill mode `scalar_with_series`. `previous_value` is present only when the query has `time.compare`. `sparkline` is present only when the query has `time.granularity`. The widget computes the trend from `value` and `previous_value`.
+**Description**: The data of `metric_card`. Fill mode `scalar_with_series`. `value` is the total over the query, or over range 1 when `timeDimensions[0]` has a `compareDateRange`. `previous_value` is present only with a `compareDateRange`, and it is the total over range 2. `sparkline` is present only when `timeDimensions[0]` has a `granularity`. The widget computes the trend from `value` and `previous_value`.
 
 **Schema**:
 
@@ -488,7 +496,8 @@ All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes d
               "label": {
                 "type": [
                   "string",
-                  "number"
+                  "number",
+                  "null"
                 ]
               },
               "value": {
@@ -552,7 +561,8 @@ All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes d
               "label": {
                 "type": [
                   "string",
-                  "number"
+                  "number",
+                  "null"
                 ]
               },
               "current": {
@@ -615,7 +625,8 @@ All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes d
               "label": {
                 "type": [
                   "string",
-                  "number"
+                  "number",
+                  "null"
                 ]
               },
               "value": {
@@ -672,13 +683,15 @@ All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes d
               "x": {
                 "type": [
                   "string",
-                  "number"
+                  "number",
+                  "null"
                 ]
               },
               "series": {
                 "type": [
                   "string",
-                  "number"
+                  "number",
+                  "null"
                 ]
               },
               "value": {
@@ -736,13 +749,15 @@ All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes d
               "x": {
                 "type": [
                   "string",
-                  "number"
+                  "number",
+                  "null"
                 ]
               },
               "y": {
                 "type": [
                   "string",
-                  "number"
+                  "number",
+                  "null"
                 ]
               },
               "value": {
@@ -766,7 +781,7 @@ All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes d
 
 **GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~`
 
-**Description**: The data of `grid`. Fill mode `positional_table`. Each row is an array in the canonical member order of the query, and `total` is the row count across all pages. JSON Schema cannot express that each row has one entry for each query member, so the data adapter is bound to that rule, and to `total ≥ offset + rows.length`.
+**Description**: The data of `grid`. Fill mode `positional_table`. Each row is an array in the canonical member order of the query, and `total` is the row count across all pages. JSON Schema cannot express that each row has one entry for each result column, so the data adapter is bound to that rule, and to `total ≥ offset + rows.length`.
 
 **Schema**:
 
@@ -820,12 +835,12 @@ The fill modes are template-defined rules, not GTS types. The set is closed. The
 | Fill mode | Produces | Rule in short | Used by |
 |---|---|---|---|
 | `rows_by_member` | `rows: [{<field>: value, ...}]`, one object per result row | Each `fields[i].field` takes the result value of `fields[i].from`. A field whose `from` names a member that the query does not have is omitted. | `ranked_list_card`, `progress_list_card`, `pie_chart`, `heatmap` |
-| `x_series_value` | `rows: [{x, series?, value}]` | `x` is `time` when `granularity` is set, else the first dimension. One measure: `series` is the first dimension not used for `x`, if any. Several measures: one row per measure, with the measure id as `series`. | `cartesian_chart` |
-| `row_per_measure` | `rows: [{key, value}]` | One row per measure in query order, with the total over the query. | `summary_card` |
+| `x_series_value` | `rows: [{x, series?, value}]` | `x` is the time dimension when `timeDimensions[0]` has a `granularity`, else the first dimension. One measure: `series` is the first dimension not used for `x`, if any. Several measures: one row per measure, with the measure id as `series`. | `cartesian_chart` |
+| `row_per_measure` | `rows: [{key, value}]` | One row per measure in query order, with the backend's total at the query grain. | `summary_card` |
 | `positional_table` | `rows: [[...]]` and `total` | One array per result row in the canonical member order. `total` ignores `limit` and `offset`. | `grid` |
-| `scalar_with_series` | `{value, previous_value?, sparkline?}` | Totals computed by the backend. `previous_value` when `time.compare` is set. `sparkline` when `granularity` is set. | `metric_card` |
+| `scalar_with_series` | `{value, previous_value?, sparkline?}` | Totals computed by the backend at the query grain. `value` from range 1 and `previous_value` from range 2 when `compareDateRange` is set. `sparkline` when `timeDimensions[0]` has a `granularity`. | `metric_card` |
 
-The `from` grammar: only `rows_by_member` has `fields`. Each entry is `{field, from}`, and `from` is one of `dimensions[i]`, `measures[i]` or `time`, where `i` is a position in the query's own lists. `from: time` resolves only when the query has `granularity`. Which widget type uses which mode is set by the traits `data_shape` and `fill` in `cpt-frontx-dashboard-feature-widget-catalog`.
+The `from` grammar: only `rows_by_member` has `fields`. Each entry is `{field, from}`, and `from` is one of `dimensions[i]`, `measures[i]` or `timeDimensions[0]`, where `i` is a position in the query's own lists. `from: timeDimensions[0]` resolves only when `timeDimensions[0]` has a `granularity`. Which widget type uses which mode is set by the traits `data_shape` and `fill` in `cpt-frontx-dashboard-feature-widget-catalog`.
 
 **Cross-references**:
 
@@ -848,20 +863,24 @@ The `from` grammar: only `rows_by_member` has `fields`. Each entry is `{field, f
 - [ ] Given a `pie_chart` request answered with an instance whose `id` names the `grid` shape, when the domain owner compares the instance's shape with the `data_shape` of the request, then it drops the answer and does not call `set_data`.
 - [ ] Given a data instance with a field that its shape does not declare, when FrontX validates it, then it is rejected.
 - [ ] Given a `ranked_list_card` query with one measure and `rows_by_member` fields `label`, `value` and `secondary` (from `measures[1]`), when the data adapter fills the shape, then every row has `label` and `value` and no row has `secondary`.
-- [ ] Given a `cartesian_chart` query with one measure, a time with `granularity` and one dimension, when `x_series_value` fills the shape, then `x` is the time value, `series` is the dimension value and `value` is the measure.
+- [ ] Given a `cartesian_chart` query with one measure, `timeDimensions[0]` with a `granularity` and one dimension, when `x_series_value` fills the shape, then `x` is the time value, `series` is the dimension value and `value` is the measure.
 - [ ] Given a `cartesian_chart` query with one measure and one dimension and no `granularity`, when `x_series_value` fills the shape, then `x` is the dimension value and no row has `series`.
-- [ ] Given a `cartesian_chart` query with two measures, a time with `granularity` and no dimension, when `x_series_value` fills the shape, then each time step gives two rows, and the `series` of each row is the id of its measure.
+- [ ] Given a `cartesian_chart` query with two measures, `timeDimensions[0]` with a `granularity` and no dimension, when `x_series_value` fills the shape, then each time step gives two rows, and the `series` of each row is the id of its measure.
 - [ ] Given a `summary_card` query with three measures, when `row_per_measure` fills the shape, then `rows` has three entries in query order, each with the measure id as `key`.
-- [ ] Given a `grid` query with one dimension, a time with `granularity` and two measures, when `positional_table` fills the shape, then each row has four entries in the order dimension, time, measure, measure.
-- [ ] Given a grid instance with a row whose length differs from the number of query members, then the data adapter violates its obligation, and `cpt-frontx-dashboard-feature-data-adapter-contract` catches it as a conformance failure.
+- [ ] Given a `grid` query with one dimension, `timeDimensions[0]` with a `granularity` and two measures, when `positional_table` fills the shape, then each row has four entries in the order dimension, time dimension, measure, measure. Given the same query with no `granularity`, then each row has three entries, because the time dimension gives no column.
+- [ ] Given a grid instance with a row whose length differs from the number of result columns, then the data adapter violates its obligation, and `cpt-frontx-dashboard-feature-data-adapter-contract` catches it as a conformance failure.
 - [ ] Given a grid instance whose `total` is smaller than `offset + rows.length`, then the data adapter violates its obligation.
 - [ ] Given a `grid` query with `limit` 25 and `offset` 25 over 143 rows, when `positional_table` fills the shape, then `rows` holds one page and `total` is 143.
-- [ ] Given a `metric_card` query with `time.compare` set to `previous_period` and a time with `granularity`, when `scalar_with_series` fills the shape, then `value`, `previous_value` and `sparkline` are present, and `value` is the total from the backend, not the sum of `sparkline`.
-- [ ] Given a `metric_card` query with no `time`, when `scalar_with_series` fills the shape, then `previous_value` and `sparkline` are omitted.
-- [ ] Given a `metric_card` query with a time with `granularity` in which one step has no value, when `scalar_with_series` fills the shape, then that `sparkline` point is `null` and FrontX accepts the instance.
+- [ ] Given a `metric_card` query whose `timeDimensions[0]` has `granularity` `day` and `compareDateRange` `["this month", "last month"]`, when `scalar_with_series` fills the shape, then `value` is the backend's total over this month, `previous_value` is the backend's total over last month, `sparkline` holds one point per day of this month, and `value` is not the sum of `sparkline`.
+- [ ] Given a `metric_card` query with no `timeDimensions`, when `scalar_with_series` fills the shape, then `previous_value` and `sparkline` are omitted.
+- [ ] Given a `metric_card` query with `timeDimensions[0]` that has a `dateRange` and no `compareDateRange`, when `scalar_with_series` fills the shape, then `previous_value` is omitted.
+- [ ] Given a `metric_card` query with `timeDimensions[0]` with a `granularity` in which one step has no value, when `scalar_with_series` fills the shape, then that `sparkline` point is `null` and FrontX accepts the instance.
+- [ ] Given a `summary_card` query with a `percent` measure, when `row_per_measure` fills the shape, then `value` is the backend's value at the query grain, and not a sum of values grouped by any member.
 - [ ] Given a `cartesian_chart` row whose measure has no value, then `value` is `null` and FrontX accepts the instance.
-- [ ] Given a `cartesian_chart` query with a time with `granularity` `month` and a row for March 2026, then `x` is `2026-03-01`. For `week` it is the first day of the week, and for `day` the day itself.
-- [ ] Given a `from` of `time` on a query without `granularity`, then it resolves to nothing and the field is omitted.
+- [ ] Given a `pie_chart` result row whose dimension has no value, when `rows_by_member` fills the shape, then `label` is `null` and FrontX accepts the instance. The same holds for `x`, `y` and `series` in the shapes that have them.
+- [ ] Given a `cartesian_chart` query with `timeDimensions[0]` with `granularity` `month` and a row for March 2026, then `x` is `2026-03-01`. For `week` it is the Monday of the week, for `quarter` the first day of the quarter, for `year` the first day of the year, and for `day` the day itself, each in the query's `timezone`.
+- [ ] Given a `from` of `timeDimensions[0]` on a query whose `timeDimensions[0]` has no `granularity`, then it resolves to nothing and the field is omitted.
+- [ ] Given a `from` of `time` or `timeDimensions[1]`, then it does not match the grammar of `from`.
 - [ ] Given a `from` of `measures[3]` on a query with two measures, when `rows_by_member` fills the shape, then the field is omitted from every row.
 - [ ] Given a test data adapter that names no backend, when it answers each of the 8 data widget types with an instance of its shape, then FrontX accepts every answer.
 - [ ] A new widget type that reuses a fill mode needs no change to the data adapter.

@@ -135,11 +135,11 @@ These flows describe the widget side. The owner of each sequence is `cpt-frontx-
 3. [ ] - `p1` - **IF** the widget type is `markdown_card` - `inst-if-markdown`
    1. [ ] - `p1` - Show the markdown body inside the chrome and **RETURN**. A `markdown_card` sends no `request_data` and shows no loader, busy indicator, or empty state - `inst-show-markdown`
 4. [ ] - `p1` - Show the loader in place of the content, with the title and, in a cell that has a larger view, the larger-view button - `inst-show-loader`
-5. [ ] - `p1` - Send one `request_data { data, data_shape, fill, reply_to, timestamp }` to the extension domain the widget sits in. `data` is the widget's query as delivered, `data_shape` and `fill` are copied from the context, `reply_to` is the widget's own extension id, and `timestamp` is strictly increasing per widget: it combines the clock with a per-widget counter, so two requests of one widget never share a value - `inst-send-first-request`
+5. [ ] - `p1` - Send one `request_data { data, data_shape, fill, reply_to, timestamp }` to the extension domain the widget sits in. `data` is the widget's query as delivered, with `timezone` set to the viewer's time zone: the IANA time zone name that the browser resolves. The authored query has no `timezone`. `data_shape` and `fill` are copied from the context, `reply_to` is the widget's own extension id, and `timestamp` is strictly increasing per widget: it combines the clock with a per-widget counter, so two requests of one widget never share a value - `inst-send-first-request`
 6. [ ] - `p1` - Receive `set_data { data, timestamp }` - `inst-receive-set-data`
 7. [ ] - `p1` - **IF** the timestamp differs from the timestamp of the widget's latest request, drop the answer and **RETURN** - `inst-drop-stale-answer`
 8. [ ] - `p1` - **IF** the data has no rows (for `metric_card`: the `value` is null), show the empty state in place of the content - `inst-show-empty`
-9. [ ] - `p1` - **ELSE** show the content of the widget type, formatted by the member metadata and the host language. A null measure value shows as a gap or an empty value, as section 6 states for the type - `inst-show-content`
+9. [ ] - `p1` - **ELSE** show the content of the widget type, formatted by the member metadata and the host language. A null measure value shows as a gap or an empty value, as section 6 states for the type, and a null dimension value shows as an empty label - `inst-show-content`
 
 ### Change the Query of a Data Widget
 
@@ -157,11 +157,11 @@ These flows describe the widget side. The owner of each sequence is `cpt-frontx-
 **Steps**:
 1. [ ] - `p1` - The viewer operates a grid control - `inst-operate-grid-control`
 2. [ ] - `p1` - **IF** the control resizes a column, redraw the grid with the new width, keep the width local, and **RETURN**. Nothing is sent and nothing is saved - `inst-resize-local`
-3. [ ] - `p1` - **IF** the control is a click on the header of a column whose `sortable` is true, set `order` in the widget's local copy of the query to one entry for that member, and set `offset` to 0. The direction comes from the current local `order`: when its first entry names that member, the new direction is the reverse of that entry's direction, and otherwise it is ascending. Only the member of the first entry of `order` shows a sort state - `inst-set-order`
-4. [ ] - `p1` - **IF** the control is a page control, set `offset` in the local copy to the first row of the chosen page - `inst-set-offset`
+3. [ ] - `p1` - **IF** the control is a click on the header of a column whose `sortable` is true, set `order` in the widget's local copy of the query to a list holding one pair `[member, direction]` for that column's member, and set `offset` to 0. The direction is `"asc"` or `"desc"` and comes from the current local `order`: when the first item of its first pair is that member, the new direction is the reverse of that pair's direction, and otherwise it is `"asc"`. Only the member of the first pair of `order` shows a sort state - `inst-set-order`
+4. [ ] - `p1` - **IF** the control is a page control, set `offset` in the local copy to the first row of the chosen page. Paging is by `limit` and `offset` - `inst-set-offset`
 5. [ ] - `p1` - **IF** the control is a page size from `page_sizes`, set `limit` in the local copy to it and set `offset` to 0 - `inst-set-limit`
 6. [ ] - `p1` - Keep the current rows visible and show the busy indicator over them. The controls stay operable while the widget is busy - `inst-show-busy`
-7. [ ] - `p1` - Send one `request_data` with the local copy of the query, the unchanged `data_shape` and `fill`, and a new timestamp. The local copy is never saved and the dashboard is not changed - `inst-send-new-request`
+7. [ ] - `p1` - Send one `request_data` with the local copy of the query, with `timezone` set to the IANA time zone name that the browser resolves, the unchanged `data_shape` and `fill`, and a new timestamp. The grid query keeps `total: true`, so every answer carries `total`. The local copy is never saved and the dashboard is not changed - `inst-send-new-request`
 8. [ ] - `p1` - Apply the answer whose timestamp equals the timestamp of the latest request, hide the busy indicator, and show the new rows or the empty state. Drop every other answer. A control operated while a request is open sends a new request, and only the answer of the latest one ends the busy state - `inst-apply-latest-answer`
 
 The rule applies to every data widget type: an interaction that changes the query sends `request_data`, and an interaction that changes only presentation fields redraws locally. In the template, only the grid has such interactions.
@@ -207,34 +207,49 @@ The chain, with its host identifiers and its `history: "none"`, is specified in 
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-catalog-cross-check-widget`
 
-**Input**: One widget instance that has passed the GTS validation of its type; the member instances (`id`, `title`, `value_type`) that its query names; the effective traits of the widget type, read with `cpt-frontx-dashboard-algo-query-vocabulary-effective-traits`, of which this process uses `member_kinds`; and the members that the dataset of the query allows in `order`. A `member_kinds` trait that is absent, or that lacks its `measures` or its `dimensions` key, puts no restriction on that kind of member. The owner of the widget's domain runs this process once for each widget when it loads a dashboard: the dashboards root for a cell widget, the larger-view modal for a larger-view widget.
+**Input**: One widget instance that has passed the GTS validation of its type; the registered member instances (`id`, `title`, `value_type`) of its query members; the effective traits of the widget type, read with `cpt-frontx-dashboard-algo-query-vocabulary-effective-traits`, of which this process uses `member_kinds`; and the members that the dataset of the query allows in `order`. A query member is any measure or dimension that the query names: in `measures`, in `dimensions`, as `timeDimensions[0].dimension`, as a `filters[].member`, and as the first item of each `order` pair. A `member_kinds` trait that is absent, or that lacks its `measures` or its `dimensions` key, puts no restriction on that kind of member. The owner of the widget's domain runs this process once for each widget when it loads a dashboard: the dashboards root for a cell widget, the larger-view modal for a larger-view widget.
+
+The members allowed in `order` come from the dataset. The owner reads the dataset type that `data.id` names with `getSchema` of its registry access. It takes the enum at `order.items.prefixItems[0]` of that schema. This is the dataset's own enum, which narrows the enum of its parent. If the schema has no enum there, every query member that is a result column is allowed.
 
 **Output**: Pass, or a failure that names the widget and the failing member or check.
 
 **Steps**:
 1. [ ] - `p1` - **IF** the widget has no `data` field (a `markdown_card`), **RETURN** pass - `inst-pass-without-data`
-2. [ ] - `p1` - Build the list of query members in the canonical member order of `cpt-frontx-dashboard-algo-query-vocabulary-canonical-order` - `inst-build-member-list`
-3. [ ] - `p1` - **FOR EACH** entry of `data.order` - `inst-for-each-order`
-   1. [ ] - `p1` - **IF** `member` is not in the list of query members **RETURN** failure naming the widget and the member - `inst-fail-order-member`
-4. [ ] - `p1` - **IF** the widget type sets the `member_kinds` trait - `inst-if-member-kinds`
+2. [ ] - `p1` - Build the list of result columns in the canonical member order of `cpt-frontx-dashboard-algo-query-vocabulary-canonical-order`: the dimensions in query order, then the time dimension when `timeDimensions[0]` has a `granularity`, then the measures in query order - `inst-build-member-list`
+3. [ ] - `p1` - **IF** a query member names no registered measure or dimension instance **RETURN** failure naming the widget and the member. This process is the single owner of the registered-instance check. Every later process that reads member instances, such as building the widget context, relies on it - `inst-fail-unregistered-member`
+4. [ ] - `p1` - **IF** `timeDimensions[0]` is present and its `dimension` names a dimension whose `value_type` is not `time` **RETURN** failure naming the widget and the member - `inst-fail-time-dimension-kind`
+5. [ ] - `p1` - **FOR EACH** date pair of `timeDimensions[0]`: its `dateRange` when it is a pair, and each range of its `compareDateRange` that is a pair - `inst-for-each-date-pair`
+   1. [ ] - `p1` - **IF** the date or the time of an end is not a real calendar value **RETURN** failure naming the widget and the pair. A real calendar value has a month from 1 to 12, a day that its month has in that year, an hour from 0 to 23, and a minute and a second from 0 to 59. So month 13, 31 April, 29 February 2027 and hour 25 fail - `inst-fail-pair-calendar`
+   2. [ ] - `p1` - **IF** the start is after the end **RETURN** failure naming the widget and the pair. A date-only start counts as the first moment of its day, and a date-only end as the last moment of its day - `inst-fail-pair-order`
+6. [ ] - `p1` - **FOR EACH** pair of `data.order` - `inst-for-each-order`
+   1. [ ] - `p1` - **IF** the first item of the pair is not a result column **RETURN** failure naming the widget and the member. A member named only in `filters`, or a time dimension without a `granularity`, is not a result column - `inst-fail-order-member`
+7. [ ] - `p1` - **FOR EACH** filter of `data.filters` - `inst-for-each-filter`
+   1. [ ] - `p1` - **IF** the operator is `contains`, `notContains`, `startsWith`, `notStartsWith`, `endsWith` or `notEndsWith`, and the member is not a dimension whose `value_type` is `string`, **RETURN** failure naming the widget, the member, and the operator - `inst-fail-operator-string`
+   2. [ ] - `p1` - **IF** the operator is `gt`, `gte`, `lt` or `lte`, and the member is neither a measure nor a dimension whose `value_type` is `number`, **RETURN** failure naming the widget, the member, and the operator - `inst-fail-operator-number`
+   3. [ ] - `p1` - **IF** the operator is `inDateRange`, `notInDateRange`, `beforeDate`, `beforeOrOnDate`, `afterDate` or `afterOrOnDate`, and the member is not a dimension whose `value_type` is `time`, **RETURN** failure naming the widget, the member, and the operator - `inst-fail-operator-date`
+   4. [ ] - `p1` - **IF** the operator is `gt`, `gte`, `lt` or `lte`, and a value does not parse as a finite number in decimal notation, such as `42`, `-0.5` or `1e3`, **RETURN** failure naming the widget, the member, and the value - `inst-fail-value-number`
+   5. [ ] - `p1` - **IF** the operator is one of the six date operators, and a value is neither a date or date-time in the form of an end of a `dateRange` pair that is a real calendar value (step 5), nor one of the relative strings that `dateRange` allows, **RETURN** failure naming the widget, the member, and the value - `inst-fail-value-date`
+8. [ ] - `p1` - **IF** the widget type sets the `member_kinds` trait - `inst-if-member-kinds`
    1. [ ] - `p1` - **IF** the `value_type` of a measure is not among the allowed measure kinds, or the `value_type` of a dimension in `data.dimensions` is not among the allowed dimension kinds, **RETURN** failure naming the widget and the member - `inst-fail-member-kind`
-5. [ ] - `p1` - **IF** the widget type is `cartesian_chart` and `series` is set - `inst-if-series`
+9. [ ] - `p1` - **IF** the widget type is `cartesian_chart` and `series` is set - `inst-if-series`
    1. [ ] - `p1` - **IF** a `series[].member` is not a measure of the query, or two entries name the same member, **RETURN** failure naming the widget and the member - `inst-fail-series`
-6. [ ] - `p1` - **IF** the widget type is `heatmap` and `min_value` and `max_value` are both set and not null - `inst-if-heatmap-scale`
-   1. [ ] - `p1` - **IF** `min_value` is greater than `max_value` **RETURN** failure naming the widget - `inst-fail-heatmap-scale`
-7. [ ] - `p1` - **IF** the widget type is not `grid`, **RETURN** pass - `inst-pass-non-grid`
-8. [ ] - `p1` - **IF** `columns[].member` names a query member twice, names a member that is not a query member, or leaves a query member out **RETURN** failure naming the widget and the member - `inst-fail-columns-cover`
-9. [ ] - `p1` - **FOR EACH** group in `column_groups` - `inst-for-each-group`
-   1. [ ] - `p1` - **IF** a name in `members` is not the member of a grid column **RETURN** failure naming the widget, the group, and the member - `inst-fail-group-member`
-   2. [ ] - `p1` - **IF** the columns of the group are not contiguous in `columns` order **RETURN** failure naming the widget and the group - `inst-fail-not-contiguous`
-   3. [ ] - `p1` - **IF** a member is repeated within the group **RETURN** failure naming the widget, the group, and the member - `inst-fail-repeated-in-group`
-   4. [ ] - `p1` - **IF** a column of the group is also named by another group **RETURN** failure naming the widget, the column, and both groups. A column in two groups has no single place in the heading row of section 6.7 - `inst-fail-two-groups`
-10. [ ] - `p1` - **IF** `row_color` is set and is not the member of a grid column **RETURN** failure naming the widget and the member - `inst-fail-row-color`
-11. [ ] - `p1` - **IF** a column with `sortable` true names a member that the widget's dataset does not allow in `order` **RETURN** failure naming the widget and the member - `inst-fail-sortable`
-12. [ ] - `p1` - **IF** `data.limit` is not one of the values of `page_sizes` **RETURN** failure naming the widget - `inst-fail-limit`
-13. [ ] - `p1` - **RETURN** pass - `inst-return-pass`
+10. [ ] - `p1` - **IF** the widget type is `heatmap` and `min_value` and `max_value` are both set and not null - `inst-if-heatmap-scale`
+    1. [ ] - `p1` - **IF** `min_value` is greater than `max_value` **RETURN** failure naming the widget - `inst-fail-heatmap-scale`
+11. [ ] - `p1` - **IF** the widget type is not `grid`, **RETURN** pass - `inst-pass-non-grid`
+12. [ ] - `p1` - **IF** `columns[].member` does not cover every result column exactly once, that is, it names a result column twice, names a member that is not a result column, or leaves a result column out, **RETURN** failure naming the widget and the member - `inst-fail-columns-cover`
+13. [ ] - `p1` - **FOR EACH** group in `column_groups` - `inst-for-each-group`
+    1. [ ] - `p1` - **IF** a name in `members` is not the member of a grid column **RETURN** failure naming the widget, the group, and the member - `inst-fail-group-member`
+    2. [ ] - `p1` - **IF** the columns of the group are not contiguous in `columns` order **RETURN** failure naming the widget and the group - `inst-fail-not-contiguous`
+    3. [ ] - `p1` - **IF** a member is repeated within the group **RETURN** failure naming the widget, the group, and the member - `inst-fail-repeated-in-group`
+    4. [ ] - `p1` - **IF** a column of the group is also named by another group **RETURN** failure naming the widget, the column, and both groups. A column in two groups has no single place in the heading row of section 6.7 - `inst-fail-two-groups`
+14. [ ] - `p1` - **IF** `row_color` is set and is not the member of a grid column **RETURN** failure naming the widget and the member - `inst-fail-row-color`
+15. [ ] - `p1` - **IF** a column with `sortable` true names a member that the dataset does not allow in `order` (see the Input) **RETURN** failure naming the widget and the member - `inst-fail-sortable`
+16. [ ] - `p1` - **IF** `data.limit` is not one of the values of `page_sizes` **RETURN** failure naming the widget - `inst-fail-limit`
+17. [ ] - `p1` - **RETURN** pass - `inst-return-pass`
 
-A failure is a widget-level cannot-show trigger. A failure of the GTS validation of the dashboard whose instance path lies under the `widget` or the `larger_view` of a cell is attributed to that cell or that larger view in the same way, and every other validation failure is dashboard-level. The template adds no validation mode of its own. The owner shows the cannot-show placeholder in the widget's cell, or in the larger-view modal for a larger-view widget, and writes a diagnostic to the developer log. Each widget is checked on its own, so a failure belongs to that cell or that larger view only (`cpt-frontx-dashboard-seq-cannot-show`). The checks that JSON Schema does express (query limits, closed presentation fields, the `member` references, the presence of `page_sizes` and `data.limit`, and the maximum of 500 for `page_sizes`) are not repeated here: they belong to the validation of the widget against its type. That `data.limit` is one of the values of `page_sizes` is a cross-check (step 12).
+A failure is a widget-level cannot-show trigger. How a GTS validation failure is attributed to a cell, a larger view, or the whole dashboard is stated in `cpt-frontx-dashboard-algo-dashboard-root-types-validate-dashboard`. The owner shows the cannot-show placeholder in the widget's cell, or in the larger-view modal for a larger-view widget, and writes a diagnostic to the developer log. Each widget is checked on its own, so a failure belongs to that cell or that larger view only (`cpt-frontx-dashboard-seq-cannot-show`).
+
+The operators `equals`, `notEquals`, `set` and `notSet` fit every member. The checks that JSON Schema does express are not repeated here: they belong to the validation of the widget against its type. They are the query limits of section 6.2, including the limits on `timeDimensions`, `compareDateRange` only on `metric_card`, `offset` only on `grid`, `total: true` on `grid` and no `total` on any other type, and no authored `timezone`; the form of the date pairs and the relative strings; the closed presentation fields; the `member` references; the presence of `page_sizes` and `data.limit`; and the maximum of 500 for `page_sizes`. That `data.limit` is one of the values of `page_sizes` is a cross-check (step 16).
 
 ### Map the Host Theme Id to a Scope
 
@@ -280,7 +295,7 @@ This is the single state machine of a data widget; `cpt-frontx-dashboard-feature
 The system **MUST** declare the widget base, the abstract data widget, and the 9 widget types of section 6 under the FrontX vendor `frontx`, in the package `dashboard_m`.
 
 - Every type passes the GTS identifier grammar and GTS v0.17 schema validation, including every `x-gts-instance-ref` and `x-gts-type-ref` operand. The id fields of embedded types use the literal base type as operand, never the self-reference operand (`cpt-frontx-dashboard-constraint-gts-id-convention`).
-- The widget base is abstract (`x-gts-abstract: true`), requires `id` and `title`, and declares no traits and no other field. The data widget is abstract, derives from the base, requires `data` typed by the query base, and declares the traits `data_shape` and `fill` as required and `member_kinds` as optional.
+- The widget base is abstract (`x-gts-abstract: true`), requires `id` and `title`, and declares no traits and no other field. The data widget is abstract, derives from the base, requires `data` typed by the query base with `timezone` rejected, and declares the traits `data_shape` and `fill` as required and `member_kinds` as optional.
 - Each of the 8 data widget types derives from the data widget, sets `data_shape` and `fill`, limits its query on `data`, and adds its presentation fields. `markdown_card` derives from the widget base directly, with no `data` and no traits.
 - Every concrete widget type ends with `unevaluatedProperties: false`. A misspelled presentation field fails validation across the whole derivation chain.
 - Widget instance identifiers are combined anonymous instance identifiers: the type chain followed by a UUID. No widget carries a separate `type` field or a name of its own. Every instance id is unique, so a dashboard never holds the same widget instance twice.
@@ -300,9 +315,10 @@ The system **MUST** limit the query of each data widget type as section 6 specif
 
 - `summary_card`, `metric_card`, `ranked_list_card`, `progress_list_card`, `pie_chart`, `cartesian_chart`, `heatmap`, and `grid` accept exactly the queries in the table of section 6.2. A query outside the limits, for example a second dimension on a `pie_chart` or one measure on a `progress_list_card`, fails validation.
 - `ranked_list_card` takes 1 to 2 measures and the second is the secondary value. `progress_list_card` takes 2 measures: the current value and the target. `cartesian_chart` takes one or more measures, and its `series` field sets how each measure is drawn. `metric_card` takes one measure and an optional `value_label`.
-- `metric_card` with `time.compare` set to `previous_period` shows a trend that the widget computes from `value` and `previous_value`.
-- `grid` requires `page_sizes`, whose largest value is at most 500, and requires `data.limit`, which is one of the `page_sizes` values.
-- `ranked_list_card`, `progress_list_card`, `pie_chart`, and `heatmap` accept no `time.granularity`, and every type except `metric_card` accepts no `time.compare`.
+- `metric_card` with a `compareDateRange` of exactly 2 ranges, instead of a `dateRange`, shows a trend that the widget computes from `value`, the total over range 1, and `previous_value`, the total over range 2. With a `granularity` as well, the sparkline covers range 1.
+- `grid` requires `page_sizes`, whose largest value is at most 500, requires `data.limit`, which is one of the `page_sizes` values, and requires `data.total` to be `true`. Every other data widget type rejects `total`. Only `grid` accepts `offset`; every other data widget type rejects it.
+- `summary_card`, `ranked_list_card`, `progress_list_card`, `pie_chart`, and `heatmap` accept no `granularity` on `timeDimensions[0]`, and every type except `metric_card` rejects `compareDateRange`. `ranked_list_card` and `progress_list_card` accept `order` and `limit` and require neither.
+- The `data` of every data widget type rejects an authored `timezone`. The widget sets `timezone` to the viewer's time zone, the IANA time zone name that the browser resolves, in every query it sends.
 
 **Touches**:
 - Entities: `Widget`, `Data widget`
@@ -313,9 +329,14 @@ The system **MUST** limit the query of each data widget type as section 6 specif
 
 The system **MUST** run the cross-checks of section 3 for every data widget when its domain owner loads a dashboard, and **MUST** treat a failure as a cannot-show trigger for that widget only.
 
-- Every `order[].member` is a query member, and the member-kind check applies to every widget type that sets `member_kinds`.
+- Every query member names a registered instance, and the first item of every `order` pair is a result column. This process is the single owner of the registered-instance check.
+- `timeDimensions[0].dimension` names a dimension whose `value_type` is `time`.
+- Every date pair in `dateRange` or `compareDateRange` holds real calendar values and has its start not after its end.
+- Every filter operator fits its member's kind: the `contains` family only on string dimensions, `gt`, `gte`, `lt` and `lte` only on measures and number dimensions, and the date operators only on time dimensions.
+- Every value of `gt`, `gte`, `lt` and `lte` parses as a number, and every value of a date operator is a real date or date-time in the pair form of `dateRange` or one of its relative strings.
+- The member-kind check applies to every widget type that sets `member_kinds`.
 - Every `series[].member` of a `cartesian_chart` is a measure of the query and no member repeats, and a `heatmap` with both scale ends set has `min_value` not greater than `max_value`.
-- Every grid check of section 3 fails the widget when it is violated: `columns` covering the members, group members, a member repeated within a group, contiguity, a column in two groups, `row_color`, `sortable`, and `limit` being one of `page_sizes`.
+- Every grid check of section 3 fails the widget when it is violated: `columns` covering every result column exactly once, group members, a member repeated within a group, contiguity, a column in two groups, `row_color`, `sortable`, and `limit` being one of `page_sizes`.
 - A failing widget is not mounted. Its cell, or the larger-view modal for a larger-view widget, shows the cannot-show placeholder with the wording of section 6.12, and the other cells are unaffected.
 
 **Implements**:
@@ -331,7 +352,7 @@ The system **MUST** run the cross-checks of section 3 for every data widget when
 The system **MUST** show every `grid` widget as section 6.7 specifies, one page at a time, with sorting and paging as query changes.
 
 - The grid shows one page of at most 500 rows, in the delivered order, with virtualized rows, and the page renders and scrolls smoothly (`cpt-frontx-dashboard-nfr-large-table`).
-- A sortable header, a page control, and a page size from `page_sizes` each send one `request_data` with the changed local query. The pager shows the position from `offset`, the number of rows on the page, and `total`. A page size is always offered.
+- A sortable header sets `order` to a list holding one pair `[member, direction]`. A page control sets `offset`, and a page size from `page_sizes` sets `limit`. Each sends one `request_data` with the changed local query, which keeps `total: true`. The pager shows the position from `offset`, the number of rows on the page, and `total`. A page size is always offered.
 - Frozen leading columns, grouped column headings, column alignment, the number notation, a column title, and row colouring apply as configured. A row with a colour shows an icon with an accessible name.
 - Resizing a column redraws the grid locally, sends no request, and is never saved.
 - Cells show their value as text, formatted by the column's number format. The grid has no cell renderers, and it uses no sorting, grouping, filtering, or paging feature of its table library.
@@ -363,7 +384,8 @@ The system **MUST** show the `body` of a `markdown_card` as typical markdown (Co
 The system **MUST** give every widget type the shared chrome of section 6.12, with the title and the states that apply to the type.
 
 - A data widget shows its loader before its first answer, keeps its current content under a busy indicator while a repeated request is open, and shows the empty state for data with no rows. A `markdown_card` shows none of these states.
-- A widget sends one request after its context, and applies only the answer whose timestamp equals the latest request.
+- A widget sends one request after its context, with `timezone` set to the IANA time zone name that the browser resolves, and applies only the answer whose timestamp equals the latest request.
+- A null measure value shows as a gap or an empty value, and a null dimension value shows as an empty label. For `metric_card`, a null `value` is the empty state.
 - The loader, busy, empty, and cannot-show states use the default English wordings of section 6.12. Each widget and each domain owner localizes its own wording and formats values for the host language.
 - Data that never arrives leaves the loader in place and shows no error message.
 - All styling is token-only. Every widget type looks consistent with the design system in the light and the dark scope (`cpt-frontx-dashboard-nfr-visual-quality`).
@@ -500,7 +522,7 @@ The system **MUST** make the chrome and the grid operable by keyboard and readab
               "additionalProperties": false,
               "properties": {
                 "field": { "type": "string", "minLength": 1 },
-                "from": { "type": "string", "pattern": "^(dimensions\\[(0|[1-9][0-9]*)\\]|measures\\[(0|[1-9][0-9]*)\\]|time)$" }
+                "from": { "type": "string", "pattern": "^(dimensions\\[(0|[1-9][0-9]*)\\]|measures\\[(0|[1-9][0-9]*)\\]|timeDimensions\\[0\\])$" }
               }
             }
           }
@@ -525,7 +547,11 @@ The system **MUST** make the chrome and the grid operable by keyboard and readab
       "type": "object",
       "required": ["data"],
       "properties": {
-        "data": { "$ref": "gts://gts.frontx.dashboard_m.data.query.v1~" }
+        "data": {
+          "$ref": "gts://gts.frontx.dashboard_m.data.query.v1~",
+          "properties": { "timezone": false },
+          "description": "The authored query. It has no timezone: the widget sets timezone in the query it sends."
+        }
       }
     }
   ]
@@ -534,8 +560,8 @@ The system **MUST** make the chrome and the grid operable by keyboard and readab
 
 **Cross-references**:
 - Traits: `data_shape` and `fill` are required. The domain owner passes both to the widget in `set_widget_context`, and the widget copies them unchanged into each `request_data`. A widget never compares data shapes. The five fill modes and the data shapes are specified in `cpt-frontx-dashboard-feature-widget-data-catalog`.
-- `member_kinds`: the domain owner checks it against the `value_type` of the member instances (section 3). An absent key puts no restriction on that kind of member. The four category types (`ranked_list_card`, `progress_list_card`, `pie_chart`, `heatmap`) allow the dimension kinds `string` and `number` and exclude `time`, because they draw unordered categories and a time-valued category belongs on the `time` of a chart with a time axis. The time dimension of `time` is checked by the dataset's own enum.
-- `data`: the query base is specified in `cpt-frontx-dashboard-feature-query-vocabulary`. Each data widget type narrows it with the limits of section 6.2.
+- `member_kinds`: the domain owner checks it against the `value_type` of the member instances (section 3). An absent key puts no restriction on that kind of member. The four category types (`ranked_list_card`, `progress_list_card`, `pie_chart`, `heatmap`) allow the dimension kinds `string` and `number` and exclude `time`, because they draw unordered categories and a time-valued category belongs on `timeDimensions[0]` of a chart with a time axis. The time dimension in `timeDimensions[0].dimension` is narrowed by the dataset's own enum, and the cross-check of section 3 requires its `value_type` to be `time`.
+- `data`: the query base is specified in `cpt-frontx-dashboard-feature-query-vocabulary`. Each data widget type narrows it with the limits of section 6.2. `data` rejects `timezone`: an author never writes it. The widget copies `data` into each query it sends and sets `timezone` there to the viewer's time zone, the IANA time zone name that the browser resolves, so dates, relative ranges and `granularity` steps resolve where the viewer is (`cpt-frontx-dashboard-adr-query-vocabulary-and-datasets`).
 
 ### 6.2 Widget Types and Query Limits
 
@@ -543,25 +569,29 @@ Every data widget type is a concrete type under the data widget. Its identifier 
 
 | Widget type | Query limits | Fill mode (traits) | Data shape rows |
 |---|---|---|---|
-| `summary_card` | 1 or more measures, no dimensions, no `granularity`, no `compare` | `row_per_measure` | `{key, value}` |
-| `metric_card` | 1 measure, no dimensions; optional `time` with `granularity` for the sparkline; optional `time.compare` for the trend | `scalar_with_series` | `{value, previous_value?, sparkline?}` |
-| `ranked_list_card` | 1 dimension, 1 to 2 measures, no `granularity`; `order`, `limit` | `rows_by_member`: `label` from `dimensions[0]`, `value` from `measures[0]`, `secondary` from `measures[1]` | `{label, value, secondary?}` |
-| `progress_list_card` | 1 dimension, 2 measures, no `granularity`; `order`, `limit` | `rows_by_member`: `label` from `dimensions[0]`, `current` from `measures[0]`, `target` from `measures[1]` | `{label, current, target}` |
-| `pie_chart` | 1 dimension, 1 measure, no `granularity`, no `compare` | `rows_by_member`: `label` from `dimensions[0]`, `value` from `measures[0]` | `{label, value}` |
-| `cartesian_chart` | 1 measure: `time` with `granularity` and at most 1 dimension, or no `granularity` and 1 to 2 dimensions. Several measures: `time` with `granularity` and no dimension, or no `granularity` and 1 dimension. No `compare` | `x_series_value` | `{x, series?, value}` |
-| `heatmap` | 2 dimensions, 1 measure, no `granularity`, no `compare` | `rows_by_member`: `x` from `dimensions[0]`, `y` from `dimensions[1]`, `value` from `measures[0]` | `{x, y, value}` |
-| `grid` | 1 or more members; `order`; paging by `limit` and `offset`, with `limit` required and one of the `page_sizes` values; no `compare` | `positional_table` | `rows: [[...]]`, `total` |
+| `summary_card` | 1 or more measures, no dimensions, no `granularity` on `timeDimensions` | `row_per_measure` | `{key, value}` |
+| `metric_card` | 1 measure, no dimensions; optional `timeDimensions[0]` with `granularity` for the sparkline; optional `compareDateRange` with exactly 2 ranges for the trend, instead of `dateRange` | `scalar_with_series` | `{value, previous_value?, sparkline?}` |
+| `ranked_list_card` | 1 dimension, 1 to 2 measures, no `granularity`; `order` and `limit` optional, no `offset` | `rows_by_member`: `label` from `dimensions[0]`, `value` from `measures[0]`, `secondary` from `measures[1]` | `{label, value, secondary?}` |
+| `progress_list_card` | 1 dimension, 2 measures, no `granularity`; `order` and `limit` optional, no `offset` | `rows_by_member`: `label` from `dimensions[0]`, `current` from `measures[0]`, `target` from `measures[1]` | `{label, current, target}` |
+| `pie_chart` | 1 dimension, 1 measure, no `granularity` | `rows_by_member`: `label` from `dimensions[0]`, `value` from `measures[0]` | `{label, value}` |
+| `cartesian_chart` | 1 measure: `timeDimensions[0]` with `granularity` and at most 1 dimension, or no `granularity` and 1 to 2 dimensions. Several measures: `timeDimensions[0]` with `granularity` and no dimension, or no `granularity` and 1 dimension | `x_series_value` | `{x, series?, value}` |
+| `heatmap` | 2 dimensions, 1 measure, no `granularity` | `rows_by_member`: `x` from `dimensions[0]`, `y` from `dimensions[1]`, `value` from `measures[0]` | `{x, y, value}` |
+| `grid` | 1 or more members; `order`; paging by `limit` and `offset`, with `limit` required and one of the `page_sizes` values; `total: true` required | `positional_table` | `rows: [[...]]`, `total` |
 | `markdown_card` | Not a data widget: no `data`, no traits | none | none |
 
 **Multi-measure rules.** A widget type that compares values takes more than one measure. `ranked_list_card` takes 1 to 2 measures, and the second is the secondary value of each row. `progress_list_card` takes 2 measures: the first is the current value and the second is the target. `cartesian_chart` takes one or more measures. Its `series` field has at most one entry per measure and sets how that measure is drawn. A measure with no entry is drawn as bars on the primary y axis. An entry that names a member that is not a measure of the query, or a second entry for the same measure, fails the cross-check of section 3. `metric_card` keeps an optional `value_label`, and without it the headline shows the measure's title.
 
-**Granularity and compare limits.** `ranked_list_card` and `progress_list_card` take no `time.granularity`, like `pie_chart` and `heatmap`: their rows are one per category, so a time series has no place in them. `time.compare` is allowed only on `metric_card`, because only its data shape carries `previous_value`; every other type rejects it, since its shape cannot carry the comparison.
+**Time limits.** The query has at most one `timeDimensions` entry, and each widget type limits it through `timeDimensions.items`. `summary_card`, `ranked_list_card`, `progress_list_card`, `pie_chart`, and `heatmap` take no `granularity`: their rows are one per measure or one per category, so a time series has no place in them. They may still have `timeDimensions[0]` with a `dateRange`, which limits the period. `compareDateRange` is allowed only on `metric_card`, because only its data shape carries `previous_value`; every other type rejects it, since its shape cannot carry the comparison. The base query allows exactly 2 ranges in `compareDateRange` and rejects it next to a `dateRange` (`cpt-frontx-dashboard-adr-query-vocabulary-and-datasets`).
 
-**Null values.** A measure value in an answer may be null. Each widget shows a null as a gap or as an empty value, as its section states.
+**Order, limit, offset and total.** `grid` requires `limit` and `total: true`, and every other data widget type rejects `total`. Only `grid` accepts `offset`, for paging, and every other data widget type rejects it. The list cards, `ranked_list_card` and `progress_list_card`, accept `order` and `limit` and require neither. A query without `limit` asks for the complete result. A query without `order` gets the default order of the query format, and a widget shows the rows in the delivered order (`cpt-frontx-dashboard-adr-query-vocabulary-and-datasets`).
 
-**Metric trend.** A `metric_card` whose query sets `time.compare` to `previous_period` receives `previous_value` next to `value`. The widget computes the trend from these two values and does not compute any other result.
+**Time zone.** The `data` field rejects `timezone`. The data widget sets `timezone` to the viewer's time zone in every query it sends. The value is the IANA time zone name that the browser resolves, such as `Europe/Berlin`.
 
-**Member metadata.** A widget takes default titles and formats from the metadata (`title`, `value_type`, `unit`) that `set_widget_context` carries for each member of its query. A presentation field overrides the default.
+**Null values.** A measure value and a dimension value in an answer may be null. Each widget shows a null measure value as a gap or as an empty value, as its section states, and a null dimension value as an empty label. For `metric_card`, a null `value` is the empty state.
+
+**Metric trend.** A `metric_card` whose `timeDimensions[0]` has a `compareDateRange` of 2 ranges receives `value`, the total over range 1, and `previous_value`, the total over range 2. The author writes the previous period explicitly as range 2, for example `["this month", "last month"]`; the template does not derive it. The widget computes the trend from these two values and does not compute any other result. The trend shows the direction and the change from `previous_value` to `value`. Whether the change is shown as an absolute or a relative value, and what a relative change shows when `previous_value` is zero, is left to the widget realization. With a `compareDateRange` and a `granularity`, the sparkline covers range 1 only, as `scalar_with_series` in `cpt-frontx-dashboard-feature-widget-data-catalog` fills it.
+
+**Member metadata.** A widget takes default titles and formats from the metadata (`title`, `value_type`, `unit`) that `set_widget_context` carries for every query member. A presentation field overrides the default.
 
 **Closed fields.** Every concrete type ends with `unevaluatedProperties: false`. Because each type lists every field it accepts, a misspelled presentation field fails the validation of the widget, and its cell shows the cannot-show placeholder.
 
@@ -592,7 +622,9 @@ Every data widget type is a concrete type under the data widget. Its identifier 
           "properties": {
             "measures": { "minItems": 1 },
             "dimensions": { "maxItems": 0 },
-            "time": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compare"] } ] } }
+            "timeDimensions": { "items": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compareDateRange"] } ] } } },
+            "offset": false,
+            "total": false
           }
         }
       }
@@ -610,7 +642,7 @@ Every data widget type is a concrete type under the data widget. Its identifier 
 
 **GTS ID**: `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.metric_card.v1~`
 
-**Description**: A card with one headline value, a trend when the query compares with the previous period, and a sparkline when the query has a granularity.
+**Description**: A card with one headline value, a trend when the query has a `compareDateRange`, and a sparkline when `timeDimensions[0]` has a `granularity`.
 
 **Schema**:
 
@@ -632,7 +664,9 @@ Every data widget type is a concrete type under the data widget. Its identifier 
           "required": ["measures"],
           "properties": {
             "measures": { "minItems": 1, "maxItems": 1 },
-            "dimensions": { "maxItems": 0 }
+            "dimensions": { "maxItems": 0 },
+            "offset": false,
+            "total": false
           }
         },
         "value_label": { "type": "string", "description": "Optional caption of the headline value. Without it, the headline shows the measure's title." }
@@ -644,7 +678,8 @@ Every data widget type is a concrete type under the data widget. Its identifier 
 ```
 
 **Cross-references**:
-- Presentation: the headline is `value`. The trend is computed from `value` and `previous_value` and shows a direction icon (up for an increase, down for a decrease, flat for no change) together with the formatted change, so its meaning does not depend on colour. The sparkline draws one point per granularity step, in the delivered order, and a null point is a gap. A null `value` is the empty state of the widget ("No data to show"). A null or absent `previous_value` shows no trend, and the headline stays.
+- Query: `compareDateRange` is allowed on this type only. It holds exactly 2 ranges and replaces `dateRange`: `value` is the total over range 1 and `previous_value` the total over range 2. With a `granularity` as well, the sparkline covers range 1 only (`scalar_with_series` in `cpt-frontx-dashboard-feature-widget-data-catalog`). `total` and `offset` are rejected.
+- Presentation: the headline is `value`. The trend is computed from `value` and `previous_value` and shows a direction icon (up for an increase, down for a decrease, flat for no change) together with the change, so its meaning does not depend on colour. Whether the change is absolute or relative, and what a relative change shows when `previous_value` is zero, is left to the widget realization. The sparkline draws one point per granularity step, in the delivered order, and a null point is a gap. A null `value` is the empty state of the widget ("No data to show"). A null or absent `previous_value` shows no trend, and the headline stays.
 
 ### 6.5 RankedListCard
 
@@ -681,7 +716,9 @@ Every data widget type is a concrete type under the data widget. Its identifier 
           "properties": {
             "measures": { "minItems": 1, "maxItems": 2 },
             "dimensions": { "minItems": 1, "maxItems": 1 },
-            "time": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compare"] } ] } }
+            "timeDimensions": { "items": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compareDateRange"] } ] } } },
+            "offset": false,
+            "total": false
           }
         },
         "value_label": { "type": "string", "description": "Optional heading of the primary value." },
@@ -731,7 +768,9 @@ Every data widget type is a concrete type under the data widget. Its identifier 
           "properties": {
             "measures": { "minItems": 2, "maxItems": 2 },
             "dimensions": { "minItems": 1, "maxItems": 1 },
-            "time": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compare"] } ] } }
+            "timeDimensions": { "items": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compareDateRange"] } ] } } },
+            "offset": false,
+            "total": false
           }
         }
       }
@@ -769,15 +808,16 @@ Every data widget type is a concrete type under the data widget. Its identifier 
       "required": ["columns", "page_sizes"],
       "properties": {
         "data": {
-          "required": ["limit"],
+          "required": ["limit", "total"],
           "properties": {
-            "time": { "not": { "required": ["compare"] } }
+            "timeDimensions": { "items": { "not": { "required": ["compareDateRange"] } } },
+            "total": { "const": true }
           }
         },
         "columns": {
           "type": "array",
           "minItems": 1,
-          "description": "Displayed columns, in display order. Each names one query member, and together they list every query member exactly once (a cross-check).",
+          "description": "Displayed columns, in display order. Each names one result column, and together they list every result column exactly once (a cross-check).",
           "items": {
             "type": "object",
             "required": ["member"],
@@ -840,7 +880,7 @@ Every data widget type is a concrete type under the data widget. Its identifier 
             { "x-gts-instance-ref": "gts.frontx.dashboard_m.data.measure.v1~" },
             { "x-gts-instance-ref": "gts.frontx.dashboard_m.data.dimension.v1~" }
           ],
-          "description": "Optional query member that is also a column. Its value in a row names the row colour: success, warning, error, or info."
+          "description": "Optional member of a grid column. Its value in a row names the row colour: success, warning, error, or info."
         }
       }
     }
@@ -850,9 +890,9 @@ Every data widget type is a concrete type under the data widget. Its identifier 
 ```
 
 **Cross-references**:
-- Data: the answer is `rows`, one positional array for each result row in the canonical member order, and `total`, the row count across all pages. Each column reads its value from the entry at the position of its member in the canonical member order. Rows keep the delivered order. Cells show their value as text, formatted by the column's number format and the member metadata, and a null value shows an empty cell. The grid has no cell renderers. Long text wraps and is never cut off. The column heading is the column's `title`, or the member's title without it.
-- Paging: the grid always shows one page, and the browser holds only that page. The `page_sizes` rule is: it is required, its largest value is at most 500, and `data.limit` is one of its values (a cross-check). The pager shows the position from `offset`, the number of rows on the page, and `total`.
-- Sorting and paging are query changes: see `cpt-frontx-dashboard-flow-widget-catalog-change-query`. The grid keeps its current rows under the busy indicator while it waits. The larger view of a grid is its own grid widget with its own query, and it sorts and pages the same way.
+- Data: the answer is `rows`, one positional array for each result row in the canonical member order of the result columns, and `total`, the row count across all pages. Each column reads its value from the entry at the position of its member in the canonical member order. The time dimension is a result column, and so can be a grid column, only when `timeDimensions[0]` has a `granularity`. Rows keep the delivered order. Cells show their value as text, formatted by the column's number format and the member metadata, and a null value shows an empty cell. The grid has no cell renderers. Long text wraps and is never cut off. The column heading is the column's `title`, or the member's title without it.
+- Paging: the grid always shows one page, and the browser holds only that page. Paging is by `limit` and `offset`. The `page_sizes` rule is: it is required, its largest value is at most 500, and `data.limit` is one of its values (a cross-check). The grid query requires `total: true`, so every answer carries `total`. The pager shows the position from `offset`, the number of rows on the page, and `total`.
+- Sorting and paging are query changes: a sort sets `order` to a list holding one pair `[member, direction]`; see `cpt-frontx-dashboard-flow-widget-catalog-change-query`. The grid keeps its current rows under the busy indicator while it waits. The larger view of a grid is its own grid widget with its own query, and it sorts and pages the same way.
 - Frozen columns: the first `frozen_columns` columns stay visible at the leading edge while the viewer scrolls horizontally. A value larger than the number of columns freezes all columns.
 - Column groups: each group shows its `title` once, in a heading row above the column headings, spanning exactly its columns. A column outside every group has an empty cell in that heading row. Because each column has one place in that row, a column named by two groups fails the cross-check, and so does a member repeated within one group. Without `column_groups`, the grid has a single heading row.
 - Row colour: with `row_color` set, a row whose value is one of the meanings `success`, `warning`, `error`, or `info`, matched exactly and case-sensitively, takes the row background of the kit token of that meaning in the active light or dark scope. The row also shows an icon of that meaning, with an accessible name in the host language. A null or any other value leaves the row uncoloured, and cell text keeps readable contrast.
@@ -886,13 +926,17 @@ Every data widget type is a concrete type under the data widget. Its identifier 
       "properties": {
         "data": {
           "required": ["measures"],
+          "properties": {
+            "offset": false,
+            "total": false
+          },
           "oneOf": [
             {
-              "required": ["time"],
+              "required": ["timeDimensions"],
               "properties": {
                 "measures": { "minItems": 1, "maxItems": 1 },
                 "dimensions": { "maxItems": 1 },
-                "time": { "required": ["granularity"], "not": { "required": ["compare"] } }
+                "timeDimensions": { "items": { "required": ["granularity"], "not": { "required": ["compareDateRange"] } } }
               }
             },
             {
@@ -900,15 +944,15 @@ Every data widget type is a concrete type under the data widget. Its identifier 
               "properties": {
                 "measures": { "minItems": 1, "maxItems": 1 },
                 "dimensions": { "minItems": 1, "maxItems": 2 },
-                "time": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compare"] } ] } }
+                "timeDimensions": { "items": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compareDateRange"] } ] } } }
               }
             },
             {
-              "required": ["time"],
+              "required": ["timeDimensions"],
               "properties": {
                 "measures": { "minItems": 2 },
                 "dimensions": { "maxItems": 0 },
-                "time": { "required": ["granularity"], "not": { "required": ["compare"] } }
+                "timeDimensions": { "items": { "required": ["granularity"], "not": { "required": ["compareDateRange"] } } }
               }
             },
             {
@@ -916,7 +960,7 @@ Every data widget type is a concrete type under the data widget. Its identifier 
               "properties": {
                 "measures": { "minItems": 2 },
                 "dimensions": { "minItems": 1, "maxItems": 1 },
-                "time": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compare"] } ] } }
+                "timeDimensions": { "items": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compareDateRange"] } ] } } }
               }
             }
           ]
@@ -970,8 +1014,8 @@ Every data widget type is a concrete type under the data widget. Its identifier 
 ```
 
 **Cross-references**:
-- Data: `rows` in long format. With one measure, `x` is the time or the first dimension, `series` is the first dimension not used for `x`, and `value` is the measure. With several measures, each row is one measure at one `x`, `series` is the measure id, and `value` is that measure.
-- Presentation: on a category axis the `x` positions follow the delivered order, and on a value or time axis they are placed by value. A null value is a gap. Every series is named in the legend and in the tooltip, so series do not differ by colour alone.
+- Data: `rows` in long format. With one measure, `x` is the time dimension when `timeDimensions[0]` has a `granularity`, or else the first dimension, `series` is the first dimension not used for `x`, and `value` is the measure. With several measures, each row is one measure at one `x`, `series` is the measure id, and `value` is that measure.
+- Presentation: on a category axis the `x` positions follow the delivered order, and on a value or time axis they are placed by value. A null value is a gap. A null `x` or `series` shows as an empty label. Every series is named in the legend and in the tooltip, so series do not differ by colour alone.
 - Chart theme: the series colours, typography, axes, and tooltips come from the ECharts theme `frontx-dashboard` that the widget builds from kit tokens (section 6.12, ADR-0004).
 
 ### 6.9 PieChart
@@ -1008,7 +1052,9 @@ Every data widget type is a concrete type under the data widget. Its identifier 
           "properties": {
             "measures": { "minItems": 1, "maxItems": 1 },
             "dimensions": { "minItems": 1, "maxItems": 1 },
-            "time": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compare"] } ] } }
+            "timeDimensions": { "items": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compareDateRange"] } ] } } },
+            "offset": false,
+            "total": false
           }
         },
         "radius": {
@@ -1064,7 +1110,9 @@ Every data widget type is a concrete type under the data widget. Its identifier 
           "properties": {
             "measures": { "minItems": 1, "maxItems": 1 },
             "dimensions": { "minItems": 2, "maxItems": 2 },
-            "time": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compare"] } ] } }
+            "timeDimensions": { "items": { "not": { "anyOf": [ { "required": ["granularity"] }, { "required": ["compareDateRange"] } ] } } },
+            "offset": false,
+            "total": false
           }
         },
         "x_axis_label": { "type": "string", "description": "Optional x-axis title." },
@@ -1140,7 +1188,9 @@ The loader and the busy indicator are announced to assistive technology as a sta
 
 **Cannot-show trigger.** A widget that fails its GTS validation (a failure whose instance path lies under its `widget` or `larger_view`) or a cross-check is a cannot-show trigger for its own cell, or for the larger-view modal when it is a larger-view widget (section 3).
 
-**Requests.** A data widget sends one `request_data` after it receives its context, and sends a new one when an interaction changes its query, as `cpt-frontx-dashboard-flow-widget-catalog-change-query` specifies. When a widget requests data is decided in ADR-0011.
+**Requests.** A data widget sends one `request_data` after it receives its context, and sends a new one when an interaction changes its query, as `cpt-frontx-dashboard-flow-widget-catalog-change-query` specifies. Each query it sends carries `timezone`, set to the viewer's time zone: the IANA time zone name that the browser resolves. When a widget requests data is decided in ADR-0011.
+
+**Null values.** A null measure value shows as a gap or an empty value, as the section of each widget type states. A null dimension value, such as a `label`, an `x`, a `y` or a `series`, shows as an empty label, and its row or point stays. For `metric_card`, a null `value` is the empty state.
 
 **Larger-view button.** The chrome of a cell widget shows one larger-view button, in every state, only when the widget's `set_widget_context` carries the `larger_view` field. The field holds the dashboard id and the larger-view widget id. A cell with no larger view has no button. A widget in the larger view receives no `larger_view` field, so it shows no button, and a larger-view widget cannot open another larger view. Pressing the button runs `cpt-frontx-dashboard-flow-widget-catalog-open-larger-view`.
 
@@ -1161,12 +1211,24 @@ The loader and the busy indicator are announced to assistive technology as a sta
 - [ ] The widget base is abstract, requires `id` and `title`, and declares no traits. The data widget is abstract, requires `data`, and declares `data_shape` and `fill` as required traits and `member_kinds` as an optional trait. `markdown_card` derives from the widget base directly.
 - [ ] Given a widget instance whose `id` is a widget type followed by a UUID and whose fields are valid, when it is validated, then it passes. Given the same widget with one misspelled presentation field, then it fails validation, for each of the 9 concrete widget types.
 - [ ] Given a `markdown_card` with a `data` field, when it is validated, then it fails.
-- [ ] Given each of the 8 data widget types, when one accepted query and one rejected query are validated, then the accepted query passes and the rejected query fails. The rejected queries include a second dimension on a `pie_chart`, one measure on a `progress_list_card`, a dimension on a `summary_card`, a `granularity` on a `heatmap`, a `granularity` on a `ranked_list_card`, a `compare` on a `grid`, and a `grid` with no `limit`.
-- [ ] Given a `cartesian_chart` with one measure and `time` with `granularity`, with one measure and one dimension and no `granularity`, with two measures and `time` with `granularity` and no dimension, or with two measures and one dimension and no `granularity`, when it is validated, then it passes. Given two measures and two dimensions, or two measures with a dimension and a `granularity`, then it fails.
+- [ ] Given each of the 8 data widget types, when one accepted query and one rejected query are validated, then the accepted query passes and the rejected query fails. The rejected queries include a second dimension on a `pie_chart`, one measure on a `progress_list_card`, a dimension on a `summary_card`, a `granularity` on `timeDimensions[0]` of a `heatmap`, a `summary_card` or a `ranked_list_card`, and a `grid` with no `limit`.
+- [ ] Given a `metric_card` whose `timeDimensions[0]` has a `compareDateRange` of 2 ranges and no `dateRange`, when it is validated, then it passes. Given a `compareDateRange` on each of the other 7 data widget types, then it fails.
+- [ ] Given a `grid` with `total: true`, when it is validated, then it passes. Given a `grid` with no `total` or with `total: false`, then it fails. Given `total` on each of the other 7 data widget types, then it fails.
+- [ ] Given a `grid` whose `data` has `offset` 50, when it is validated, then it passes. Given `offset` on each of the other 7 data widget types, including `ranked_list_card` and `progress_list_card`, then it fails.
+- [ ] Given a data widget of each of the 8 data widget types whose `data` holds an authored `timezone`, when it is validated, then it fails.
+- [ ] Given a `ranked_list_card` and a `progress_list_card` with no `order` and no `limit`, when they are validated, then they pass, and each shows its rows in the delivered order.
+- [ ] Given a browser whose resolved IANA time zone name is `Europe/Berlin` and a data widget whose `data` has no `timezone`, when the widget sends `request_data`, then the `data` of the request carries `timezone` `Europe/Berlin`, and the widget instance in the dashboard is unchanged. Given the same widget in a browser that resolves `America/New_York`, then the request carries `America/New_York`.
+- [ ] Given a `cartesian_chart` with one measure and `timeDimensions[0]` with `granularity`, with one measure and one dimension and no `granularity`, with two measures and `timeDimensions[0]` with `granularity` and no dimension, or with two measures and one dimension and no `granularity`, when it is validated, then it passes. Given two measures and two dimensions, two measures with a dimension and a `granularity`, or one measure and no dimension with `timeDimensions[0]` without `granularity`, then it fails.
 - [ ] Given a `grid` whose `page_sizes` is missing, or holds a value above 500, or whose `data.limit` is not one of the `page_sizes` values, when it is validated and cross-checked, then it fails.
-- [ ] Given a widget whose `order` names a member that is not in the query, when the domain owner cross-checks it, then it fails and its cell shows "This widget cannot be shown".
+- [ ] Given a widget whose `order` holds a pair whose first item is not a result column, such as a member named only in `filters`, or a time dimension whose `timeDimensions[0]` has no `granularity`, when the domain owner cross-checks it, then it fails and its cell shows "This widget cannot be shown".
+- [ ] Given a widget whose query names, as a filter member, a member id with no registered instance, when the domain owner cross-checks it, then it fails and the diagnostic names the member.
+- [ ] Given, in turn, a filter with `contains` on a measure, `startsWith` on a number dimension, `gt` on a string dimension, `inDateRange` on a string dimension, and `afterDate` on a measure, when the domain owner cross-checks the widget, then in each case it fails. Given `equals` or `set` on any member, `gte` on a number dimension, and `beforeDate` on a time dimension, then the operator-kind check passes.
+- [ ] Given, in turn, a filter with `gt` and the value `ten`, `lte` and the value `1,5`, `afterDate` and the value `next week`, `beforeDate` and the value `2026-02-30`, and `inDateRange` and the value `2026-01-01T25:00`, when the domain owner cross-checks the widget, then in each case it fails and the diagnostic names the value. Given `gte` and `-0.5`, `lt` and `1e3`, `afterDate` and `2026-10-01`, `beforeOrOnDate` and `2026-10-01T17:30:00`, and `inDateRange` and `last 30 days`, then the value check passes.
+- [ ] Given, in turn, a `dateRange` of `["2026-03-31", "2026-01-01"]`, `["2026-13-01", "2026-12-31"]`, `["2026-04-31", "2026-05-31"]`, `["2027-02-29", "2027-03-31"]` and `["2026-01-01T25:00", "2026-01-02"]`, and a `metric_card` whose `compareDateRange` is `["this month", ["2026-09-30", "2026-09-01"]]`, when the domain owner cross-checks the widget, then in each case it fails and its cell shows "This widget cannot be shown". Given `["2026-01-01T10:00", "2026-01-01"]` and `["2028-02-29", "2028-03-31"]`, then the date-pair check passes.
+- [ ] Given a widget whose `timeDimensions[0].dimension` names a registered dimension whose `value_type` is `string`, when the domain owner cross-checks it, then it fails and the diagnostic names the member. Given a dimension whose `value_type` is `time`, then that check passes.
 - [ ] Given a `pie_chart` whose dimension has the `value_type` `time`, when the domain owner cross-checks it, then it fails the member-kind check.
-- [ ] Given, in turn, a `grid` whose `columns` names a member twice, leaves a query member out, or names a member that is not in the query; a `column_groups` entry naming a member that is not a column; a group over `c1` and `c3` with `c2` between them; a column in two groups; a `row_color` that is not a column; a sortable column whose member the dataset does not allow in `order`; or a `limit` that is not one of `page_sizes`, a member repeated within one group, when the domain owner cross-checks it, then in each case the widget fails, its cell shows the placeholder, and the other cells are unaffected.
+- [ ] Given, in turn, a `grid` whose `columns` names a result column twice, leaves a result column out, or names a member that is not a result column, such as the time dimension of a `timeDimensions[0]` without `granularity`; a `column_groups` entry naming a member that is not a column; a group over `c1` and `c3` with `c2` between them; a column in two groups; a `row_color` that is not a column; a sortable column whose member the dataset does not allow in `order`; or a `limit` that is not one of `page_sizes`, a member repeated within one group, when the domain owner cross-checks it, then in each case the widget fails, its cell shows the placeholder, and the other cells are unaffected.
+- [ ] Given a `grid` whose dataset has no enum at `order.items.prefixItems[0]`, when the domain owner cross-checks a sortable column over a result column, then the sortable check passes. Given a dataset whose own enum there leaves out a member of a sortable column, then the widget fails, even when the parent's enum includes that member.
 - [ ] Given a `cartesian_chart` whose `series` names a member that is not a measure of the query, or names the same measure twice, when the domain owner cross-checks it, then the widget fails. Given a measure with no `series` entry, then it is drawn as bars on the primary y axis.
 - [ ] Given a `heatmap` whose `min_value` is greater than its `max_value`, when the domain owner cross-checks it, then the widget fails.
 - [ ] Given a failure of the GTS validation of the dashboard whose instance path lies under the `widget` of a cell, then that cell shows the placeholder and the other cells are unaffected. Given a failure at any other path, then the dashboard-level placeholder shows.
@@ -1174,12 +1236,13 @@ The loader and the busy indicator are announced to assistive technology as a sta
 - [ ] Given a data widget that has just received its context, when it has not received an answer, then it shows the loader "Loading", has sent exactly one `request_data`, and its larger-view button, if its context carries `larger_view`, is shown.
 - [ ] Given a data widget whose answer has no rows, then it shows "No data to show". Given a `grid` with no rows, then the column headings stay above it.
 - [ ] Given a `metric_card` whose answer has a null `value`, then it shows "No data to show". Given a `summary_card`, a `ranked_list_card`, or a `grid` answer with a null measure value, then that value shows as empty and the other values show.
+- [ ] Given a `ranked_list_card`, a `pie_chart` or a `heatmap` answer with a null dimension value, when it renders, then that label shows as empty and the row, segment or cell stays.
 - [ ] Given a `markdown_card`, when its context arrives, then it shows its body at once, sends no `request_data`, and shows no loader or empty state.
 - [ ] Given a `markdown_card` whose body holds a heading, a raw `<b>` tag, a link with an `https` target, a link with a `mailto` target, and an image, when it renders, then the heading is formatted, no element is created from the raw tag and the tag shows as plain text, the links open in a new browsing context without access to the opener, and the image is shown with its alt text as accessible name.
 - [ ] Given a `markdown_card` whose body holds links with the targets `javascript:alert(1)`, `JavaScript:alert(1)`, and ` javascript:alert(1)` (leading space), when it renders, then no link is active and each shows its text as plain text.
 - [ ] Given a widget whose title, a label, or a chart tooltip value holds `<img src=x onerror=alert(1)>`, when it renders, then the text is shown as text and no element is created.
 - [ ] Given a data widget that never gets an answer, then it keeps its loader with no error message and no Retry. Given an answer that FrontX rejects, then the widget also keeps its loader.
-- [ ] Given a `grid` showing the first page, when the viewer clicks a sortable header, then one `request_data` is sent with the new `order` and `offset` 0, the current rows stay visible under "Updating", and the new rows replace them when the answer for that request arrives. Given the header of the column that `order` already names first, when the viewer clicks it, then the direction is reversed, and given any other sortable header, then the new `order` has that one member in ascending direction and only that header shows a sort state.
+- [ ] Given a `grid` showing the first page, when the viewer clicks a sortable header, then one `request_data` is sent with `order` set to a list holding one pair `[member, direction]`, `offset` 0 and `total: true`, the current rows stay visible under "Updating", and the new rows replace them when the answer for that request arrives. Given the header of the column whose member is the first item of the first `order` pair, when the viewer clicks it, then the direction is reversed, and given any other sortable header, then the new `order` holds one pair of that member and `"asc"`, and only that header shows a sort state.
 - [ ] Given a `grid` in Busy, when the viewer clicks another sortable header, then a second `request_data` is sent with a newer timestamp, the widget stays in Busy, the answer of the first request is dropped, and the answer of the second ends Busy.
 - [ ] Given the same `grid`, when the viewer uses a page control, then one `request_data` is sent with the new `offset`. When the viewer chooses a page size, then one is sent with the new `limit` and `offset` 0. In each case, an answer whose timestamp is not the latest is dropped.
 - [ ] Given a `grid`, when the viewer resizes a column, then the grid redraws, no `request_data` is sent, and the widget instance is unchanged.
@@ -1189,7 +1252,8 @@ The loader and the busy indicator are announced to assistive technology as a sta
 - [ ] Given a `grid` with `row_color` set to a column whose values are "error", "Error", "unknown", and null, when it renders in the light scope, then the "error" row takes the error token background of the light scope and shows the error icon with its accessible name, and the other rows show no colour and no icon. When the host theme switches to dark, then the "error" row takes the error token background of the dark scope and no request is sent.
 - [ ] Given a `grid` page of 500 rows, when the viewer scrolls from the first row to the last, then only the rows in view are rendered and the view stays responsive in the light and the dark scope (`cpt-frontx-dashboard-nfr-large-table`).
 - [ ] Given a `grid`, when it is inspected, then ARIA grid semantics expose the row count and the row positions of virtualized rows, the sort state of each sortable header, and the sort, page, page size, and resize controls can be operated with the keyboard alone.
-- [ ] Given a `metric_card` whose query sets `time.compare` to `previous_period` and whose answer has `value` and `previous_value`, when it renders, then it shows the trend computed from the two values with a direction icon. Given a null `previous_value`, then it shows the headline and no trend.
+- [ ] Given a `metric_card` whose `timeDimensions[0]` has `compareDateRange` `["this month", "last month"]` and whose answer has `value` 120 and `previous_value` 100, when it renders, then it shows the up direction icon and a change. Given `value` 80, then it shows the down icon, and given `value` 100, the flat icon. The form of the change, absolute or relative, is not checked. Given a null `previous_value`, then it shows the headline and no trend.
+- [ ] Given a `metric_card` whose `timeDimensions[0]` has `granularity` `day` and `compareDateRange` `[["2026-09-01", "2026-09-30"], ["2026-08-01", "2026-08-31"]]`, when it is validated, then it passes. When it renders the answer that `scalar_with_series` fills for it, then the sparkline draws 30 points, one for each day of range 1, and no point for range 2.
 - [ ] Given a `metric_card` with `value_label` "Open alerts", then the caption shows it, and without `value_label` the caption is the measure's title.
 - [ ] Given a `summary_card` with 3 measures, when it renders, then it shows 3 lines in query order, each with the member's title and its formatted value, and a null value as an empty value.
 - [ ] Given a `ranked_list_card` with `value_label` and `secondary_label`, when it renders, then the two headings show these labels. Given a query with one measure, then no secondary value and no secondary heading show.

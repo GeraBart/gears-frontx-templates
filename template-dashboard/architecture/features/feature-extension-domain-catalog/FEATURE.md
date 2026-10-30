@@ -86,13 +86,13 @@ The **dashboards root** is whatever hosts the dashboards: a screen extension of 
 - The generated-extension identifier rule.
 - The owner start: each domain owner registers its domain, runs the GTS file loader, registers the type schemas of the served query families that the data adapter declares, and registers in its own registry the `widgets` manifest and every manifest whose entries a registered widget realization names, consumer packages included. A domain that the registry rejects ends the start with the dashboard-level placeholder.
 - The republication of theme and language on every mount of an owner, before any extension of its domain mounts.
-- The owner's load of a dashboard: the call to "get a dashboard", registration of the delivered types under the delivery rule of the dashboard root types feature, one GTS validation of the dashboard whose failures are attributed to a cell, a larger view or the whole dashboard, the layout checks, the per-widget member-kind checks, cross-checks and served-family check, then creation of the generated extensions. A load that another load has superseded is discarded. The rules themselves stay with the features that define them.
+- The owner's load of a dashboard: the call to "get a dashboard", registration of the delivered types and one GTS validation of the dashboard, applying the delivery and attribution rules of the dashboard root types feature, the layout checks, the cross-checks of the widget catalog (registered members, the time dimension, date pairs, order members, operator kinds and filter values, member kinds, and the grid checks) and the served-family check for each widget, then creation of the generated extensions. A load that another load has superseded is discarded. The rules themselves stay with the features that define them.
 - The return of the dashboards root to its loaded dashboard: its cells mount again from the registered generated extensions, without a second load.
 - The realization precedence applied when the owner creates extensions: the highest weight wins; a tie or no realization gives the cell or larger-view cannot-show.
 - The process by which a domain owner registers generated extensions in its own registry, only when a dashboard loads, and unregisters them.
 - The process by which a domain owner answers a data request: it accepts `request_data`, calls "run a query" on the data adapter with the request unchanged, drops an answer whose data shape differs from the requested one, and sends `set_data` to `reply_to`. The owners keep no widget data and make no backend call.
 - The dashboard-area loader, the static "cannot be shown" placeholder at both levels, and the diagnostics.
-- The cannot-show outcomes of extension creation, each limited to one cell or larger view: no single winning realization, a rejected registration, a member that names no registered instance, a failed mount, or a failed `set_widget_context`. The owner places the placeholder for the widget-level triggers that the widget catalog defines, and for a requested larger-view widget id that is not in the dashboard, including after a refresh.
+- The cannot-show outcomes of extension creation, each limited to one cell or larger view: no single winning realization, a rejected registration, a failed mount, or a failed `set_widget_context`. A member that names no registered instance fails the load-time cross-check of the widget catalog, which owns that check. The owner places the placeholder for the widget-level triggers that the widget catalog defines, and for a requested larger-view widget id that is not in the dashboard, including after a refresh.
 - The states that each owner keeps (section 4).
 - The larger-view modal as a domain owner: the `show_larger_view` handler with the two ids kept in the modal's own subroute, the load of the dashboard when it has not loaded that one, the chain that shows the requested larger-view extension, the restoration after a refresh, the modal's close button, and the modal keeping its loaded dashboard when closed. Its first mount runs the owner start.
 - The chain of the cell widget that opens the larger view: `mount_ext` of the larger-view modal in the shell's `popup` domain, then `show_larger_view`. Both `mount_ext` and `unmount_ext` of the larger-view modal carry `history: "none"`.
@@ -209,13 +209,13 @@ The processes below run in a domain owner, the dashboards root or the larger-vie
 8. [ ] - `p1` - **IF** the data adapter returns no dashboard - `inst-load-if-no-dashboard`
    1. [ ] - `p1` - The loader stays, with no error message and no timeout; this is data that never arrives, not a cannot-show trigger. **RETURN** - `inst-load-no-dashboard`
 9. [ ] - `p1` - Register the delivered types and instances by `cpt-frontx-dashboard-algo-dashboard-root-types-register-delivery`. A dataset type whose query family is not served is skipped with a diagnostic and is not a registration failure; the widgets whose query names it get the widget-level placeholder at step 14 - `inst-load-register-delivery`
-10. [ ] - `p1` - Validate the dashboard by `cpt-frontx-dashboard-algo-dashboard-root-types-validate-dashboard`: one GTS validation of the whole dashboard, which also validates each embedded widget against the type that its `id` names and each embedded query against the dataset that the query's `id` names, followed by the layout checks. A failure whose instance path lies under `layout.cells[i].widget` is attributed to that cell widget, and one under `layout.cells[i].larger_view` to that larger-view widget; every other failure is dashboard-level - `inst-load-validate-dashboard`
+10. [ ] - `p1` - Validate the dashboard by `cpt-frontx-dashboard-algo-dashboard-root-types-validate-dashboard`: one GTS validation of the whole dashboard, followed by the layout checks. That process applies the attribution rule of the dashboard root types feature, which gives each failure to a cell widget, a larger-view widget or the whole dashboard - `inst-load-validate-dashboard`
 11. [ ] - `p1` - **IF** step 9 or step 10 returns a dashboard-level trigger - `inst-load-if-dashboard-trigger`
     1. [ ] - `p1` - Show the dashboard-level placeholder (`cpt-frontx-dashboard-algo-extension-domain-catalog-show-placeholder`), mount no cells, and register nothing. **RETURN** - `inst-load-dashboard-trigger`
 12. [ ] - `p1` - The dashboards root replaces its loader with the cells, placed on the 60-column grid at the positions the layout gives (`cpt-frontx-dashboard-feature-layout-types`) - `inst-load-place-cells`
 13. [ ] - `p1` - Take the widgets of the owner's role: each cell's `widget` for the dashboards root, and each cell's `larger_view` widget, where a cell has one, for the larger-view modal. A validation failure attributed to a widget of the other role does not affect this owner - `inst-load-take-widgets`
 14. [ ] - `p1` - **FOR EACH** widget taken, on its own - `inst-load-for-each-widget`
-    1. [ ] - `p1` - Take the validation failures that step 10 attributed to the widget. Then run the member-kind checks and the cross-checks (`cpt-frontx-dashboard-feature-widget-catalog`) - `inst-load-validate-widget`
+    1. [ ] - `p1` - Take the validation failures that step 10 attributed to the widget. Then run the cross-checks of the widget catalog by `cpt-frontx-dashboard-algo-widget-catalog-cross-check-widget`: registered members, the time dimension, date pairs, order members, operator kinds and filter values, member kinds, and the grid checks - `inst-load-validate-widget`
     2. [ ] - `p1` - For a data widget, check that the data adapter serves the query family in the type chain of the query's `id` (`cpt-frontx-dashboard-feature-data-adapter-contract`) - `inst-load-served-family`
     3. [ ] - `p1` - Select the winning realization by `cpt-frontx-dashboard-algo-extension-domain-catalog-select-realization` - `inst-load-select-realization`
     4. [ ] - `p1` - **IF** the widget has an attributed failure, or any of these steps fails - `inst-load-if-widget-fails`
@@ -298,8 +298,8 @@ An owner registers generated extensions only here, when it loads a dashboard. It
 1. [ ] - `p1` - Set `widget` to the widget instance, unchanged - `inst-context-widget`
 2. [ ] - `p1` - **IF** the widget is a data widget - `inst-context-if-data`
    1. [ ] - `p1` - Read the effective traits of its widget type with the trait helper (`cpt-frontx-dashboard-algo-query-vocabulary-effective-traits`), and copy `data_shape` and `fill` unchanged into the payload - `inst-context-traits`
-   2. [ ] - `p1` - Set `members`: one entry per distinct member id that the query names in `measures`, `dimensions`, `time.dimension`, `filters` and `order`, each with `id`, `title`, `value_type` and, for a measure that has one, `unit`, read from the registered measure or dimension instance - `inst-context-members`
-   3. [ ] - `p1` - **IF** a member id names no registered measure or dimension instance - `inst-context-if-member-missing`
+   2. [ ] - `p1` - Set `members`: one entry per distinct query member. Collect the member ids from `measures`, `dimensions`, `timeDimensions[0].dimension`, each `filters[].member`, and the first item of each `order` pair. Each entry has `id`, `title`, `value_type` and, for a measure that has one, `unit`, read from the registered measure or dimension instance - `inst-context-members`
+   3. [ ] - `p1` - **IF** a member id names no registered measure or dimension instance. This is a guard only. It cannot trigger after the load-time cross-check of the widget catalog, which owns the registered-instance check (`cpt-frontx-dashboard-algo-widget-catalog-cross-check-widget`) - `inst-context-if-member-missing`
       1. [ ] - `p1` - **RETURN** the widget-level trigger "unregistered member", naming the widget and the member id. The owner sends no `mount_ext` for the widget - `inst-context-member-missing`
 3. [ ] - `p1` - **IF** the role is cell and the cell has a `larger_view` widget - `inst-context-if-larger-view`
    1. [ ] - `p1` - Set `larger_view` to the loaded dashboard id as `dashboard` and the larger-view widget's `id` as `widget` - `inst-context-larger-view`
@@ -348,7 +348,7 @@ All chains run in parallel. A `markdown_card` renders right after its context. A
 2. [ ] - `p1` - **IF** `reply_to` is not a mounted generated extension of the owner's domain - `inst-answer-if-unknown-reply-to`
    1. [ ] - `p1` - Drop the request and resolve the handler. **RETURN** - `inst-answer-unknown-reply-to`
 3. [ ] - `p1` - Take the request and resolve the handler at once. The chain step of `request_data` ends here, and the action timeout, or the domain default of 30 000 ms, covers only this time - `inst-answer-accept`
-4. [ ] - `p1` - Outside the chain, call "run a query" on the data adapter with the request payload unchanged: `data`, `data_shape`, `fill`, `reply_to` and `timestamp`. While one call waits, the owner keeps taking and answering other requests - `inst-answer-run-query`
+4. [ ] - `p1` - Outside the chain, call "run a query" on the data adapter with the request payload unchanged: `data` with the `timezone` that the widget set, `data_shape`, `fill`, `reply_to` and `timestamp`. While one call waits, the owner keeps taking and answering other requests - `inst-answer-run-query`
 5. [ ] - `p1` - **IF** the call never returns a data instance - `inst-answer-if-no-data`
    1. [ ] - `p1` - Send nothing; the widget keeps its loader, with no error message and no timeout. **RETURN** - `inst-answer-no-data`
 6. [ ] - `p1` - **IF** `reply_to` is not mounted in the owner's domain when the answer arrives - `inst-answer-if-unmounted`
@@ -498,11 +498,11 @@ The triggers, by level and by the feature that defines them:
 | Dashboard | the owner start failed, because the registry rejected the owner's domain | this feature | Start a Domain Owner, step 4 |
 | Dashboard | GTS rejects a delivered type, other than a dataset type of an unserved query family | `cpt-frontx-dashboard-feature-dashboard-root-types` | Load a Dashboard, step 9 |
 | Dashboard | the dashboard validation fails outside every cell's `widget` and `larger_view`, or the layout fails its checks | `cpt-frontx-dashboard-feature-dashboard-root-types`, `cpt-frontx-dashboard-feature-layout-types` | Load a Dashboard, step 10 |
-| Widget | the dashboard validation fails under the widget's instance path, or the widget fails its member-kind check or its cross-checks | `cpt-frontx-dashboard-feature-dashboard-root-types`, `cpt-frontx-dashboard-feature-widget-catalog` | Load a Dashboard, steps 10 and 14 |
+| Widget | the dashboard validation fails under the widget's instance path, or the widget fails a cross-check of the widget catalog, including a member that names no registered instance | `cpt-frontx-dashboard-feature-dashboard-root-types`, `cpt-frontx-dashboard-feature-widget-catalog` | Load a Dashboard, steps 10 and 14 |
 | Widget | the query family of a data widget is not served, including a delivered dataset type that the owner skipped for it at step 9 | `cpt-frontx-dashboard-feature-data-adapter-contract` | Load a Dashboard, step 14 |
 | Widget | no realization, or a tie at the highest weight, including every widget when the template's GTS file is missing | this feature | Select the Winning Realization |
 | Widget | the registration of the generated extension is rejected | this feature | Register Generated Extensions |
-| Widget | a member that the query names is not a registered measure or dimension instance | this feature | Build the Widget Context |
+| Widget | a member that the query names is not a registered measure or dimension instance, met as a guard only: it cannot trigger after the load-time cross-check, which owns the check | `cpt-frontx-dashboard-feature-widget-catalog` | Build the Widget Context, as a guard |
 | Widget | `mount_ext` fails inside the owner's handler, `set_widget_context` fails, or, in the modal, a leading `unmount_ext` fails | this feature | Mount Cell Widgets, Show a Larger View |
 | Widget | the requested larger-view widget id is not in the loaded dashboard, including after a refresh | this feature | Show a Larger View |
 
@@ -621,11 +621,11 @@ Each domain owner **MUST** register its domain in its own registry with its stra
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-extension-domain-catalog-start-and-load`
 
-Each domain owner **MUST** run the owner start before any dashboard loads, and **MUST** load a dashboard with one call to "get a dashboard", the delivery and validation rules of the dashboard root types feature, and a check of each widget of its role on its own.
+Each domain owner **MUST** run the owner start before any dashboard loads, and **MUST** load a dashboard with one call to "get a dashboard", the delivery, validation and attribution rules of the dashboard root types feature, and a check of each widget of its role on its own.
 
 - The owner start runs the GTS file loader, registers the type schemas that the data adapter's declaration of served query families returns, and registers in the own registry the `widgets` manifest and every manifest whose entries a registered widget realization names, consumer packages included, in every hosting form.
 - A domain that the registry rejects ends the start with the dashboard-level placeholder; a later mount, load or `show_larger_view` shows the same placeholder.
-- The dashboard is checked with one GTS validation and the layout checks. A failure under a cell's `widget` or `larger_view` belongs to that cell or larger view; any other failure is dashboard-level.
+- The dashboard is checked with one GTS validation and the layout checks. Its failures are attributed by the attribution rule of the dashboard root types feature (`cpt-frontx-dashboard-algo-dashboard-root-types-validate-dashboard`).
 - The dashboards root checks only cell widgets, and the larger-view modal only larger-view widgets.
 - A missing dashboard keeps the loader; a load that another load supersedes is discarded after every step that waits and leaves no generated extension registered.
 - A dashboards root that is mounted again with the dashboard id it has loaded mounts its cells again from the registered generated extensions, without a second load.
@@ -657,7 +657,7 @@ Each domain owner **MUST** generate one extension per widget of its role that pa
 - The winning realization is the single registered realization with the highest `weight` for the widget type; no realization or a tie gives the widget-level placeholder, with a diagnostic that names the widget type and the tied realizations.
 - A larger view takes `larger_view_entry` when the winner names one, and `entry` otherwise.
 - The same widget, role and entry always give the same identifier; a different winning entry gives a different identifier; a cell extension and a larger-view extension of the same widget never collide.
-- A rejected registration, a member that names no registered instance, a failed `mount_ext` inside the owner's handler or a failed `set_widget_context` gives that cell or larger view the widget-level placeholder; `mount_ext` is not sent again, and the other cells are unaffected.
+- A rejected registration, a failed `mount_ext` inside the owner's handler or a failed `set_widget_context` gives that cell or larger view the widget-level placeholder; `mount_ext` is not sent again, and the other cells are unaffected.
 - A `mount_ext` failure that FrontX produces outside the owner's handler, such as an action timeout, is a stated known limit: the cell stays empty with no placeholder.
 - Nothing is registered into the shell's registry or an ancestor's registry, on a click, or when a larger view of a loaded dashboard opens.
 
@@ -684,7 +684,7 @@ Each domain owner **MUST** generate one extension per widget of its role that pa
 
 Each domain owner **MUST** send every mounted widget of its domain one `set_widget_context`, right after its `mount_ext` in the same chain. The context **MUST** carry the widget instance, for a data widget its `data_shape`, `fill` and member metadata, and, for a cell widget whose cell defines a larger view, `larger_view` with the dashboard id and the larger-view widget id.
 
-- `data_shape` and `fill` are the effective traits of the widget type, copied unchanged; `members` holds `id`, `title`, `value_type` and an optional `unit` for every distinct member that the query names. A member that names no registered instance is a widget-level trigger before any mount.
+- `data_shape` and `fill` are the effective traits of the widget type, copied unchanged; `members` holds `id`, `title`, `value_type` and an optional `unit` for every distinct query member: the members in `measures` and `dimensions`, the time dimension in `timeDimensions[0].dimension`, every filter member, and the first item of every `order` pair. A member that names no registered instance has already failed the load-time cross-check of the widget catalog, so the context build meets it only as a guard.
 - `larger_view` is present only for a cell widget whose cell defines a larger-view widget, and never for a larger-view widget, so a larger-view widget shows no larger-view button.
 - The context carries no backend detail, no widget data, no theme and no language; theme and language reach the widget only as shared properties.
 - A cell widget and a larger-view widget receive the same action with the same structure, so one entry per widget type serves both domains.
@@ -714,7 +714,7 @@ Each domain owner **MUST** answer every `request_data` from its domain by resolv
 - Before it sends `set_data`, the owner compares the data shape that the data instance's `id` names with the request's `data_shape`, and drops a mismatch with a diagnostic; the widget keeps its loader.
 - A data adapter that answers after longer than the domain's default action timeout causes no timeout, and `set_data` still reaches the widget.
 - A request whose `reply_to` is not a mounted generated extension of the owner's domain is dropped; an answer for a widget that has been unmounted is dropped.
-- The owner keeps no widget data between requests and never edits, merges or caches a request.
+- The owner keeps no widget data between requests and never edits, merges or caches a request. The `timezone` that the widget sets in `data` reaches the data adapter unchanged.
 - A query change, such as a grid sort, page or page size, is answered by the same process.
 
 **Implements**:
@@ -908,7 +908,7 @@ The lifecycle actions are the FrontX actions `gts.frontx.mfes.comm.action.v1~fro
                     "additionalProperties": false,
                     "properties": {
                       "field": { "type": "string", "minLength": 1 },
-                      "from": { "type": "string", "pattern": "^(dimensions\\[(0|[1-9][0-9]*)\\]|measures\\[(0|[1-9][0-9]*)\\]|time)$" }
+                      "from": { "type": "string", "pattern": "^(dimensions\\[(0|[1-9][0-9]*)\\]|measures\\[(0|[1-9][0-9]*)\\]|timeDimensions\\[0\\])$" }
                     }
                   }
                 }
@@ -919,7 +919,7 @@ The lifecycle actions are the FrontX actions `gts.frontx.mfes.comm.action.v1~fro
             },
             "members": {
               "type": "array",
-              "description": "Data widget only: the metadata of every distinct member that the query names.",
+              "description": "Data widget only: the metadata of every distinct query member: the members in measures and dimensions, the time dimension, every filter member, and the first item of every order pair.",
               "items": {
                 "type": "object",
                 "required": ["id", "title", "value_type"],
@@ -1007,7 +1007,8 @@ The lifecycle actions are the FrontX actions `gts.frontx.mfes.comm.action.v1~fro
           "properties": {
             "data": {
               "$ref": "gts://gts.frontx.dashboard_m.data.query.v1~",
-              "description": "The widget's current query, validated against the dataset that its own id names."
+              "required": ["timezone"],
+              "description": "The widget's current query, with timezone set by the widget to the viewer's time zone, validated against the dataset that its own id names."
             },
             "data_shape": {
               "type": "string",
@@ -1030,7 +1031,7 @@ The lifecycle actions are the FrontX actions `gts.frontx.mfes.comm.action.v1~fro
                     "additionalProperties": false,
                     "properties": {
                       "field": { "type": "string", "minLength": 1 },
-                      "from": { "type": "string", "pattern": "^(dimensions\\[(0|[1-9][0-9]*)\\]|measures\\[(0|[1-9][0-9]*)\\]|time)$" }
+                      "from": { "type": "string", "pattern": "^(dimensions\\[(0|[1-9][0-9]*)\\]|measures\\[(0|[1-9][0-9]*)\\]|timeDimensions\\[0\\])$" }
                     }
                   }
                 }
@@ -1061,7 +1062,7 @@ The lifecycle actions are the FrontX actions `gts.frontx.mfes.comm.action.v1~fro
 }
 ```
 
-**Notes**: `fill` repeats the form of `fill` in `set_widget_context` under the sync rule of section 6.1. `timestamp` is strictly increasing per widget, so the widget can tell its latest request from every earlier one. `data` is the widget's local copy of its query: the first request carries the query as the dashboard defines it, and each later one the query after an interaction such as a grid sort, page or page size. The owner passes the whole payload unchanged to "run a query".
+**Notes**: `fill` repeats the form of `fill` in `set_widget_context` under the sync rule of section 6.1. `timestamp` is strictly increasing per widget, so the widget can tell its latest request from every earlier one. `data` is the widget's local copy of its query: the first request carries the query as the dashboard defines it, and each later one the query after an interaction such as a grid sort, page or page size. In each request the widget sets `timezone` in `data` to the viewer's time zone; the authored query has none. The owner passes the whole payload unchanged to "run a query", `timezone` included.
 
 ### 6.3 Template Action: set_data
 
@@ -1419,9 +1420,11 @@ This feature owns the owner side of the 8 runtime DESIGN sequences. The table is
 - [ ] Given a `set_widget_context` payload for a `grid` widget with `widget`, `data_shape`, `fill`, `members` and `larger_view`, when it is validated, then it passes; with `data_shape` but no `fill`, or with an extra payload field, it fails.
 - [ ] Given a `set_widget_context` payload for a `markdown_card` with only `widget`, when it is validated, then it passes.
 - [ ] Given the `fill` trait value of each of the 8 template data widget types, when it is placed as `fill` in a `set_widget_context` payload and in a `request_data` payload, then it validates in both; a `rows_by_member` value without `fields`, or another mode with `fields`, fails in both.
-- [ ] Given a `request_data` whose `target` is not `layout_cells` or `larger_view`, or whose payload misses `reply_to`, when it is validated, then it fails.
+- [ ] Given a `request_data` whose `target` is not `layout_cells` or `larger_view`, whose payload misses `reply_to`, or whose `data` has no `timezone`, when it is validated, then it fails.
+- [ ] Given a `fill` with `from` set to `timeDimensions[0]`, when it is placed in a `set_widget_context` payload and in a `request_data` payload, then it validates in both; a `from` of `time` or `timeDimensions[1]` fails in both.
 - [ ] Given a dashboard with 3 cells whose widgets are of the widget types `grid`, `pie_chart` and `markdown_card`, and only the template's realizations, when the dashboards root loads it, then it calls "get a dashboard" once and registers exactly 3 generated extensions in its own registry, with the identifiers of section 6.9 and `entry` from the template realization of each widget type, and none in any other registry.
 - [ ] Given that dashboard, when its cells mount, then each cell widget receives `set_widget_context` after its `mount_ext` and before any `set_data`, with its own widget instance, and the `grid` and `pie_chart` widgets also with `data_shape`, `fill` and `members`.
+- [ ] Given a `pie_chart` whose query has one measure, one dimension, `timeDimensions[0]` without `granularity`, a filter on a second dimension, and an `order` pair on the measure, when the owner builds its context, then `members` holds exactly one entry each for the measure, the dimension, the time dimension and the filter dimension, with no duplicate for the measure named again in `order`.
 - [ ] Given a cell that defines a larger-view widget and a cell that does not, when both cell widgets receive their context, then only the first carries `larger_view`, with the dashboard id and the larger-view widget id, and only the first shows the larger-view button.
 - [ ] Given the same dashboard loaded twice, and another dashboard loaded in between, when the identifiers are compared, then they are equal for the same widget, role and entry, the extensions of the first dashboard are unregistered before the second is registered, and no collision diagnostic is logged.
 - [ ] Given the template's `grid` realization of weight 1 and a replacement `grid` realization of weight 2, when a dashboard with a `grid` cell loads, then the cell extension takes its `entry` from the replacement and its identifier differs from the one the template realization gives.
@@ -1439,10 +1442,10 @@ This feature owns the owner side of the 8 runtime DESIGN sequences. The table is
 - [ ] Given a dashboard with three cells, one of whose cell widgets has a presentation field that its widget type does not allow, and another of whose larger-view widgets has an invalid query, when the dashboards root loads it, then only the first cell shows the widget-level placeholder and the other two cells mount; when the larger-view modal shows the invalid larger-view widget, the modal shows the widget-level placeholder.
 - [ ] Given a dashboard without `name`, when an owner loads it, then the validation failure lies outside every widget path and the dashboard-level placeholder shows.
 - [ ] Given the dashboards root loading dashboard A, when the viewer opens dashboard B before the data adapter returns A, then A is discarded when it arrives, nothing of A is shown or registered, and B loads.
-- [ ] Given a `grid` cell whose query names a measure id with no registered measure instance, when the dashboards root mounts its cells, then that cell shows the widget-level placeholder with a diagnostic that names the member, no `mount_ext` is sent for it, and the other cells mount.
+- [ ] Given a `grid` cell whose query names a measure id with no registered measure instance, when the dashboards root loads the dashboard, then the widget fails at load (Load a Dashboard, step 14), its cell shows the widget-level placeholder with a diagnostic that names the member, no generated extension is registered and no `mount_ext` is sent for it, and the other cells mount.
 - [ ] Given a data adapter that returns no dashboard, when the dashboards root loads, then the loader stays, with no error message, no Retry and no timeout.
 - [ ] Given a data adapter that answers `request_data` after longer than 30 000 ms, when a data widget requests its data, then the request's chain ends without a timeout and `set_data` reaches the widget with the copied timestamp.
-- [ ] Given a data widget's request, when the owner answers it, then the data adapter receives the payload unchanged and `set_data` is sent as a separate chain to `reply_to`.
+- [ ] Given a data widget's request, when the owner answers it, then the data adapter receives the payload unchanged, including the `timezone` that the widget set in `data`, and `set_data` is sent as a separate chain to `reply_to`.
 - [ ] Given a `request_data` whose `reply_to` is not a mounted generated extension of the owner's domain, when the owner receives it, then it calls nothing and sends nothing.
 - [ ] Given a widget that is unmounted while its request is in flight, when the answer arrives, then the owner sends no `set_data`.
 - [ ] Given a data adapter that answers a `grid` request with a data instance whose `id` names the `pie_chart` data shape, when the owner receives the answer, then it sends no `set_data`, writes a diagnostic that names both data shapes, and the widget keeps its loader.

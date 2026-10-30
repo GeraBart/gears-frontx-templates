@@ -2,7 +2,7 @@
 status: accepted
 date: 2026-10-30
 decision-makers: template-dashboard architecture maintainers
-description: "Decision record for the GTS conventions of the template's domain model: GTS v0.17 as a prerequisite, the dashboard_m model package and the dashboard_v view package, literal base operands for ids of embedded instances, one polymorphic GTS validation per instance, arrays of objects instead of id-keyed maps, the registry access that FrontX offers with a trait helper, and data shape checking through the FrontX validation of the set_data action."
+description: "Decision record for the GTS conventions of the template's domain model: GTS v0.17 as a prerequisite, the dashboard_m model package and the dashboard_v view package, literal base operands for ids of embedded instances, one polymorphic GTS validation per instance, arrays of objects or ordered pairs instead of id-keyed maps, the registry access that FrontX offers with a trait helper, and data shape checking through the FrontX validation of the set_data action."
 ---
 
 # ADR-0003: GTS conventions for the template's types
@@ -50,22 +50,22 @@ Several of these conventions follow from how GTS validates. An instance that is 
 
 * Id operand: a literal base operand in `x-gts-instance-ref`, or the `/$id` operand
 * Validation: one polymorphic validation per instance, or a base-type validation followed by a second step per embedded instance
-* Collections: arrays of objects, or maps keyed by GTS ids
+* Collections: arrays of objects or ordered pairs, or maps keyed by GTS ids
 * Packages: `dashboard_m` and `dashboard_v` with a one-way dependency, or one package
 * GTS version: target GTS v0.17, or interim workarounds on the GTS version FrontX pins
 * Registry access: only the operations FrontX offers with a template trait helper, or a registry listing and effective-trait accessors added to FrontX
 
 ## Decision Outcome
 
-Chosen options: a literal base operand; one polymorphic validation per instance; arrays of objects; the `dashboard_m` and `dashboard_v` packages; GTS v0.17 as a prerequisite; and registry access limited to what FrontX offers with a template trait helper. Each option below states why. Together they let one standard GTS validation check a dashboard and everything embedded in it.
+Chosen options: a literal base operand; one polymorphic validation per instance; arrays of objects or ordered pairs; the `dashboard_m` and `dashboard_v` packages; GTS v0.17 as a prerequisite; and registry access limited to what FrontX offers with a template trait helper. Each option below states why. Together they let one standard GTS validation check a dashboard and everything embedded in it.
 
 * **Literal base operands.** An id field of a type that is embedded in other instances (for example a widget's `id`, or the `id` of a data shape) names its base type as a literal operand in `x-gts-instance-ref`, never `/$id`. The `/$id` operand resolves to the top-level type that is being validated, so an embedded id would be checked against the wrong type. The query's own combined id is decided in [ADR-0012](0012-query-vocabulary-and-datasets-v1.md).
-* **Polymorphic validation.** GTS validates every embedded instance against the derived type named by its own id, even where the property's schema names the base type. Validating a widget therefore also validates its `data` against the type named by `data.id`, and the FrontX validation of a `set_data` action also validates its `data` against the data shape named by `data.id`. No second validation step exists, and the template adds no validation mode of its own: schema validation is done only by GTS through the FrontX GTS plugin. The template runs only a short listed set of cross-checks that JSON Schema cannot express: the grid checks, including that a grid's `limit` is one of its `page_sizes` ([ADR-0005](0005-data-grid-library-v1.md)); that every `order` member is a query member; that every query member names a registered instance, of the kind the widget type's `member_kinds` trait asks for; the layout checks; and the owner's comparison of an answered data instance's shape with the request's `data_shape`. The dashboards root and the larger-view modal validate a dashboard once and attribute each failure by its instance path: a failure under a cell's `widget` belongs to that cell, and a failure under a cell's `larger_view` belongs to that larger view, both at widget level; every other failure belongs to the dashboard as a whole.
-* **No id-keyed maps.** GTS ids are not used as object keys where they need validating. The `x-gts-*-ref` keywords are explicitly covered for string values and array items, while coverage of keys through `propertyNames` is not confirmed. Collections keyed by ids are therefore arrays of objects, and grid rows are positional arrays in canonical member order.
+* **Polymorphic validation.** GTS validates every embedded instance against the derived type named by its own id, even where the property's schema names the base type. Validating a widget therefore also validates its `data` against the type named by `data.id`, and the FrontX validation of a `set_data` action also validates its `data` against the data shape named by `data.id`. No second validation step exists, and the template adds no validation mode of its own: schema validation is done only by GTS through the FrontX GTS plugin. The template runs only a short listed set of cross-checks that JSON Schema cannot express: the grid checks, including that a grid's `limit` is one of its `page_sizes` ([ADR-0005](0005-data-grid-library-v1.md)); that the first item of every `order` pair is a result column, named in `measures` or `dimensions` or the time dimension with a `granularity`; that every query member names a registered instance, of the kind the widget type's `member_kinds` trait asks for; that each filter operator fits its member's kind ([ADR-0012](0012-query-vocabulary-and-datasets-v1.md)); the layout checks; and the owner's comparison of an answered data instance's shape with the request's `data_shape`. The dashboards root and the larger-view modal validate a dashboard once and attribute each failure by its instance path: a failure under a cell's `widget` belongs to that cell, and a failure under a cell's `larger_view` belongs to that larger view, both at widget level; every other failure belongs to the dashboard as a whole.
+* **No id-keyed maps.** GTS ids are not used as object keys where they need validating. The `x-gts-*-ref` keywords are explicitly covered for string values and array items, while coverage of keys through `propertyNames` is not confirmed. Collections keyed by ids are therefore arrays of objects or ordered pairs (the query `order`), and grid rows are positional arrays in canonical member order.
 * **Packages.** `dashboard_m` is the model: the dashboard, the layout, the widgets, the query vocabulary and the data shapes. `dashboard_v` is the view: the actions (`request_data`, `set_data`, `set_widget_context`, `show_larger_view`), the domains, the extension types and the widget realizations. Ids look like `gts.frontx.dashboard_m.*` and `gts.frontx.dashboard_v.*`, with chained segments for derived types, for example `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~`. The prefixes `frontx.dashboard_m` and `frontx.dashboard_v` keep template ids apart from FrontX's own `gts.frontx.mfes.*` ids and from the packages of other templates. `dashboard_v` depends on `dashboard_m` only, never the reverse. Widget types reference data shapes inside `dashboard_m`; actions and realizations reference `dashboard_m` types.
 * **GTS v0.17 and a realm-shared type store.** FrontX runs GTS v0.17 and provides the realm-shared GTS type store (FrontX gts-plugin ADR-0001) as the platform prerequisite. The store is needed because nested owners validate chains that reference definitions registered by the shell. The template targets both without interim workarounds.
-* **Registry access.** The template uses only what FrontX offers: register schema, get schema, register and validate instance, and type check. Widget realization instances come from the template's GTS file, a JSON file of GTS types and instances that no MFE manifest carries, starting with the widget realizations. The dashboards root and the larger-view modal fetch it at start and register it before any dashboard loads, and a product edits its copy of the file to add replacement realizations. Vocabulary instances are delivered with the dashboard ([ADR-0012](0012-query-vocabulary-and-datasets-v1.md)), and their member metadata (`id`, `title`, `value_type`, `unit`) reaches widgets in `set_widget_context` ([ADR-0007](0007-extension-domain-taxonomy-v1.md)). A small template trait helper resolves a type's effective traits: it gets the schemas along the type's `$id` chain with `getSchema` and merges their traits with RFC 7396. The dashboards root and the larger-view modal use it to select realizations and to validate widgets, and the data adapter ([ADR-0011](0011-data-adapter-v1.md)) may use it on dataset types.
-* **Data shape checking.** The data instance of a `set_data` action carries a combined id `<data shape type>~<uuid>`. FrontX validates every action instance against its schema, so its polymorphic validation applies the exact data shape. Widgets never compare shapes. Measure values in a data instance may be `null`, and a widget renders a `null` as a gap or an empty value. Data shapes and widget types are decided in [ADR-0009](0009-subject-agnostic-widget-catalog-v1.md); the actions and domains in [ADR-0007](0007-extension-domain-taxonomy-v1.md).
+* **Registry access.** The template uses only what FrontX offers: register schema, get schema, register and validate instance, and type check. Widget realization instances come from the template's GTS file, a JSON file of GTS types and instances that no MFE manifest carries, starting with the widget realizations. The dashboards root and the larger-view modal fetch it at start and register it before any dashboard loads, and a product edits its copy of the file to add replacement realizations. Vocabulary instances are delivered with the dashboard ([ADR-0012](0012-query-vocabulary-and-datasets-v1.md)), and their member metadata (`id`, `title`, `value_type`, `unit`) reaches widgets in `set_widget_context` ([ADR-0007](0007-extension-domain-taxonomy-v1.md)). A small template trait helper resolves a type's effective traits. It has a stable signature, because product data adapter code calls it. The registry access it uses is handed over by the data adapter interface for each owner runtime, with no global singleton ([ADR-0010](0010-template-packages-and-host-contract-v1.md), [ADR-0011](0011-data-adapter-v1.md)). It gets the schemas along the type's `$id` chain with `getSchema` and merges their traits with RFC 7396. The dashboards root and the larger-view modal use it to select realizations and to validate widgets, and the data adapter ([ADR-0011](0011-data-adapter-v1.md)) may use it on dataset types.
+* **Data shape checking.** The data instance of a `set_data` action carries a combined id `<data shape type>~<uuid>`. FrontX validates every action instance against its schema, so its polymorphic validation applies the exact data shape. Widgets never compare shapes. Measure values in a data instance may be `null`, and a widget renders a `null` as a gap or an empty value. Dimension values may be `null` too, and a widget shows them as an empty label ([ADR-0009](0009-subject-agnostic-widget-catalog-v1.md)). Data shapes and widget types are decided in [ADR-0009](0009-subject-agnostic-widget-catalog-v1.md); the actions and domains in [ADR-0007](0007-extension-domain-taxonomy-v1.md).
 
 ### Consequences
 
@@ -75,6 +75,7 @@ Chosen options: a literal base operand; one polymorphic validation per instance;
 * Good, because widgets need no code to check the shape of the data they receive.
 * Bad, because a dashboard that mentions long chained ids is verbose, and array collections need a per-instance check that position and member align.
 * Bad, because the template cannot be validated end to end while FrontX runs an older GTS version.
+* Bad, because GTS v0.17 may not check `x-gts-instance-ref` inside `prefixItems`, so the first item of an `order` pair may go unchecked by GTS. Mitigation: the dataset enum on the pair's first item and the owner cross-check.
 * Bad, because without a registry listing, whatever the dashboards root needs must be delivered to it, which adds delivery steps.
 
 ### Confirmation
@@ -85,6 +86,7 @@ Chosen options: a literal base operand; one polymorphic validation per instance;
 * A dependency check confirms that no `dashboard_m` schema references a `dashboard_v` id.
 * A review confirms that no schema declares an object whose keys are GTS ids.
 * A `set_data` test sends data whose id names a different data shape than the widget's and confirms that FrontX rejects the action.
+* A test with an `order` pair whose first item is not a registered instance confirms that it is rejected, and records whether GTS or the owner cross-check rejected it.
 * A test of the trait helper confirms that effective traits equal the RFC 7396 merge of the traits along the `$id` chain.
 
 ## Pros and Cons of the Options
@@ -121,13 +123,15 @@ Polymorphic validation: one standard validation per instance, in which GTS appli
 
 ### Collections that need id validation
 
-Arrays of objects: a collection is an array whose items carry the id as a string field. Id-keyed maps: a collection is an object whose keys are GTS ids.
+Arrays of objects or ordered pairs: a collection is an array whose items carry the id as a string field, or, for the query `order`, an array of pairs whose first item is the id. Id-keyed maps: a collection is an object whose keys are GTS ids.
 
-**Arrays of objects**
+**Arrays of objects or ordered pairs**
 
 * Good, because arrays place ids at string values, which `x-gts-*-ref` keywords explicitly cover.
 * Good, because positional grid rows avoid repeating long ids in each row.
+* Good, because the pair form `[member, direction]` keeps the order of the query's sort keys without an id as a key.
 * Bad, because the alignment of position and member must be checked for each instance.
+* Bad, because the check of a GTS instance reference inside `prefixItems` is unconfirmed. Mitigation: the dataset enum on the pair's first item and the owner cross-check.
 
 **Id-keyed maps**
 
@@ -185,9 +189,10 @@ Only what FrontX offers, with a template trait helper. Extended access: FrontX a
 **Open questions.**
 
 * **Reference existence (lookup mode).** GTS v0.17 leaves the check that a referenced instance exists to a lookup mode (`none`, `any-present`, `any-valid`). It is open which mode FrontX's v0.17 GTS plugin uses and whether the dashboards root can select `any-present`. The answer comes from checking FrontX's v0.17 GTS plugin.
+* **Ordered pairs.** The query `order` is a list of ordered pairs, written with `prefixItems`. GTS v0.17 may check `x-gts-instance-ref` inside `prefixItems` or may not; this is unconfirmed. The answer comes from checking FrontX's v0.17 GTS plugin.
 * **Store growth.** If validation of dashboards and of every action registers instances in the GTS store, which has no removal, the store grows with each dashboard load and each action. The answer comes from checking the v0.17 GTS plugin API.
 
-**Review trigger.** Revisit if FrontX's v0.17 plugin does not validate embedded instances against the type their own id names, if it cannot check that referenced instances exist, or if validation makes the GTS store grow without bound.
+**Review trigger.** Revisit if FrontX's v0.17 plugin does not validate embedded instances against the type their own id names, if it cannot check that referenced instances exist, if GTS v0.17 cannot check `x-gts-instance-ref` inside `prefixItems`, or if validation makes the GTS store grow without bound.
 
 **Scope.** This record decides the GTS conventions listed above. It does not decide:
 
@@ -209,5 +214,5 @@ This decision directly addresses the following requirements or design elements:
 * `cpt-frontx-dashboard-interface-domain-model` — consumers validate written or generated dashboards against the registered template types, and the model package does not depend on the view package.
 * `cpt-frontx-dashboard-fr-widget-catalog` — widget types derive from the widget base in `dashboard_m`, and an embedded widget is validated against the type its own id names.
 * `cpt-frontx-dashboard-principle-gts-contracts` — dashboards, widgets, data and widget realizations are GTS v0.17 types, validated polymorphically through FrontX.
-* `cpt-frontx-dashboard-constraint-gts-id-convention` — package segments, literal base operands, combined instance ids and arrays of objects instead of id-keyed maps.
+* `cpt-frontx-dashboard-constraint-gts-id-convention` — package segments, literal base operands, combined instance ids, and arrays of objects or ordered pairs instead of id-keyed maps.
 * `cpt-frontx-dashboard-interface-widget-realization` — realization types live in `dashboard_v` and reference `dashboard_m` types.

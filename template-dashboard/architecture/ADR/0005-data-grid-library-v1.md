@@ -2,7 +2,7 @@
 status: accepted
 date: 2026-10-30
 decision-makers: template-dashboard architecture maintainers
-description: "Decision record for the library behind the grid widget type: TanStack Table as a typed column and row model with virtualized rows, showing one page of up to 500 rows that the data adapter delivers; sorting and paging are query changes, and the grid keeps frozen columns, column groups, alignment, row colour and local column resizing keyed by query member."
+description: "Decision record for the library behind the grid widget type: TanStack Table as a typed column and row model with virtualized rows, showing one page of up to 500 rows that the data adapter delivers; sorting and paging are query changes, and the grid keeps frozen columns, column groups, alignment, row colour and local column resizing keyed by member."
 ---
 
 # ADR-0005: Data grid library
@@ -31,17 +31,17 @@ description: "Decision record for the library behind the grid widget type: TanSt
 
 ## Context and Problem Statement
 
-The `grid` widget type shows tabular data. Its data is the grid's data shape, which the data adapter fills with the `positional_table` fill mode: `rows`, each a positional array of values in the canonical member order of its query, and `total`, the row count across all pages ([ADR-0009](0009-subject-agnostic-widget-catalog-v1.md), [ADR-0012](0012-query-vocabulary-and-datasets-v1.md)). The grid's configuration lists its displayed columns, and each column names one query member in `columns[].member`, and `columns` lists every query member exactly once. A column's value is the entry of each row at the position of its member in the canonical member order.
+The `grid` widget type shows tabular data. Its data is the grid's data shape, which the data adapter fills with the `positional_table` fill mode: `rows`, each a positional array of values in the canonical member order of its query, and `total`, the row count across all pages ([ADR-0009](0009-subject-agnostic-widget-catalog-v1.md), [ADR-0012](0012-query-vocabulary-and-datasets-v1.md)). The grid's configuration lists its displayed columns, and each column names one member in `columns[].member`, and `columns` lists every result column exactly once, that is every member in the canonical member order. A column's value is the entry of each row at the position of its member in the canonical member order.
 
-The grid always shows one page. The browser holds only that page, never the whole result. Sorting and paging are query changes: a click on a sortable column header, a page control or a new page size changes the widget's local copy of its query (`order`, `limit` and `offset`), which is never saved, and the widget sends `request_data`. While it waits for the answer, the grid keeps its current rows under the busy state that [ADR-0011](0011-data-adapter-v1.md) decides, and it applies only the answer whose timestamp equals its latest request (decided there as well). A widget is a passive renderer: it makes no call to a backend and only renders what `set_data` delivers.
+The grid always shows one page. The browser holds only that page, never the whole result. Sorting and paging are query changes: a click on a sortable column header, a page control or a new page size changes the widget's local copy of its query (`order`, `limit` and `offset`), which is never saved. The grid query always has `total: true`, so every answer carries `total`, and the widget sends `request_data`. While it waits for the answer, the grid keeps its current rows under the busy state that [ADR-0011](0011-data-adapter-v1.md) decides, and it applies only the answer whose timestamp equals its latest request (decided there as well). A widget is a passive renderer: it makes no call to a backend and only renders what `set_data` delivers.
 
-The grid has presentation features that refer to query members, not to result columns: frozen leading columns, grouped column headings, column alignment and row colouring. The viewer may also resize columns. Resizing redraws locally, sends no request, and is never saved. In FrontX each MFE instance is isolated, so every grid widget instance evaluates its own copy of whatever library the grid uses.
+The grid has presentation features that refer to columns by member id, not by row position: frozen leading columns, grouped column headings, column alignment and row colouring. The viewer may also resize columns. Resizing redraws locally, sends no request, and is never saved. In FrontX each MFE instance is isolated, so every grid widget instance evaluates its own copy of whatever library the grid uses.
 
 Which library, if any, renders the `grid` widget type?
 
 Constraints that apply to every option:
 
-* The grid shows one page of up to 500 rows. This ADR decides the `page_sizes` rule: `page_sizes` is required, its largest value is at most 500, and the query's `limit` is at most the largest `page_sizes` value. The large-table requirement applies per page: a page of up to 500 rows renders and scrolls smoothly (`cpt-frontx-dashboard-nfr-large-table`).
+* The grid shows one page of up to 500 rows. This ADR decides the `page_sizes` rule: `page_sizes` is required, its largest value is at most 500, and the query's `limit` is at most the largest `page_sizes` value. The grid query requires `total: true`. The large-table requirement applies per page: a page of up to 500 rows renders and scrolls smoothly (`cpt-frontx-dashboard-nfr-large-table`).
 * The browser does not sort, group, filter or page rows itself. Order and page come from the data adapter through the query. Column resizing is the only interaction that stays in the browser.
 * Every feature used must be available under a permissive (MIT-compatible) license.
 * Cells show their value as text, formatted by the column's number format; there are no cell renderers. Cell content stays DOM, so it remains reachable for screen readers.
@@ -73,17 +73,16 @@ Chosen option: "TanStack Table (headless)", because it combines full rendering c
 
 **Data and columns.** The `grid` widget type uses TanStack Table v8 as a typed column and row model for rendering. The grid shell builds one column definition per entry of `columns`. Each definition reads its value from the row array at the position of its member in the canonical member order of the widget's query, so the positional rows need no conversion. The shell keeps the rows in the delivered order. The library's own sorting, grouping, filtering and pagination features are not used, because order and page come from the data adapter. Its column sizing feature is used for resizing only.
 
-**Sorting and paging are query changes.** A click on the header of a column whose `sortable` is true sets `order` in the widget's local copy of its query to that member and a direction, and resets `offset` to 0. A page control sets `offset`. A new page size from `page_sizes` sets `limit` and resets `offset` to 0. Each change sends `request_data` with a new timestamp. While the request is open, the grid keeps its current rows under the busy state of [ADR-0011](0011-data-adapter-v1.md). The pager shows the position in the result from `offset`, the number of rows on the page and `total`. A page size is always offered, by the `page_sizes` rule above. The larger view of a grid is its own grid widget with its own query, and it sorts and pages the same way.
+**Sorting and paging are query changes.** A click on the header of a column whose `sortable` is true sets `order` in the widget's local copy of its query to a list holding one pair `[member, direction]`, where the direction is `"asc"` or `"desc"`, and resets `offset` to 0. A page control sets `offset`; paging is by `limit` and `offset`. A new page size from `page_sizes` sets `limit` and resets `offset` to 0. Each change sends `request_data` with a new timestamp. While the request is open, the grid keeps its current rows under the busy state of [ADR-0011](0011-data-adapter-v1.md). The pager shows the position in the result from `offset`, the number of rows on the page and `total`. A page size is always offered, by the `page_sizes` rule above. The larger view of a grid is its own grid widget with its own query, and it sorts and pages the same way.
 
-**Grid checks.** This ADR decides the grid feature fields (`frozen_columns`, `column_groups`, `columns[].align`, `row_color`) and the paging behaviour. JSON Schema cannot express the following checks, so the owner of the widget's domain (the dashboards root for a cell widget, the larger-view modal for a larger-view widget) runs them at load. A failure gives the cell's, or the larger view's, cannot-show state ([ADR-0011](0011-data-adapter-v1.md)):
+**Grid checks.** This ADR decides the grid feature fields (`frozen_columns`, `column_groups`, `columns[].align`, `row_color`) and the paging behaviour. The owner of the widget's domain runs the cross-checks at load, by the algorithm `cpt-frontx-dashboard-algo-widget-catalog-cross-check-widget` of the widget catalog FEATURE. A failure gives the cannot-show state ([ADR-0011](0011-data-adapter-v1.md)). The grid decisions the checks enforce are:
 
-* every `order[].member` is a query member;
-* `columns[].member` covers each query member exactly once;
+* `columns[].member` covers every member in the canonical member order exactly once;
 * `column_groups[].members` and `row_color` name grid columns, the members of one column group are contiguous columns, no column is named by two groups, and no member repeats within one group;
 * `sortable` is true only for members that the dataset allows in `order`;
-* `limit` is at most the largest value of `page_sizes`, and `data.limit` is one of the `page_sizes` values.
+* `data.limit` is one of the `page_sizes` values.
 
-**Presentation features keyed by query member.**
+**Presentation features keyed by member.**
 
 * `frozen_columns` is the number of leading columns that stay visible during horizontal scrolling.
 * `column_groups` is a list of `{title, members}`. The shell shows each title above its contiguous columns, which are named by member. Grouping only labels the header and never reorders or collapses rows.
@@ -106,6 +105,7 @@ Chosen option: "TanStack Table (headless)", because it combines full rendering c
 * Bad, because virtualization adds a second small library, and off-screen rows are not in the DOM. Mitigation: it is the TanStack virtualizer, used only inside the grid shell.
 * Bad, because the library's sorting, grouping, filtering and pagination APIs are present but must stay unused. Mitigation: the grid shell exposes no props for them, and code review rejects their use.
 * Bad, because each sort or page change waits for a data adapter answer, so a slow data adapter shows as a longer busy indicator. Mitigation: the grid keeps its current rows visible while it waits.
+* Bad, because `total: true` on every page and every sort change costs a row count per request. Mitigation: the data adapter may cache the count per query.
 * Bad, because AI tools sometimes produce the old React Table v7 API. Mitigation: AI guidance for the template names version 8.
 
 ### Confirmation
@@ -116,7 +116,7 @@ Confirmed by code review and by checks on the `grid` widget:
 * Cells show their value as text, and no column configuration selects a cell renderer.
 * Each column definition reads the value of its member by position in the canonical member order, and rows keep the delivered order.
 * A page of 500 rows renders only the rows in view and scrolls smoothly in the light and the dark kit scope. A grid whose `page_sizes` is missing, or whose largest value exceeds 500, or whose `data.limit` exceeds the largest value or is not one of the `page_sizes` values, or in which a column is named by two groups or a member repeats within one group, is rejected as invalid by the `page_sizes` rule and the grid checks above, and a test for each grid check confirms that a failing widget gets the cannot-show state.
-* A click on a sortable header sends one `request_data` with the new `order` and `offset` 0. A page control sends one with the new `offset`. A new page size sends one with the new `limit` and `offset` 0. During each request the current rows stay visible under a busy indicator, and an answer whose timestamp is not the latest is dropped.
+* A click on a sortable header sends one `request_data` with the new `order` pair and `offset` 0. The grid query of every request has `total: true`. A page control sends one with the new `offset`. A new page size sends one with the new `limit` and `offset` 0. During each request the current rows stay visible under a busy indicator, and an answer whose timestamp is not the latest is dropped.
 * Resizing a column redraws the grid and sends no request. Presentation fields in the widget instance stay as authored.
 * A row with a colour shows an icon with an accessible name, and no row meaning rests on colour alone.
 * Frozen columns, grouped column headings, alignment and row colours render as configured, with members named in `columns`, `column_groups` and `row_color`.
@@ -184,7 +184,7 @@ The widget renders a plain `<table>` from its configuration and its page of rows
 
 ## More Information
 
-* This ADR covers the grid library, how the grid pages and sorts, and the grid features keyed by query member. Chart rendering is a separate decision ([ADR-0004](0004-charting-library-v1.md)). The grid's query limits, its data shape and its fields `columns` and `page_sizes` are decided in [ADR-0009](0009-subject-agnostic-widget-catalog-v1.md), and this ADR decides the grid feature fields and the paging behaviour; the canonical member order is decided in [ADR-0012](0012-query-vocabulary-and-datasets-v1.md); the request and answer steps and the loader, busy and empty states are decided in [ADR-0011](0011-data-adapter-v1.md).
+* This ADR covers the grid library, how the grid pages and sorts, and the grid features keyed by member. Chart rendering is a separate decision ([ADR-0004](0004-charting-library-v1.md)). The grid's query limits, its data shape and its fields `columns` and `page_sizes` are decided in [ADR-0009](0009-subject-agnostic-widget-catalog-v1.md), and this ADR decides the grid feature fields and the paging behaviour; the canonical member order is decided in [ADR-0012](0012-query-vocabulary-and-datasets-v1.md); the request and answer steps and the loader, busy and empty states are decided in [ADR-0011](0011-data-adapter-v1.md).
 * Evolution path: the grid shell hides TanStack Table behind typed props. If the library changes, only the shell changes, and grid widget configurations stay the same.
 * Review trigger: the measured benefit of the typed column model does not outweigh the library cost (the no-library option becomes preferable); the page size limit of 500 rows is raised above what virtualized rendering handles smoothly; a TanStack Table major version forces a large shell rewrite; the measured size or evaluation cost exceeds the figures of DESIGN section 3.9, which are provisional and confirmed by measurement.
 * Row order is the delivered order of the page's rows, and the grid never reorders, collapses or groups them. Grouped column headings only label contiguous columns in the header.
@@ -195,7 +195,7 @@ The widget renders a plain `<table>` from its configuration and its page of rows
   * SEC: N/A, because the grid library renders a page already in browser memory, with no auth or storage of its own.
   * REL: N/A, because the grid library has no external dependency; a data request that gets no answer keeps the busy indicator, as [ADR-0011](0011-data-adapter-v1.md) defines.
   * DATA: N/A, because the grid reads its page and persists nothing; the local copy of the query and resized widths are never saved.
-  * INT: applicable, the grid consumes `positional_table` through its own typed props and maps columns to query members; the library adds no external API.
+  * INT: applicable, the grid consumes `positional_table` through its own typed props and maps columns to members; the library adds no external API.
   * OPS: N/A, because the template has no deployed service; the consuming product owns operations.
   * MAINT: applicable, the shell hides the library, and AI guidance names version 8.
   * TEST: applicable, see Confirmation.

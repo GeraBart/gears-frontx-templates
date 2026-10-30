@@ -128,7 +128,7 @@ Business success metrics are not set at template level. The template is a buildi
 ### 3.1 Module-Specific Environment Constraints
 
 - The template runs only in a FrontX application that already contains `template-shell`, and it depends on `template-shell` only.
-- The template needs a FrontX platform version that supports the type-system features it relies on (GTS version 0.17).
+- The template needs a FrontX platform version that supports the type-system features it relies on.
 
 ## 4. Scope
 
@@ -336,7 +336,7 @@ The system **MUST** keep one page of a table shown in the grid widget, of up to 
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-nfr-compatibility`
 
-The template **MUST** work on a FrontX platform version that supports the type-system features it relies on (GTS version 0.17) and shares registered type definitions across the whole application, and **MUST** depend on `template-shell` only.
+The template **MUST** work on a FrontX platform version that supports the type-system features it relies on and shares registered type definitions across the whole application, and **MUST** depend on `template-shell` only.
 
 **Threshold**: An application built on `template-shell`, on a FrontX platform version that supports those type-system features, shows a dashboard with the template, and the template needs no other template. A larger view additionally needs the host's modal window (section 11).
 
@@ -412,7 +412,7 @@ The template **MUST** ship a consumer guide that explains how to describe the da
 
 ## 7. Public Library Interfaces
 
-The template publishes one public surface, its domain model. It also offers two consumer-facing extension points: the data adapter that the consuming product supplies (`cpt-frontx-dashboard-fr-data-adapter`), and a widget that a consuming product can supply for one of the template's widget types (`cpt-frontx-dashboard-fr-replacement-widget`). It has two integration needs: the host application provides a place for the dashboards root and, for the larger view, a modal window, and the consuming product provides the dashboards and the data they show through its data adapter.
+The template publishes one public surface, its domain model. It also offers two product-supplied implementations: the data adapter that the consuming product supplies (`cpt-frontx-dashboard-fr-data-adapter`), and a widget that a consuming product can supply for one of the template's widget types (`cpt-frontx-dashboard-fr-replacement-widget`). It has two integration needs: the host application provides a place for the dashboards root and, for the larger view, a modal window, and the consuming product provides the dashboards and the data they show through its data adapter.
 
 ### 7.1 Public API Surface
 
@@ -438,7 +438,7 @@ The template publishes one public surface, its domain model. It also offers two 
 
 **Protocol/Format**: Product-level need only: the host provides a place for the dashboards root and, for the larger view, the modal window described in section 11. The technical form is defined in the DESIGN.
 
-**Compatibility**: Needed from `template-shell`, and from applications built from it, on a FrontX platform version that supports the type-system features the template relies on (GTS version 0.17).
+**Compatibility**: Needed from `template-shell`, and from applications built from it, on a FrontX platform version that supports the type-system features the template relies on.
 
 #### Dashboards and Data Provided Through the Data Adapter
 
@@ -538,7 +538,7 @@ The template publishes one public surface, its domain model. It also offers two 
 - [ ] A ranked list card can show a secondary value, a progress list card shows the current value against a target, a cartesian chart can show several measures, and a metric card can show a trend against the previous period.
 - [ ] A widget that has a data definition shows everything it defines, with nothing shortened or hidden. A widget without a data definition, such as the markdown card, shows its own content.
 - [ ] A markdown card shows typical markdown (CommonMark, with links and images) as formatted text, and shows any HTML embedded in its text as plain text, never rendered.
-- [ ] The template works on a FrontX platform version that supports the type-system features it relies on (GTS version 0.17), in an application built on `template-shell`, with no other template dependency. A larger view works on a host that provides the modal window (section 11).
+- [ ] The template works on a FrontX platform version that supports the type-system features it relies on, in an application built on `template-shell`, with no other template dependency. A larger view works on a host that provides the modal window (section 11).
 - [ ] In any dashboard, the way to open the larger view, the larger view, and the grid's sort, page, page size and column resize controls can be operated with the keyboard alone and pass the host accessibility checks, and no widget conveys meaning by color alone.
 - [ ] The template ships a consumer guide that covers how to describe dashboards and datasets, the vocabulary of measures and dimensions, how to write the data adapter and what it must provide, how to check, before a dashboard is shown, whether the template can show it in full, that every viewer who may see a dashboard must be able to get the data of its widgets, that the data adapter owns backend errors and access, what the host must provide, how to replace how a widget type is shown with the consuming product's own widget and what that widget must keep, and who owns dashboard and data size.
 - [ ] The limitations in section 6.3 are visible in the documentation.
@@ -548,7 +548,7 @@ The template publishes one public surface, its domain model. It also offers two 
 | Dependency | Description | Criticality |
 |------------|-------------|-------------|
 | `template-shell` | Provides the place where the dashboards root is shown and the base application. The only template dependency. | p1 |
-| FrontX platform | The application framework and the design-system look (colors, typography, spacing). The version used supports the type-system features the template relies on (GTS version 0.17) and shares registered type definitions across the whole application. | p1 |
+| FrontX platform | The application framework and the design-system look (colors, typography, spacing). The version used supports the type-system features the template relies on and shares registered type definitions across the whole application. | p1 |
 | Consuming product data adapter and backend | The data adapter provides the dashboards and answers the widgets' data requests, using the product's backend. Every viewer who may see a dashboard can get the data of its widgets. The data adapter owns backend errors and access. | p1 |
 | Host modal window | The host application provides a modal window over the page that keeps keyboard focus inside while it is open, closes when the viewer clicks outside it, and closes when the larger view asks to close. Without it, the larger view cannot be shown; the rest of the dashboard works. | p2 |
 | Host accessibility policy | The host application's accessibility policy and checks, which every widget and control follows (`cpt-frontx-dashboard-nfr-accessibility`). | p2 |
@@ -556,7 +556,7 @@ The template publishes one public surface, its domain model. It also offers two 
 ## 11. Assumptions
 
 - The consuming application is built on `template-shell`.
-- The FrontX platform version in use supports the type-system features the template relies on (GTS version 0.17) and shares registered type definitions across the whole application.
+- The FrontX platform version in use supports the type-system features the template relies on and shares registered type definitions across the whole application.
 - The consuming product supplies a data adapter that meets its dependency in section 10: it provides the dashboards and answers the data requests of their widgets, and every viewer who may see a dashboard can get the data of its widgets.
 - A consuming product that generates dashboards makes sure, before it shows each one, that the template can show it in full.
 - The host application provides a modal window over the page that keeps keyboard focus inside while it is open, closes when the viewer clicks outside it, and closes when the larger view asks to close. Without it, the larger view cannot be shown; the rest of the dashboard works.
