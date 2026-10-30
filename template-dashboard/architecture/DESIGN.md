@@ -328,6 +328,203 @@ The `layout_cells` and `larger_view` domain identifiers and the larger-view moda
 - Widget realization → MFE entry: `entry` for a cell and for the larger view, or `larger_view_entry` for the larger view when it is named.
 - Domain → Generated extension: `layout_cells` holds one generated extension per cell widget; `larger_view` holds one per larger-view widget of the loaded dashboard.
 
+The diagram shows the template's GTS types by package, their type chains and the references between them. It draws the main fields by name; types and full schemas are in the FEATURE documents. Instances (generated extensions, data instances, the template's widget realizations) are described in the Relationships list and are not drawn.
+
+Legend (Mermaid class diagrams have no native legend):
+
+- A solid line with a filled diamond is an embedded object.
+- A solid line with a hollow triangle is a derivation in the GTS type chain.
+- A dotted line with a hollow triangle means the node is an instance of that type.
+- A dotted arrow means the field names a type or an instance id, or carries a value checked against that type.
+- `external` is a FrontX base type outside the template.
+- `product` is a type the consuming product supplies.
+
+```mermaid
+classDiagram
+    direction LR
+
+    class FrontXActionBase["FrontX action base"] {
+        <<external>>
+    }
+    class FrontXDomainBase["FrontX domain base"] {
+        <<external>>
+    }
+    class FrontXExtensionBase["FrontX extension base"] {
+        <<external>>
+    }
+    class FrontXMfeEntry["FrontX MFE entry"] {
+        <<external>>
+    }
+
+    class QueryFamily {
+        <<product>>
+    }
+    class Dataset {
+        <<product>>
+    }
+
+    namespace dashboard_m {
+        class Dashboard {
+            id
+            name
+            description
+        }
+        class Layout {
+            columns
+        }
+        class LayoutCell {
+            x
+            y
+            w
+            h
+        }
+        class Widget {
+            <<abstract>>
+            id
+            title
+        }
+        class MarkdownCard
+        class DataWidget {
+            <<abstract>>
+            data
+            trait data_shape
+            trait fill
+            trait member_kinds
+        }
+        class DataWidgetTypes["8 data widget types"] {
+            summary_card
+            metric_card
+            ranked_list_card
+            progress_list_card
+            grid
+            cartesian_chart
+            pie_chart
+            heatmap
+        }
+        class Query {
+            <<abstract>>
+            id
+            measures
+            dimensions
+            timeDimensions
+            filters
+            order
+            limit
+            offset
+            total
+            timezone
+        }
+        class Measure {
+            <<abstract>>
+            id
+            title
+            value_type
+            unit
+        }
+        class Dimension {
+            <<abstract>>
+            id
+            title
+            value_type
+        }
+        class WidgetData {
+            <<abstract>>
+            id
+        }
+        class DataShapes["8 data shapes"] {
+            summary_card
+            metric_card
+            ranked_list_card
+            progress_list_card
+            grid
+            cartesian_chart
+            pie_chart
+            heatmap
+        }
+    }
+
+    namespace dashboard_v {
+        class SetWidgetContext["set_widget_context"] {
+            widget
+            larger_view
+            data_shape
+            fill
+            members
+        }
+        class RequestData["request_data"] {
+            data
+            data_shape
+            fill
+            reply_to
+            timestamp
+        }
+        class SetData["set_data"] {
+            data
+            timestamp
+        }
+        class ShowLargerView["show_larger_view"] {
+            dashboard
+            widget
+        }
+        class LayoutCellsDomain["layout_cells domain"] {
+            <<instance>>
+        }
+        class LargerViewDomain["larger_view domain"] {
+            <<instance>>
+        }
+        class LayoutCellsExtension["layout_cells extension type"]
+        class LargerViewExtension["larger_view extension type"]
+        class WidgetRealization {
+            id
+            widget_type
+            entry
+            larger_view_entry
+            weight
+        }
+    }
+
+    Dashboard *-- Layout : layout
+    Layout *-- "0..*" LayoutCell : cells
+    LayoutCell *-- "1" Widget : widget
+    LayoutCell *-- "0..1" Widget : larger_view
+
+    Widget <|-- MarkdownCard
+    Widget <|-- DataWidget
+    DataWidget <|-- DataWidgetTypes
+
+    DataWidget *-- Query : data
+    Query <|-- QueryFamily
+    QueryFamily <|-- Dataset
+    Query ..> Measure : measures, order, filters (by instance id)
+    Query ..> Dimension : dimensions, timeDimensions, order, filters (by instance id)
+
+    WidgetData <|-- DataShapes
+    DataWidgetTypes ..> DataShapes : data_shape (one per type, same name)
+
+    FrontXActionBase <|-- SetWidgetContext
+    FrontXActionBase <|-- RequestData
+    FrontXActionBase <|-- SetData
+    FrontXActionBase <|-- ShowLargerView
+    FrontXDomainBase <|.. LayoutCellsDomain
+    FrontXDomainBase <|.. LargerViewDomain
+    FrontXExtensionBase <|-- LayoutCellsExtension
+    FrontXExtensionBase <|-- LargerViewExtension
+    LayoutCellsDomain ..> LayoutCellsExtension : extension type
+    LargerViewDomain ..> LargerViewExtension : extension type
+
+    SetWidgetContext ..> Widget : widget
+    SetWidgetContext ..> WidgetData : data_shape
+    SetWidgetContext ..> Measure : members (by instance id)
+    SetWidgetContext ..> Dimension : members (by instance id)
+    ShowLargerView ..> Dashboard : dashboard (by id)
+    ShowLargerView ..> Widget : widget (by id)
+    RequestData ..> Query : data
+    RequestData ..> WidgetData : data_shape
+    SetData ..> WidgetData : data
+    WidgetRealization ..> Widget : widget_type
+    WidgetRealization ..> FrontXMfeEntry : entry, larger_view_entry
+```
+
 #### Packages, Namespaces, and the Model–View Split
 
 The template's code ships in two template packages, `dashboard` and `widgets` (section 3.8). Its GTS types live in two GTS packages under vendor `frontx`, which are a separate notion: `dashboard_m` and `dashboard_v`. All types of both GTS packages are files of the `dashboard` template package.
