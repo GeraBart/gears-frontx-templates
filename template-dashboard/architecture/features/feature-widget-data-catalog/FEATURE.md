@@ -411,7 +411,7 @@ All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes d
 
 **GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.metric_card.v1~`
 
-**Description**: The data of `metric_card`. Fill mode `scalar_with_series`. `value` is the total over the query, or over range 1 when `timeDimensions[0]` has a `compareDateRange`. `previous_value` is present only with a `compareDateRange`, and it is the total over range 2. `sparkline` is present only when `timeDimensions[0]` has a `granularity`. The widget computes the trend from `value` and `previous_value`.
+**Description**: The data of `metric_card`. Fill mode `scalar_with_series`. `value` is the total over the query, or over range 1 when `timeDimensions[0]` has a `compareDateRange`. `previous_value` is present only with a `compareDateRange`, and it is the total over range 2. `sparkline` is present only when `timeDimensions[0]` has a `granularity`. The widget computes the trend from `value` and `previous_value`. The widget ignores `previous_value` unless its query has a `compareDateRange`, and ignores `sparkline` unless `timeDimensions[0]` has a `granularity`.
 
 **Schema**:
 
