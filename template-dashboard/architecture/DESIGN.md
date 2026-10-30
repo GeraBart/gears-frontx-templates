@@ -690,6 +690,574 @@ The domain model (`cpt-frontx-dashboard-interface-domain-model`) has seven parts
 | `frontx.dashboard_v.mfe`, `frontx.dashboard_v.layout` | 4 action types, 2 domains, 2 extension types, the id rule of generated extensions | base shape | [extension-domain-catalog](./features/feature-extension-domain-catalog/FEATURE.md) |
 | `frontx.dashboard_v.mfe` | Widget realization type and the 9 template realizations, widget entries, the larger-view modal's entry and static extension, the dashboards root's entry and routed extension, manifests | widget realization | [mfe-entries](./features/feature-mfe-entries/FEATURE.md) |
 
+#### Worked Example: A Dashboard with Two Widgets
+
+This example is the concrete run of the abstract six-step example in section 3.3 ("Example: from widget instance to mounted extension"). Terms are in section 1.1. The components that take part, the dashboards root, the data adapter and the widgets, are in section 3.2. The actions are in section 3.3 (`cpt-frontx-dashboard-interface-host-actions`, `cpt-frontx-dashboard-interface-data-adapter`).
+
+The example follows one dashboard in the dashboards root, from its start to a grid sort. The product uses the illustrative vendor `acme` and package `example`. It has one query family, `gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~`, and one dataset, `gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~`, the ones of the query vocabulary FEATURE (section 6.5). The dashboard "Engineering activity" has two cells: a `pie_chart` with the lines of code by author and a `grid` with the activity by author and project.
+
+The example names template types by id only; their schemas are in the FEATURE documents. A payload that FrontX carries is printed in full; product types and instances are printed in full once, where the data adapter returns them, and later steps refer to them. All UUIDs, timestamps, the time zone and the data values are made up for illustration. The UUIDv5 values of the generated extensions were not computed from the template namespace, a fixed constant owned by FEATURE `extension-domain-catalog` section 6.9. Every chain has the FrontX actions chain form: `action`, with `type`, `target` and `payload`, and the optional `next` and `fallback` chains.
+
+##### Example Step 1: Served Query Families
+
+At start, the dashboards root calls "served query families" on the data adapter, with no input (`cpt-frontx-dashboard-algo-extension-domain-catalog-start-owner`). The output is a list of one family type schema, which the dashboards root registers. This block repeats the example of query vocabulary FEATURE section 6.5, which owns it; the binding shape in `x-gts-traits-schema` is illustrative and the template gives it no meaning:
+
+```json
+[
+{
+  "$id": "gts://gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-gts-abstract": true,
+  "x-gts-traits-schema": {
+    "type": "object",
+    "required": ["source", "columns"],
+    "properties": {
+      "source": { "type": "string" },
+      "columns": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["member", "column"],
+          "properties": {
+            "member": {
+              "anyOf": [
+                { "type": "string", "x-gts-instance-ref": "gts.frontx.dashboard_m.data.measure.v1~" },
+                { "type": "string", "x-gts-instance-ref": "gts.frontx.dashboard_m.data.dimension.v1~" }
+              ]
+            },
+            "column": { "type": "string" },
+            "aggregation": { "enum": ["sum", "count", "min", "max", "avg"] }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [{ "$ref": "gts://gts.frontx.dashboard_m.data.query.v1~" }]
+}
+]
+```
+
+##### Example Step 2: Get a Dashboard
+
+The address names the dashboard id `gts.frontx.dashboard_m.dashboard.dashboard.v1~3f6c2a1e-8b4d-4c7a-9e21-5d0b7f3a9c64`. The dashboards root shows its loader and calls "get a dashboard" with that id as the input (`cpt-frontx-dashboard-algo-data-adapter-contract-get-dashboard`). The output has three parts, printed below as three blocks.
+
+The dashboard instance. Cell 0 holds the `pie_chart` on columns 0 to 19 and cell 1 the `grid` on columns 20 to 59. Neither cell defines a larger view. Each widget embeds its query in `data`, without `timezone`:
+
+```json
+{
+  "id": "gts.frontx.dashboard_m.dashboard.dashboard.v1~3f6c2a1e-8b4d-4c7a-9e21-5d0b7f3a9c64",
+  "name": "Engineering activity",
+  "description": "Lines of code and pull requests by author and project.",
+  "layout": {
+    "columns": 60,
+    "cells": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 20,
+        "h": 8,
+        "widget": {
+          "id": "gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.pie_chart.v1~0c9e4b72-6a15-4f3d-8b26-e14d5a7c3f90",
+          "title": "Lines of code by author",
+          "data": {
+            "id": "gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~5a2d8e14-7c3b-4b69-a0f2-9e6b1c4d7a38",
+            "measures": ["gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1"],
+            "dimensions": ["gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1"],
+            "timeDimensions": [
+              { "dimension": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1", "dateRange": "last 3 months" }
+            ],
+            "order": [["gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1", "desc"]],
+            "limit": 5
+          },
+          "radius": ["40%", "70%"]
+        }
+      },
+      {
+        "x": 20,
+        "y": 0,
+        "w": 40,
+        "h": 8,
+        "widget": {
+          "id": "gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.grid.v1~d47b1f05-2e8c-4a96-b3d1-7f5e0a2c9b86",
+          "title": "Activity by author and project",
+          "data": {
+            "id": "gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~e81c6a3f-4d27-4f5b-9a0e-3b7d2c5f1e49",
+            "measures": [
+              "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1",
+              "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1"
+            ],
+            "dimensions": [
+              "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1",
+              "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1"
+            ],
+            "timeDimensions": [
+              { "dimension": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1", "dateRange": "this quarter" }
+            ],
+            "order": [["gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1", "desc"]],
+            "limit": 25,
+            "offset": 0,
+            "total": true
+          },
+          "columns": [
+            { "member": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1" },
+            { "member": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1" },
+            { "member": "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1", "align": "end", "sortable": true },
+            { "member": "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1", "align": "end", "sortable": true }
+          ],
+          "page_sizes": [25, 50, 100],
+          "frozen_columns": 1
+        }
+      }
+    ]
+  }
+}
+```
+
+The dataset type that the two queries use. This block repeats the example of query vocabulary FEATURE section 6.5, which owns it; the binding shape in `x-gts-traits` is illustrative and the template gives it no meaning:
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-gts-traits": {
+    "source": "activity",
+    "columns": [
+      { "member": "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1", "column": "lines_added", "aggregation": "sum" },
+      { "member": "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1", "column": "prs", "aggregation": "count" },
+      { "member": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1", "column": "author" },
+      { "member": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1", "column": "project" },
+      { "member": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1", "column": "date" }
+    ]
+  },
+  "allOf": [
+    { "$ref": "gts://gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~" },
+    {
+      "properties": {
+        "measures": { "items": { "enum": [
+          "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1",
+          "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1"
+        ] } },
+        "dimensions": { "items": { "enum": [
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1",
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1"
+        ] } },
+        "timeDimensions": { "items": { "properties": { "dimension": { "enum": [
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1"
+        ] } } } },
+        "filters": { "items": { "properties": { "member": { "enum": [
+          "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1",
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1",
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1",
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1"
+        ] } } } },
+        "order": { "items": { "prefixItems": [ { "enum": [
+          "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1",
+          "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1",
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1",
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1",
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1"
+        ] } ] } }
+      }
+    }
+  ]
+}
+```
+
+The five measure and dimension instances that the two queries use, as well-known instances of the measure base and the dimension base:
+
+```json
+[
+  {
+    "id": "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1",
+    "title": "Lines of code",
+    "value_type": "number"
+  },
+  {
+    "id": "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1",
+    "title": "Pull requests",
+    "value_type": "number"
+  },
+  {
+    "id": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1",
+    "title": "Author",
+    "value_type": "string"
+  },
+  {
+    "id": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1",
+    "title": "Project",
+    "value_type": "string"
+  },
+  {
+    "id": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1",
+    "title": "Day",
+    "value_type": "time"
+  }
+]
+```
+
+##### Example Step 3: Load the Dashboard
+
+The numbered items are the steps of `cpt-frontx-dashboard-algo-extension-domain-catalog-load-dashboard` that this example exercises. The template types were registered at start, and the loader is shown; this mirrors `cpt-frontx-dashboard-seq-initial-load`. Items 1 to 4 are the delivery registration (`cpt-frontx-dashboard-algo-dashboard-root-types-register-delivery`).
+
+1. It rejects template-id collisions (`cpt-frontx-dashboard-algo-dashboard-root-types-register-delivery`). The only delivered type is the dataset, and its id is not the id of a template type.
+2. It registers the five measure and dimension instances (`cpt-frontx-dashboard-algo-dashboard-root-types-register-delivery`).
+3. It checks the served families for the dataset type (`cpt-frontx-dashboard-algo-dashboard-root-types-register-delivery`). The dataset derives from `gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~`, registered in example step 1, so the dataset is not skipped. A skipped dataset would be a diagnostic, not a failure; this delivery check differs from the widget-level served-family check of item 6, which gives a widget its cannot-show state.
+4. It registers the dataset type (`cpt-frontx-dashboard-algo-dashboard-root-types-register-delivery`).
+5. It validates the dashboard once, polymorphically, with reference-existence lookup off (`cpt-frontx-dashboard-algo-dashboard-root-types-validate-dashboard`). Each widget is checked against the widget type its `id` names, and each query against the dataset its `id` names. No failure is reported. The layout checks pass: the cells touch at column 20 without overlapping, `x + w` is 20 and 60, and the two widget ids differ (`cpt-frontx-dashboard-algo-layout-types-check-layout`).
+6. It runs the checks of each widget (`cpt-frontx-dashboard-algo-widget-catalog-cross-check-widget`), and then checks the served family:
+   - Registered members: every query member names a registered instance.
+   - Time dimension: Day has the `value_type` `time`. Neither `timeDimensions` entry has a `granularity`, so Day gives no result column (`cpt-frontx-dashboard-algo-query-vocabulary-canonical-order`).
+   - Result columns: Author and Lines of code for the `pie_chart`; Author, Project, Lines of code and Pull requests for the `grid`. The `order` member of both queries, Lines of code, is a result column.
+   - `member_kinds`: the `pie_chart` dimension Author has the `value_type` `string`, which its `member_kinds` allows.
+   - Grid columns: the `grid` columns name each result column once.
+   - Sortable columns: the two sortable columns, Lines of code and Pull requests, name members of the dataset's enum for `order`.
+   - Limit: `limit` 25 is one of the `page_sizes`.
+   - Served family (`cpt-frontx-dashboard-algo-data-adapter-contract-check-served-family`): the query family of both queries is served.
+7. It selects the winning realizations (`cpt-frontx-dashboard-algo-extension-domain-catalog-select-realization`). Each widget type has one realization, of weight 1. For the `pie_chart`, `gts.frontx.dashboard_v.mfe.widget_realization.v1~frontx.dashboard_v.mfe.pie_chart.v1` gives the entry `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard_v.mfe.pie_chart.v1`. For the `grid`, `gts.frontx.dashboard_v.mfe.widget_realization.v1~frontx.dashboard_v.mfe.grid.v1` gives the entry `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard_v.mfe.grid.v1`.
+8. It generates one cell extension per widget (`cpt-frontx-dashboard-algo-extension-domain-catalog-derive-extension-id`, `cpt-frontx-dashboard-algo-extension-domain-catalog-register-generated-extensions`). Each UUIDv5 is derived from a name that joins the widget's full id, the role `cell` and the entry id with `|`. The `pie_chart` name is `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.pie_chart.v1~0c9e4b72-6a15-4f3d-8b26-e14d5a7c3f90|cell|gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard_v.mfe.pie_chart.v1`. The `grid` name is `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.grid.v1~d47b1f05-2e8c-4a96-b3d1-7f5e0a2c9b86|cell|gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard_v.mfe.grid.v1`. The dashboards root registers these two extension instances in its own registry (section 1.1):
+
+   ```json
+   [
+     {
+       "id": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~6b1f4e2a-93c7-5d08-a4e5-2c7f9b0d3e61",
+       "domain": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.layout_cells.v1",
+       "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard_v.mfe.pie_chart.v1"
+     },
+     {
+       "id": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~9d3a7c5e-1f42-5b86-8e0d-4a6c2f7b1d93",
+       "domain": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.layout_cells.v1",
+       "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard_v.mfe.grid.v1"
+     }
+   ]
+   ```
+
+9. It mounts the cells, one chain per cell, without waiting for the other cell (`cpt-frontx-dashboard-algo-extension-domain-catalog-mount-cell-widgets`). Example step 4 shows the two chains.
+
+##### Example Step 4: Mount the Cell Widgets
+
+The dashboards root sends each chain on its own registry (section 1.1). The chain form is in `cpt-frontx-dashboard-interface-host-actions`. `mount_ext` and `unmount_ext` are FrontX's own lifecycle actions, not template actions. The first action, `mount_ext`, mounts the cell extension in `layout_cells`. It comes first because the entry's handlers exist once its mount resolves (section 3.3, "Handlers exist before they are needed"). In each action, `target` names the recipient, a domain or an extension, and not the sender's owner. The `next` of the mount sends `set_widget_context` to the mounted extension; its schema is in FEATURE `extension-domain-catalog` section 6.1. The `fallback` of that step unmounts the extension when the context cannot be delivered. The payload is built by `cpt-frontx-dashboard-algo-extension-domain-catalog-build-widget-context`. `widget` is the cell's widget from example step 2, unchanged; FrontX carries the payload, so it is printed in full here. `data_shape` and `fill` are the traits of the widget type. `members` holds the metadata of each distinct query member. Neither cell has a larger view, so the payload has no `larger_view`, and neither widget shows the larger-view button.
+
+The chain for the `pie_chart` cell:
+
+```json
+{
+  "action": {
+    "type": "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~",
+    "target": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.layout_cells.v1",
+    "payload": {
+      "subject": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~6b1f4e2a-93c7-5d08-a4e5-2c7f9b0d3e61"
+    }
+  },
+  "next": {
+    "action": {
+      "type": "gts.frontx.mfes.comm.action.v1~frontx.dashboard_v.mfe.set_widget_context.v1~",
+      "target": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~6b1f4e2a-93c7-5d08-a4e5-2c7f9b0d3e61",
+      "payload": {
+        "widget": {
+          "id": "gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.pie_chart.v1~0c9e4b72-6a15-4f3d-8b26-e14d5a7c3f90",
+          "title": "Lines of code by author",
+          "data": {
+            "id": "gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~5a2d8e14-7c3b-4b69-a0f2-9e6b1c4d7a38",
+            "measures": ["gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1"],
+            "dimensions": ["gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1"],
+            "timeDimensions": [
+              { "dimension": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1", "dateRange": "last 3 months" }
+            ],
+            "order": [["gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1", "desc"]],
+            "limit": 5
+          },
+          "radius": ["40%", "70%"]
+        },
+        "data_shape": "gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.pie_chart.v1~",
+        "fill": {
+          "mode": "rows_by_member",
+          "fields": [
+            { "field": "label", "from": "dimensions[0]" },
+            { "field": "value", "from": "measures[0]" }
+          ]
+        },
+        "members": [
+          { "id": "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1", "title": "Lines of code", "value_type": "number" },
+          { "id": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1", "title": "Author", "value_type": "string" },
+          { "id": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1", "title": "Day", "value_type": "time" }
+        ]
+      }
+    },
+    "fallback": {
+      "action": {
+        "type": "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~",
+        "target": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.layout_cells.v1",
+        "payload": {
+          "subject": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~6b1f4e2a-93c7-5d08-a4e5-2c7f9b0d3e61"
+        }
+      }
+    }
+  }
+}
+```
+
+The chain for the `grid` cell:
+
+```json
+{
+  "action": {
+    "type": "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~",
+    "target": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.layout_cells.v1",
+    "payload": {
+      "subject": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~9d3a7c5e-1f42-5b86-8e0d-4a6c2f7b1d93"
+    }
+  },
+  "next": {
+    "action": {
+      "type": "gts.frontx.mfes.comm.action.v1~frontx.dashboard_v.mfe.set_widget_context.v1~",
+      "target": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~9d3a7c5e-1f42-5b86-8e0d-4a6c2f7b1d93",
+      "payload": {
+        "widget": {
+          "id": "gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.grid.v1~d47b1f05-2e8c-4a96-b3d1-7f5e0a2c9b86",
+          "title": "Activity by author and project",
+          "data": {
+            "id": "gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~e81c6a3f-4d27-4f5b-9a0e-3b7d2c5f1e49",
+            "measures": [
+              "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1",
+              "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1"
+            ],
+            "dimensions": [
+              "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1",
+              "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1"
+            ],
+            "timeDimensions": [
+              { "dimension": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1", "dateRange": "this quarter" }
+            ],
+            "order": [["gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1", "desc"]],
+            "limit": 25,
+            "offset": 0,
+            "total": true
+          },
+          "columns": [
+            { "member": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1" },
+            { "member": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1" },
+            { "member": "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1", "align": "end", "sortable": true },
+            { "member": "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1", "align": "end", "sortable": true }
+          ],
+          "page_sizes": [25, 50, 100],
+          "frozen_columns": 1
+        },
+        "data_shape": "gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~",
+        "fill": { "mode": "positional_table" },
+        "members": [
+          { "id": "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1", "title": "Lines of code", "value_type": "number" },
+          { "id": "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1", "title": "Pull requests", "value_type": "number" },
+          { "id": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1", "title": "Author", "value_type": "string" },
+          { "id": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1", "title": "Project", "value_type": "string" },
+          { "id": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1", "title": "Day", "value_type": "time" }
+        ]
+      }
+    },
+    "fallback": {
+      "action": {
+        "type": "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~",
+        "target": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.layout_cells.v1",
+        "payload": {
+          "subject": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~9d3a7c5e-1f42-5b86-8e0d-4a6c2f7b1d93"
+        }
+      }
+    }
+  }
+}
+```
+
+##### Example Step 5: The Pie Chart Asks for Its Data
+
+The `pie_chart` shows its loader and sends one chain through its bridge (section 1.1) to `layout_cells`, the domain it sits in (`cpt-frontx-dashboard-flow-widget-catalog-show-data-widget`). The schema of `request_data` is in FEATURE `extension-domain-catalog` section 6.2. `data` is the query of the widget in example step 4, with `timezone` set to the IANA time zone name that the browser resolves, here `Europe/Berlin`. `data_shape` and `fill` are copied from the context, and `reply_to` is the widget's own extension id. A chain returns nothing to its sender (section 3.3), so the widget names `reply_to` and the owner answers with its own `set_data` chain. `timestamp` lets the widget keep only the answer to its latest request:
+
+```json
+{
+  "action": {
+    "type": "gts.frontx.mfes.comm.action.v1~frontx.dashboard_v.mfe.request_data.v1~",
+    "target": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.layout_cells.v1",
+    "payload": {
+      "data": {
+        "id": "gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~5a2d8e14-7c3b-4b69-a0f2-9e6b1c4d7a38",
+        "measures": ["gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1"],
+        "dimensions": ["gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1"],
+        "timeDimensions": [
+          { "dimension": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1", "dateRange": "last 3 months" }
+        ],
+        "order": [["gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1", "desc"]],
+        "limit": 5,
+        "timezone": "Europe/Berlin"
+      },
+      "data_shape": "gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.pie_chart.v1~",
+      "fill": {
+        "mode": "rows_by_member",
+        "fields": [
+          { "field": "label", "from": "dimensions[0]" },
+          { "field": "value", "from": "measures[0]" }
+        ]
+      },
+      "reply_to": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~6b1f4e2a-93c7-5d08-a4e5-2c7f9b0d3e61",
+      "timestamp": 1204.5
+    }
+  }
+}
+```
+
+The dashboards root's `request_data` handler resolves on acceptance. It then calls "run a query" with this payload, unchanged, as the input (`cpt-frontx-dashboard-algo-extension-domain-catalog-answer-data-request`, `cpt-frontx-dashboard-algo-data-adapter-contract-run-query`). The data adapter fills the `pie_chart` shape by `rows_by_member` and gives the data instance its combined id (`cpt-frontx-dashboard-algo-widget-data-catalog-fill-rows-by-member`, `cpt-frontx-dashboard-algo-widget-data-catalog-build-instance`). The output is the data instance in the `data` of the chain below. The shape that its id names is the request's `data_shape`, so the dashboards root sends `set_data` to `reply_to` as its own chain, with the timestamp copied from the request. The schema of `set_data` is in FEATURE `extension-domain-catalog` section 6.3:
+
+```json
+{
+  "action": {
+    "type": "gts.frontx.mfes.comm.action.v1~frontx.dashboard_v.mfe.set_data.v1~",
+    "target": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~6b1f4e2a-93c7-5d08-a4e5-2c7f9b0d3e61",
+    "payload": {
+      "data": {
+        "id": "gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.pie_chart.v1~2e7f9a41-5b3c-4d86-9f10-8c4a6e2b7d53",
+        "rows": [
+          { "label": "jdoe", "value": 21877 },
+          { "label": "asmith", "value": 15342 },
+          { "label": "mchen", "value": 8906 },
+          { "label": "lgarcia", "value": 4127 },
+          { "label": "pnovak", "value": 2985 }
+        ]
+      },
+      "timestamp": 1204.5
+    }
+  }
+}
+```
+
+FrontX validates the action against the shape that the data instance's id names (`cpt-frontx-dashboard-algo-widget-data-catalog-validate-set-data`). The timestamp equals that of the widget's latest request, so the `pie_chart` replaces its loader with five segments.
+
+##### Example Step 6: The Grid Asks for Its Data
+
+The `grid` sends its own chain to `layout_cells` in the same way:
+
+```json
+{
+  "action": {
+    "type": "gts.frontx.mfes.comm.action.v1~frontx.dashboard_v.mfe.request_data.v1~",
+    "target": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.layout_cells.v1",
+    "payload": {
+      "data": {
+        "id": "gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~e81c6a3f-4d27-4f5b-9a0e-3b7d2c5f1e49",
+        "measures": [
+          "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1",
+          "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1"
+        ],
+        "dimensions": [
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1",
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1"
+        ],
+        "timeDimensions": [
+          { "dimension": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1", "dateRange": "this quarter" }
+        ],
+        "order": [["gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1", "desc"]],
+        "limit": 25,
+        "offset": 0,
+        "total": true,
+        "timezone": "Europe/Berlin"
+      },
+      "data_shape": "gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~",
+      "fill": { "mode": "positional_table" },
+      "reply_to": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~9d3a7c5e-1f42-5b86-8e0d-4a6c2f7b1d93",
+      "timestamp": 1204.75
+    }
+  }
+}
+```
+
+The dashboards root calls "run a query" with this payload as the input. The data adapter fills the `grid` shape by `positional_table` (`cpt-frontx-dashboard-algo-widget-data-catalog-fill-positional-table`): each row holds the values of Author, Project, Lines of code and Pull requests, in the canonical member order. The result has 6 rows, so the first page holds all of them and `total` is 6. The output is the `data` of the `set_data` chain that the dashboards root sends:
+
+```json
+{
+  "action": {
+    "type": "gts.frontx.mfes.comm.action.v1~frontx.dashboard_v.mfe.set_data.v1~",
+    "target": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~9d3a7c5e-1f42-5b86-8e0d-4a6c2f7b1d93",
+    "payload": {
+      "data": {
+        "id": "gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~7c5d1e93-0a2f-4b68-a7e4-6d9b3f1c8e20",
+        "rows": [
+          ["jdoe", "web", 9412, 14],
+          ["asmith", "mobile", 7350, 9],
+          ["jdoe", "mobile", 5128, 6],
+          ["mchen", "web", 4473, 11],
+          ["lgarcia", "web", 2096, 4],
+          ["asmith", "web", 1835, 3]
+        ],
+        "total": 6
+      },
+      "timestamp": 1204.75
+    }
+  }
+}
+```
+
+##### Example Step 7: The Viewer Sorts the Grid
+
+The viewer clicks the header of the sortable Pull requests column (`cpt-frontx-dashboard-flow-widget-catalog-change-query`). The first pair of the current `order` names Lines of code, not Pull requests, so the new direction is `asc`. In its local copy of the query, the widget sets `order` to one pair, the Pull requests measure id with `asc`, and `offset` to 0. It keeps `limit` 25 and `total: true`, and shows the busy indicator over the current rows. It sends a new chain with a new timestamp (`cpt-frontx-dashboard-seq-query-change`):
+
+```json
+{
+  "action": {
+    "type": "gts.frontx.mfes.comm.action.v1~frontx.dashboard_v.mfe.request_data.v1~",
+    "target": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.layout_cells.v1",
+    "payload": {
+      "data": {
+        "id": "gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~e81c6a3f-4d27-4f5b-9a0e-3b7d2c5f1e49",
+        "measures": [
+          "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1",
+          "gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1"
+        ],
+        "dimensions": [
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.author.v1",
+          "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.project.v1"
+        ],
+        "timeDimensions": [
+          { "dimension": "gts.frontx.dashboard_m.data.dimension.v1~acme.example.metrics.day.v1", "dateRange": "this quarter" }
+        ],
+        "order": [["gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.pr_count.v1", "asc"]],
+        "limit": 25,
+        "offset": 0,
+        "total": true,
+        "timezone": "Europe/Berlin"
+      },
+      "data_shape": "gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~",
+      "fill": { "mode": "positional_table" },
+      "reply_to": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~9d3a7c5e-1f42-5b86-8e0d-4a6c2f7b1d93",
+      "timestamp": 9087.25
+    }
+  }
+}
+```
+
+The dashboards root answers it by the same process as in example step 5: it calls "run a query" with this payload as the input, and sends the data instance that the data adapter returns, a new snapshot with its own id, as `set_data`:
+
+```json
+{
+  "action": {
+    "type": "gts.frontx.mfes.comm.action.v1~frontx.dashboard_v.mfe.set_data.v1~",
+    "target": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~9d3a7c5e-1f42-5b86-8e0d-4a6c2f7b1d93",
+    "payload": {
+      "data": {
+        "id": "gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~b4e8a2c6-3d91-4f57-8b0c-1e6f5a9d2c74",
+        "rows": [
+          ["asmith", "web", 1835, 3],
+          ["lgarcia", "web", 2096, 4],
+          ["jdoe", "mobile", 5128, 6],
+          ["asmith", "mobile", 7350, 9],
+          ["mchen", "web", 4473, 11],
+          ["jdoe", "web", 9412, 14]
+        ],
+        "total": 6
+      },
+      "timestamp": 9087.25
+    }
+  }
+}
+```
+
+The timestamp equals that of the latest request, so the `grid` hides the busy indicator and shows the rows in the new order, with the Pull requests column shown as sorted ascending. An answer to an earlier request of the `grid` would carry an older timestamp and be dropped.
+
 ### 3.2 Component Model
 
 ```mermaid
@@ -1026,6 +1594,8 @@ A widget realization tells a domain owner which entry shows a widget type in a c
 5. The dashboards root sends `set_widget_context` with the widget, the grid's `data_shape` and `fill` from the widget type's traits, the metadata of the two members, and `larger_view` with the dashboard id and the larger-view widget id.
 6. The widget sends `request_data` to `layout_cells`. The dashboards root accepts it, calls "run a query", and sends `set_data` with a `positional_table` instance of 25 rows and its `total`. The widget renders the page, with the larger-view button shown.
 
+A concrete run with full payloads is the worked example in section 3.1.
+
 #### Template Actions
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-interface-host-actions`
@@ -1227,6 +1797,8 @@ All sequences run inside one application instance. "Chain" means a FrontX action
 
 **Actors**: `cpt-frontx-dashboard-actor-dashboard-viewer`, `cpt-frontx-dashboard-actor-host-application`, `cpt-frontx-dashboard-actor-consuming-backend`
 
+A concrete run with full payloads is the worked example in section 3.1.
+
 ```mermaid
 sequenceDiagram
     actor U as Dashboard viewer
@@ -1286,6 +1858,8 @@ sequenceDiagram
 **Use cases**: `cpt-frontx-dashboard-usecase-view-dashboard`
 
 **Actors**: `cpt-frontx-dashboard-actor-dashboard-viewer`, `cpt-frontx-dashboard-actor-consuming-backend`
+
+A concrete run with full payloads is the worked example in section 3.1.
 
 ```mermaid
 sequenceDiagram
