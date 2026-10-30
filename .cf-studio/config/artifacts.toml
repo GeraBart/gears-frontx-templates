@@ -227,14 +227,16 @@ artifacts = [
   { name = "ADR-0008: Widget type and MFE realization", path = "template-dashboard/architecture/ADR/0008-widget-type-and-mfe-realization-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
   { name = "ADR-0009: Subject-agnostic widget catalog", path = "template-dashboard/architecture/ADR/0009-subject-agnostic-widget-catalog-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
   { name = "ADR-0010: Template packages and host contract", path = "template-dashboard/architecture/ADR/0010-template-packages-and-host-contract-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
-  { name = "ADR-0011: Backend-delivered dashboard", path = "template-dashboard/architecture/ADR/0011-backend-delivered-dashboard-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0011: Data adapter", path = "template-dashboard/architecture/ADR/0011-data-adapter-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0012: Query vocabulary and datasets", path = "template-dashboard/architecture/ADR/0012-query-vocabulary-and-datasets-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
   { name = "feature-dashboard-root-types", path = "template-dashboard/architecture/features/feature-dashboard-root-types/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
   { name = "feature-extension-domain-catalog", path = "template-dashboard/architecture/features/feature-extension-domain-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
   { name = "feature-layout-types", path = "template-dashboard/architecture/features/feature-layout-types/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
   { name = "feature-mfe-entries", path = "template-dashboard/architecture/features/feature-mfe-entries/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
   { name = "feature-widget-catalog", path = "template-dashboard/architecture/features/feature-widget-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
   { name = "feature-widget-data-catalog", path = "template-dashboard/architecture/features/feature-widget-data-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
-  { name = "feature-backend-contract", path = "template-dashboard/architecture/features/feature-backend-contract/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-data-adapter-contract", path = "template-dashboard/architecture/features/feature-data-adapter-contract/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-query-vocabulary", path = "template-dashboard/architecture/features/feature-query-vocabulary/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
 ]
 
 [[systems.codebase]]

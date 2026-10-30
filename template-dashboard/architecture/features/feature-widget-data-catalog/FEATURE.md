@@ -1,12 +1,11 @@
 ---
 status: accepted
 version: 1
-date: 2026-10-27
-description: Domain-model type of the single concrete widget data type, the generic tabular result that the consuming product backend returns for every widget data request whatever the widget type, declared by dashboard-viewer.
+date: 2026-10-30
+description: Domain-model feature that declares the abstract data shape base and the 8 data shapes, one per data widget type, with their combined instance ids, and that specifies the 5 fill modes, the from grammar and the validation of set_data.
 ---
 
 # Feature: Widget Data Catalog
-
 
 <!-- toc -->
 
@@ -18,157 +17,851 @@ description: Domain-model type of the single concrete widget data type, the gene
 - [2. Actor Flows (CDSL)](#2-actor-flows-cdsl)
   - [Domain-Model Feature: No Actor Flows](#domain-model-feature-no-actor-flows)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
-  - [Domain-Model Feature: No Processes](#domain-model-feature-no-processes)
+  - [Resolve a `from` Member](#resolve-a-from-member)
+  - [Fill by `rows_by_member`](#fill-by-rows_by_member)
+  - [Fill by `x_series_value`](#fill-by-x_series_value)
+  - [Fill by `row_per_measure`](#fill-by-row_per_measure)
+  - [Fill by `positional_table`](#fill-by-positional_table)
+  - [Fill by `scalar_with_series`](#fill-by-scalar_with_series)
+  - [Build the Data Instance](#build-the-data-instance)
+  - [Validate a Data Instance](#validate-a-data-instance)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Domain-Model Feature: No State Machines](#domain-model-feature-no-state-machines)
 - [5. Definitions of Done](#5-definitions-of-done)
-  - [Domain Model Definition of Done](#domain-model-definition-of-done)
+  - [Data Shapes Definition of Done](#data-shapes-definition-of-done)
+  - [Fill Modes Definition of Done](#fill-modes-definition-of-done)
+  - [Data Instance Definition of Done](#data-instance-definition-of-done)
 - [6. Domain Model](#6-domain-model)
-  - [6.1 WidgetData](#61-widgetdata)
+  - [6.1 WidgetData (abstract base)](#61-widgetdata-abstract-base)
+  - [6.2 SummaryCardData](#62-summarycarddata)
+  - [6.3 MetricCardData](#63-metriccarddata)
+  - [6.4 RankedListCardData](#64-rankedlistcarddata)
+  - [6.5 ProgressListCardData](#65-progresslistcarddata)
+  - [6.6 PieChartData](#66-piechartdata)
+  - [6.7 CartesianChartData](#67-cartesianchartdata)
+  - [6.8 HeatmapData](#68-heatmapdata)
+  - [6.9 GridData](#69-griddata)
+  - [6.10 Fill Modes](#610-fill-modes)
 - [7. Acceptance Criteria](#7-acceptance-criteria)
 
 <!-- /toc -->
 
-- [ ] `p1` - **ID**: `cpt-frontx-dashboard-featstatus-widget-data-catalog`
+- [ ] `p2` - **ID**: `cpt-frontx-dashboard-featstatus-widget-data-catalog`
+
 ## 1. Feature Context
 
 - [ ] `p2` - `cpt-frontx-dashboard-feature-widget-data-catalog`
 
 ### 1.1 Overview
 
-This feature is a **domain-model feature**, not an actor-flow feature, declared in package `dashboard-viewer`. It declares the one widget data type of the template, `gts.frontx.v.widget_data.widget_data.v1~`, under the FrontX vendor `frontx`. The type is concrete: there is no abstract data base above it, and the template declares no other widget data type. It is the generic tabular result that the consuming product backend returns for every widget data request, whatever the widget type: the ordered column names, the rows as positional value arrays aligned to the columns, and the names of the columns that hold percentages. The dashboard definition carries no widget data. The structural prose lives in DESIGN section 3.1 and the result shape in DESIGN section 3.3; the schema lives in section 6 Domain Model. The sections for flows, processes, and states are reduced to short not-applicable notes.
+This feature declares the data that a data widget receives in `set_data`. It has an abstract data shape base, `gts.frontx.dashboard_m.widget_data.widget_data.v1~`, and 8 derived data shapes, one per data widget type. It also defines the 5 fill modes. A fill mode is a rule that tells a data adapter how to fill a data shape from the result of a query. All types are declared in package `dashboard_m`. Section 6 holds the schemas, and section 3 holds the fill rules as algorithms. There are no actor flows and no states.
 
 ### 1.2 Purpose
 
-Concrete declaration of the widget data type that every widget checks every result against, with its full GTS-typed JSON Schema. It addresses the domain model and the widget catalog of the PRD and the Widget data entity of DESIGN section 3.1. One type serves every metric and every widget type, so a consuming product backend produces one result shape, and adding a widget type adds no data type. The backend can validate the results it returns against the same type that the widgets use.
+A data widget is a passive renderer. It must get its data in the form its widget type names, and the same fill rules must serve every dataset. This feature gives each data widget type one typed data shape. It gives the data adapter 5 fill modes that it implements once. FrontX checks each `set_data` against the exact shape that the data instance names, so no widget compares shapes.
 
-No widget type names this type. A widget type binds result columns by name in its presentation configuration, and package `m` holds no reference into package `v`, so this feature and the widget catalog are independent of each other.
+The feature addresses the domain model, the widget catalog, the data adapter, the backend data and the grid paging requirements, and the data shape entity of DESIGN section 3.1.
 
-**Requirements**: `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-widget-catalog`, `cpt-frontx-dashboard-fr-backend-source`
+**Requirements**: `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-widget-catalog`, `cpt-frontx-dashboard-fr-data-adapter`, `cpt-frontx-dashboard-fr-backend-source`, `cpt-frontx-dashboard-fr-grid-sort-page`
 
 **Principles**: `cpt-frontx-dashboard-principle-gts-contracts`
 
+**Constraints**: `cpt-frontx-dashboard-constraint-gts-id-convention`
+
 ### 1.3 Actors
 
-N/A. This is a domain-model feature. The type is consumed by the runtime type system, not by an end-user actor: the cell entry and the modal entry of each widget type validate the result of their widget data request against it through the FrontX gts-plugin. The consuming product backend produces results of this type; its part is specified in feature-backend-contract. No actor flows are authored here.
+N/A. This is a domain-model feature. The types are consumed by the FrontX validation of `set_data` and by the data adapter of the consuming product, which fills them. The calls of the data adapter are specified in `cpt-frontx-dashboard-feature-data-adapter-contract`.
+
+Not applicable as a pure data contract: performance (PERF), security (SEC), operations (OPS), compliance (COMPL) and user experience (UX) have no content in a type declaration. Reliability (REL) applies: shapes are closed, a wrong instance is rejected, and a null measure value is a legal value. Data (DATA) applies: section 6 holds the schemas and the value rules.
 
 ### 1.4 References
 
 - **PRD**: [PRD.md](../../PRD.md)
-- **Design**: [DESIGN.md](../../DESIGN.md) section 3.1 (Domain Model, the Widget data entity and its base shape), section 3.3 (Dashboard Definition and Widget Data, the widget data result)
-- **ADRs**: [ADR-0003](../../ADR/0003-shared-data-types-and-schemas-v1.md) (the single widget data type and validation through the FrontX gts-plugin), [ADR-0008](../../ADR/0008-widget-type-and-mfe-realization-v1.md) (a replacement realization sends the same request and checks the same type), [ADR-0009](../../ADR/0009-subject-agnostic-widget-catalog-v1.md) (column bindings, the cannot-show state for a missing bound column, and the empty state), [ADR-0011](../../ADR/0011-backend-delivered-dashboard-v1.md) (the per-widget data request and its result)
-- **Declaring package**: `dashboard-viewer` (`src-app/mfe_packages/dashboard-viewer/`)
-- **Decomposition**: [DECOMPOSITION.md](../../DECOMPOSITION.md) section 2.1
-- **Dependencies**: None.
-- **Related**: [feature-backend-contract](../feature-backend-contract/FEATURE.md) (section 6.2, the widget data request that names a metric and its result; section 6.3, widget data that cannot be shown); [feature-widget-catalog](../feature-widget-catalog/FEATURE.md) (the column bindings of each widget type, the column-binding check against the column names of a result, and the empty state of each widget type)
+- **Design**: [DESIGN.md](../../DESIGN.md) section 3.1 (Widgets, Queries, and Data Shapes: the data shapes and the five fill modes)
+- **ADRs**: [ADR-0009](../../ADR/0009-subject-agnostic-widget-catalog-v1.md) (data shapes, fill modes, the `from` grammar), [ADR-0003](../../ADR/0003-shared-data-types-and-schemas-v1.md) (combined instance id, polymorphic validation, arrays of objects instead of id-keyed maps), [ADR-0011](../../ADR/0011-data-adapter-v1.md) (the data adapter fills the shapes), [ADR-0012](../../ADR/0012-query-vocabulary-and-datasets-v1.md) (query fields and canonical member order), [ADR-0005](../../ADR/0005-data-grid-library-v1.md) (grid `positional_table` and `total`)
+- **Declaring package**: GTS package `dashboard_m` in the `dashboard` package
+- **Decomposition**: [DECOMPOSITION.md](../../DECOMPOSITION.md) section 2.2
+- **Dependencies**: `cpt-frontx-dashboard-feature-query-vocabulary` ([feature-query-vocabulary](../feature-query-vocabulary/FEATURE.md): the query fields and the canonical member order that a fill mode reads)
+- **Related**: [feature-widget-catalog](../feature-widget-catalog/FEATURE.md) (the traits `data_shape` and `fill` that name a shape and a fill mode for each widget type), [feature-extension-domain-catalog](../feature-extension-domain-catalog/FEATURE.md) (the `request_data` and `set_data` actions that carry a shape), [feature-data-adapter-contract](../feature-data-adapter-contract/FEATURE.md) (the calls of the data adapter and its obligations)
 
 ## 2. Actor Flows (CDSL)
 
 ### Domain-Model Feature: No Actor Flows
 
-N/A. Domain model content is consumed at runtime by the type system, not by an actor flow. The type lives in section 6.
+N/A. The shapes are consumed by the type system, not by an actor flow. The way a data instance travels from the data adapter to a widget is specified in `cpt-frontx-dashboard-feature-data-adapter-contract` and `cpt-frontx-dashboard-feature-extension-domain-catalog`.
 
 ## 3. Processes / Business Logic (CDSL)
 
-### Domain-Model Feature: No Processes
+The algorithms below are rules that the template defines. The data adapter of a consuming product implements them once, for every widget type. Common terms:
 
-N/A. This feature declares a static GTS schema. The validation of a result, the column-binding check, and the choice of the empty state run in the widget entries of `dashboard-widgets`, not in this declaration.
+- **Query**: the `data` of the widget, as defined in `cpt-frontx-dashboard-feature-query-vocabulary`. It has `measures`, `dimensions`, an optional `time`, and an optional `limit` and `offset`.
+- **Result row**: one row of the grouped result that the data adapter gets for the query. It holds one value for each member that the query groups by or measures.
+- **Canonical member order**: the dimensions in query order, then the time dimension when `granularity` is set, then the measures in query order.
+- **Absent field**: a field of a shape that the fill mode cannot fill because the query has no member for it. An absent field is omitted. It is never set to null and never set to an empty value. A measure value that the backend reports as null is different: it is not an absent field, and the fill mode keeps it as `null`.
+
+### Resolve a `from` Member
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-resolve-from`
+
+**Input**: a `from` string and a query.
+
+**Output**: a member of the query, or nothing.
+
+The grammar of `from` is the pattern `^(dimensions\[(0|[1-9][0-9]*)\]|measures\[(0|[1-9][0-9]*)\]|time)$`. The index `i` is a position in the query's own list.
+
+**Steps**:
+1. [ ] - `p1` - **IF** `from` does not match the grammar - `inst-from-grammar`
+   1. [ ] - `p1` - **RETURN** nothing, because a `from` outside the grammar is an invalid fill descriptor that the widget catalog rejects at validation - `inst-from-invalid`
+2. [ ] - `p1` - **IF** `from` is `dimensions[i]` and the query has an entry at position `i` in `dimensions` - `inst-from-dimension`
+   1. [ ] - `p1` - **RETURN** that dimension - `inst-from-dimension-return`
+3. [ ] - `p1` - **IF** `from` is `measures[i]` and the query has an entry at position `i` in `measures` - `inst-from-measure`
+   1. [ ] - `p1` - **RETURN** that measure - `inst-from-measure-return`
+4. [ ] - `p1` - **IF** `from` is `time` and the query has a `time` with `granularity` (`time` resolves only then) - `inst-from-time`
+   1. [ ] - `p1` - **RETURN** the time dimension of the query - `inst-from-time-return`
+5. [ ] - `p1` - **RETURN** nothing, because the query has no such member - `inst-from-none`
+
+### Fill by `rows_by_member`
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-fill-rows-by-member`
+
+**Input**: a query, its result, and `fields`, a list of `{field, from}`.
+
+**Output**: `rows`, one object per result row.
+
+**Steps**:
+1. [ ] - `p1` - **FOR EACH** result row in the delivered order - `inst-rbm-row`
+   1. [ ] - `p1` - Start an empty row object - `inst-rbm-start`
+   2. [ ] - `p1` - **FOR EACH** `{field, from}` in `fields` - `inst-rbm-field`
+      1. [ ] - `p1` - Resolve `from` with `cpt-frontx-dashboard-algo-widget-data-catalog-resolve-from` - `inst-rbm-resolve`
+      2. [ ] - `p1` - **IF** a member was found, set `field` of the row object to the value of that member in the result row - `inst-rbm-set`
+      3. [ ] - `p1` - **ELSE** omit `field` from the row object - `inst-rbm-omit`
+   3. [ ] - `p1` - Append the row object to `rows` - `inst-rbm-append`
+2. [ ] - `p1` - **RETURN** `rows` - `inst-rbm-return`
+
+The mode adds no field that `fields` does not name. Whether a required field of the shape is present follows from the query limits of the widget type, so a valid widget never leaves a required field absent.
+
+### Fill by `x_series_value`
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-fill-x-series-value`
+
+**Input**: a query and its result.
+
+**Output**: `rows`, in long format.
+
+**Steps**:
+1. [ ] - `p1` - Choose the `x` member: the time dimension when `time.granularity` is set, otherwise `dimensions[0]` - `inst-xsv-x`
+2. [ ] - `p1` - **IF** the query has one measure - `inst-xsv-single`
+   1. [ ] - `p1` - Choose the `series` member: the first dimension that is not the `x` member, if there is one - `inst-xsv-series`
+   2. [ ] - `p1` - **FOR EACH** result row in the delivered order, emit `{x, series?, value}`: `x` is the value of the `x` member, `series` is the value of the `series` member and is omitted when there is none, and `value` is the value of the measure - `inst-xsv-emit-single`
+3. [ ] - `p1` - **ELSE** the query has several measures - `inst-xsv-multi`
+   1. [ ] - `p1` - **FOR EACH** result row in the delivered order, **FOR EACH** measure in query order, emit `{x, series, value}`: `x` is the value of the `x` member, `series` is the id of the measure, and `value` is the value of that measure - `inst-xsv-emit-multi`
+4. [ ] - `p1` - **RETURN** `rows` - `inst-xsv-return`
+
+With several measures, the query limits of `cartesian_chart` allow either a time with granularity and no dimension, or no granularity and one dimension. In both cases the `x` member is the only grouping member, so every row of a measure has its own `x` value.
+
+### Fill by `row_per_measure`
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-fill-row-per-measure`
+
+**Input**: a query and its result.
+
+**Output**: `rows`, one `{key, value}` per measure.
+
+**Steps**:
+1. [ ] - `p1` - **FOR EACH** measure in query order - `inst-rpm-measure`
+   1. [ ] - `p1` - Compute the total of the measure over the query: the value that the backend returns for the measure with no grouping - `inst-rpm-total`
+   2. [ ] - `p1` - Emit `{key, value}`: `key` is the id of the measure and `value` is the total - `inst-rpm-emit`
+2. [ ] - `p1` - **RETURN** `rows` - `inst-rpm-return`
+
+### Fill by `positional_table`
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-fill-positional-table`
+
+**Input**: a query and its result.
+
+**Output**: `rows`, one array per result row, and `total`.
+
+**Steps**:
+1. [ ] - `p1` - Build the canonical member order of the query - `inst-pt-order`
+2. [ ] - `p1` - **FOR EACH** result row in the delivered order - `inst-pt-row`
+   1. [ ] - `p1` - Emit one array whose entry at each position is the value of the member at that position of the canonical member order, or null when the result row has no value for it - `inst-pt-emit`
+3. [ ] - `p1` - Set `total` to the number of rows that the query would return with no `limit` and no `offset`. The adapter is bound to `total ≥ offset + rows.length`, and `cpt-frontx-dashboard-feature-data-adapter-contract` carries the conformance case - `inst-pt-total`
+4. [ ] - `p1` - **RETURN** `rows` and `total` - `inst-pt-return`
+
+`rows` holds only the rows of the requested page. Rows are arrays because GTS identifiers are never used as object keys (`cpt-frontx-dashboard-constraint-gts-id-convention`).
+
+### Fill by `scalar_with_series`
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-fill-scalar-with-series`
+
+**Input**: a query with one measure, and its result.
+
+**Output**: `{value, previous_value?, sparkline?}`.
+
+**Steps**:
+1. [ ] - `p1` - Set `value` to the total of the measure over the query, as the backend computes it - `inst-sws-value`
+2. [ ] - `p1` - **IF** the query has `time.compare` - `inst-sws-compare`
+   1. [ ] - `p1` - Set `previous_value` to the total of the measure over the comparison period - `inst-sws-previous`
+3. [ ] - `p1` - **ELSE** omit `previous_value` - `inst-sws-previous-omit`
+4. [ ] - `p1` - **IF** the query has `time.granularity` - `inst-sws-granularity`
+   1. [ ] - `p1` - Set `sparkline` to the value of the measure for each granularity step, in time order - `inst-sws-sparkline`
+5. [ ] - `p1` - **ELSE** omit `sparkline` - `inst-sws-sparkline-omit`
+6. [ ] - `p1` - **RETURN** the object - `inst-sws-return`
+
+`value` is never the sum of the series. A sum is wrong for a measure that is not additive, such as a percentage or a distinct count.
+
+### Build the Data Instance
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-build-instance`
+
+**Input**: the requested data shape id and the filled fields.
+
+**Output**: a data instance.
+
+**Steps**:
+1. [ ] - `p1` - Generate a UUID - `inst-bi-uuid`
+2. [ ] - `p1` - Set `id` to the data shape type followed by the UUID, so the id has the form `<data shape type>~<uuid>` - `inst-bi-id`
+3. [ ] - `p1` - Add the filled fields to the instance - `inst-bi-fields`
+4. [ ] - `p1` - **RETURN** the instance - `inst-bi-return`
+
+An example for the grid, where `7e3a9c51-0b2d-4f86-9a14-c5d8e2f60b39` is the generated UUID:
+
+```json
+{
+  "id": "gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~7e3a9c51-0b2d-4f86-9a14-c5d8e2f60b39",
+  "rows": [
+    ["jdoe", "frontx", 18452, 37],
+    ["asmith", "web-ui", 12907, 22]
+  ],
+  "total": 143
+}
+```
+
+### Validate a Data Instance
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-algo-widget-data-catalog-validate-set-data`
+
+**Input**: the `data` of one `set_data` action.
+
+**Output**: accepted or rejected.
+
+**Steps**:
+1. [ ] - `p1` - FrontX reads the data shape type from the `id` of the data instance, which is the id without its UUID - `inst-vd-type`
+2. [ ] - `p1` - FrontX validates the instance against that derived shape, through GTS polymorphic validation of the action payload - `inst-vd-validate`
+3. [ ] - `p1` - **IF** the instance does not satisfy the shape that its own id names - `inst-vd-reject`
+   1. [ ] - `p1` - **RETURN** rejected, so the widget never receives the data - `inst-vd-rejected`
+4. [ ] - `p1` - **RETURN** accepted - `inst-vd-accepted`
+
+FrontX does not know which shape was requested. The comparison of the answered instance's shape with the `data_shape` of the request is the work of the domain owner before `set_data`, and the owner drops a mismatch (`cpt-frontx-dashboard-feature-extension-domain-catalog`). The widget does not compare shapes and does not check the data. The widget renders what it receives.
 
 ## 4. States (CDSL)
 
 ### Domain-Model Feature: No State Machines
 
-N/A. Type declarations are stateless.
+N/A. Type declarations are stateless. The data states of a widget (loader, busy, empty) are specified in `cpt-frontx-dashboard-feature-widget-catalog`.
 
 ## 5. Definitions of Done
 
-### Domain Model Definition of Done
+### Data Shapes Definition of Done
 
-- [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-widget-data-catalog-catalog-complete`
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-widget-data-catalog-shapes-complete`
 
-The system **MUST** declare exactly one widget data type, `gts.frontx.v.widget_data.widget_data.v1~`, in `dashboard-viewer` under the FrontX vendor `frontx`, and **MUST NOT** declare any other widget data type.
+The system **MUST** declare the abstract data shape base and exactly 8 derived data shapes in package `dashboard_m`, and **MUST NOT** declare any other data shape.
 
-- The type passes GTS identifier grammar and GTS v0.17 schema validation through the FrontX gts-plugin.
-- The type is concrete: it is not marked `x-gts-abstract`, it derives from no widget data base, and no template type derives from it.
-- The type declares exactly the fields `columns`, `rows`, and `percent_columns`, and no other field: no `id`, no column types, and nothing that nests rows.
-- No widget type references the type. Every widget type validates its results against it, in its cell entry and in its modal entry.
-- A widget data fixture for each of the 9 widget types validates against the type.
-- The type is described only as the result of one widget data request that names a metric; the dashboard definition carries no widget data.
+- The base is `gts.frontx.dashboard_m.widget_data.widget_data.v1~`. It is abstract and carries `id`, constrained with `x-gts-instance-ref` to the literal base operand `gts.frontx.dashboard_m.widget_data.widget_data.v1~`.
+- The 8 shapes are `summary_card`, `metric_card`, `ranked_list_card`, `progress_list_card`, `pie_chart`, `cartesian_chart`, `heatmap` and `grid`, each derived from the base, with the fields of section 6.
+- Each shape is its own type, even where two shapes have the same fields.
+- `markdown_card` has no data shape.
+- Every shape ends with `unevaluatedProperties: false`.
+- No schema declares an object whose keys are GTS ids. Grid rows are positional arrays.
+- Every schema passes GTS identifier grammar and GTS v0.17 schema validation through FrontX.
+
+### Fill Modes Definition of Done
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-widget-data-catalog-fill-modes-complete`
+
+The system **MUST** define exactly 5 fill modes, `rows_by_member`, `x_series_value`, `row_per_measure`, `positional_table` and `scalar_with_series`, with the rules of section 3.
+
+**Implements**:
+- `cpt-frontx-dashboard-algo-widget-data-catalog-resolve-from`
+- `cpt-frontx-dashboard-algo-widget-data-catalog-fill-rows-by-member`
+- `cpt-frontx-dashboard-algo-widget-data-catalog-fill-x-series-value`
+- `cpt-frontx-dashboard-algo-widget-data-catalog-fill-row-per-measure`
+- `cpt-frontx-dashboard-algo-widget-data-catalog-fill-positional-table`
+- `cpt-frontx-dashboard-algo-widget-data-catalog-fill-scalar-with-series`
+
+- Only `rows_by_member` has `fields`.
+- An absent field is omitted.
+- `x_series_value` with several measures gives one row per measure and result row, with the measure id as `series`.
+- `positional_table` follows the canonical member order and sets `total` to the row count with no `limit` and no `offset`.
+- `scalar_with_series` takes `value` and `previous_value` as totals from the backend and never sums the series.
+- A new fill mode is a change of the template.
+
+### Data Instance Definition of Done
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-widget-data-catalog-instance-validation`
+
+The system **MUST** give every data instance a combined id and **MUST** validate every `set_data` against the shape that this id names.
+
+**Implements**:
+- `cpt-frontx-dashboard-algo-widget-data-catalog-build-instance`
+- `cpt-frontx-dashboard-algo-widget-data-catalog-validate-set-data`
+
+- The id has the form `<data shape type>~<uuid>`, and the data adapter generates the UUID.
+- FrontX applies the exact shape named by the id. A widget never compares shapes.
+- An instance that violates the shape its own id names is rejected. Data of another widget type's shape is dropped by the domain owner, which compares the instance's shape with the `data_shape` of the request before `set_data` (`cpt-frontx-dashboard-feature-extension-domain-catalog`).
 
 ## 6. Domain Model
 
-### 6.1 WidgetData
+All schemas are GTS v0.17 types in package `dashboard_m`. The 8 derived shapes derive from the base with `allOf` and a `$ref` to the base, and each ends with `unevaluatedProperties: false`. Value types: a measure value is a number or null (a measure that has no value for a row, a total or a time step is null); a dimension value, such as a label or an axis value, is a string or a number; a time dimension value is an ISO 8601 string in canonical form: for `day`, `week` and `month` granularity, the start of the period as an ISO 8601 date (`YYYY-MM-DD`). A positional grid cell that holds no value is null.
 
-**GTS ID**: `gts.frontx.v.widget_data.widget_data.v1~`
+### 6.1 WidgetData (abstract base)
 
-**Description**: The generic tabular result of every widget data request. The consuming product backend computes it from the metric that the request names, on that request. A result is not stored and has no persistent identity, so an instance carries no `id`. Its shape is the same for every metric and every widget type:
+**GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~`
 
-- `columns`: the ordered column names. The names are unique, so each column that a widget type binds resolves to one position.
-- `rows`: the rows in the order the backend delivers them. Each row is an array that holds one value per column, in the order of `columns`. A value is a string, a number, a boolean, or null.
-- `percent_columns`: the names of the columns whose values hold percentages, each one of `columns`. It is empty when no column holds percentages. A value in a percentage column is a fraction where 1 means 100%: the value 0.385 is shown as 38.5%.
-
-The type carries no column types. Widgets format the values of the percentage columns as percentages, using the host language; nothing else in the result changes what is shown (DESIGN section 3.3). JSON Schema cannot express that each row has exactly as many values as there are columns, or that each percentage column is among the columns; the backend that produces the result is bound to both. A result that breaks either rule is misaligned, and the widget treats it as widget data that cannot be shown.
-
-**How widgets use it**:
-
-- Every widget type validates every result against this one type through the FrontX gts-plugin, in its cell entry and in its modal entry. A replacement realization of a widget type does the same. A result that does not parse or fails this type is widget data that cannot be shown: a cannot-show state with a diagnostic in that widget only, nothing of the result shown, and no Retry (feature-backend-contract section 6.3).
-- A result that passes the type then goes through the widget's column-binding check, owned by feature-widget-catalog. First, every row must hold exactly as many values as there are `columns`, and every percentage column must be among `columns`; a misaligned result gives the same cannot-show state, with a diagnostic and without Retry. Then every column that the widget's presentation configuration binds must be among `columns`; a missing bound column gives the same cannot-show state, without Retry.
-- A result that passes both checks and has no rows is the widget type's empty state, and so is a `markdown_card` result whose first-row `body` value is null or an empty string. It is not a failure.
-- The type sets no limit on the number of rows. The large-grid target of 5,000 rows belongs to the presentation of the `grid` widget type (feature-widget-catalog).
+**Description**: The abstract base of every data shape. It carries the combined `id` of a data instance. No data instance belongs to the base itself. Every instance belongs to one of the 8 derived shapes. The `id` has the form `<data shape type>~<uuid>`, and the data adapter generates the UUID. The `id` field uses the literal base operand, never the self-reference operand, so every derived id is accepted.
 
 **Schema**:
 
 ```json
 {
-  "$id": "gts://gts.frontx.v.widget_data.widget_data.v1~",
+  "$id": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "WidgetData",
-  "description": "Generic tabular result of one widget data request, computed by the consuming product backend from the metric that the request names. The same shape for every metric and every widget type. Carries no id and no column types; every widget validates every result against this one type.",
+  "description": "Abstract base of every data shape. Carries the combined instance id.",
   "type": "object",
-  "required": ["columns", "rows", "percent_columns"],
-  "additionalProperties": false,
+  "x-gts-abstract": true,
+  "required": [
+    "id"
+  ],
   "properties": {
-    "columns": {
-      "type": "array",
-      "items": { "type": "string", "minLength": 1 },
-      "uniqueItems": true,
-      "description": "Ordered column names. A widget type binds result columns by these names."
-    },
-    "rows": {
-      "type": "array",
-      "items": {
-        "type": "array",
-        "items": { "type": ["string", "number", "boolean", "null"] }
-      },
-      "description": "Rows in the order the backend delivers them. Each row holds one value per column, positionally aligned to columns. An empty array gives the widget type's empty state."
-    },
-    "percent_columns": {
-      "type": "array",
-      "items": { "type": "string", "minLength": 1 },
-      "uniqueItems": true,
-      "description": "Names of the columns whose values hold percentages, each one of columns. A value in a percentage column is a fraction where 1 means 100%. Empty when no column holds percentages."
+    "id": {
+      "type": "string",
+      "x-gts-instance-ref": "gts.frontx.dashboard_m.widget_data.widget_data.v1~",
+      "description": "Combined anonymous instance id: the data shape type followed by a UUID that the data adapter generates."
     }
   }
 }
 ```
 
+### 6.2 SummaryCardData
+
+**GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.summary_card.v1~`
+
+**Description**: The data of `summary_card`. Fill mode `row_per_measure`. One row per measure of the query, in query order. `key` is the measure id and `value` is its total over the query.
+
+**Schema**:
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.summary_card.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SummaryCardData",
+  "description": "Data of a summary_card widget, filled by row_per_measure: one row per measure, in query order.",
+  "allOf": [
+    {
+      "$ref": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~"
+    },
+    {
+      "type": "object",
+      "required": [
+        "rows"
+      ],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "description": "One row per measure in query order. An empty array gives the empty state.",
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "value"
+            ],
+            "properties": {
+              "key": {
+                "type": "string",
+                "x-gts-instance-ref": "gts.frontx.dashboard_m.data.measure.v1~"
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
+```
+
+### 6.3 MetricCardData
+
+**GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.metric_card.v1~`
+
+**Description**: The data of `metric_card`. Fill mode `scalar_with_series`. `previous_value` is present only when the query has `time.compare`. `sparkline` is present only when the query has `time.granularity`. The widget computes the trend from `value` and `previous_value`.
+
+**Schema**:
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.metric_card.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MetricCardData",
+  "description": "Data of a metric_card widget, filled by scalar_with_series.",
+  "allOf": [
+    {
+      "$ref": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~"
+    },
+    {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "previous_value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "sparkline": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
+```
+
+### 6.4 RankedListCardData
+
+**GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.ranked_list_card.v1~`
+
+**Description**: The data of `ranked_list_card`. Fill mode `rows_by_member` with the fields `label` from `dimensions[0]`, `value` from `measures[0]` and `secondary` from `measures[1]`. `secondary` is omitted when the query has one measure.
+
+**Schema**:
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.ranked_list_card.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RankedListCardData",
+  "description": "Data of a ranked_list_card widget, filled by rows_by_member.",
+  "allOf": [
+    {
+      "$ref": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~"
+    },
+    {
+      "type": "object",
+      "required": [
+        "rows"
+      ],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "description": "Rows in the delivered order. secondary is omitted when the query has one measure.",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "value"
+            ],
+            "properties": {
+              "label": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "secondary": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
+```
+
+### 6.5 ProgressListCardData
+
+**GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.progress_list_card.v1~`
+
+**Description**: The data of `progress_list_card`. Fill mode `rows_by_member` with the fields `label` from `dimensions[0]`, `current` from `measures[0]` and `target` from `measures[1]`.
+
+**Schema**:
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.progress_list_card.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProgressListCardData",
+  "description": "Data of a progress_list_card widget, filled by rows_by_member.",
+  "allOf": [
+    {
+      "$ref": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~"
+    },
+    {
+      "type": "object",
+      "required": [
+        "rows"
+      ],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "description": "Rows in the delivered order.",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "current",
+              "target"
+            ],
+            "properties": {
+              "label": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "current": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "target": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
+```
+
+### 6.6 PieChartData
+
+**GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.pie_chart.v1~`
+
+**Description**: The data of `pie_chart`. Fill mode `rows_by_member` with the fields `label` from `dimensions[0]` and `value` from `measures[0]`.
+
+**Schema**:
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.pie_chart.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PieChartData",
+  "description": "Data of a pie_chart widget, filled by rows_by_member.",
+  "allOf": [
+    {
+      "$ref": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~"
+    },
+    {
+      "type": "object",
+      "required": [
+        "rows"
+      ],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "description": "Rows in the delivered order.",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "value"
+            ],
+            "properties": {
+              "label": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
+```
+
+### 6.7 CartesianChartData
+
+**GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.cartesian_chart.v1~`
+
+**Description**: The data of `cartesian_chart`. Fill mode `x_series_value`, in long format. With one measure, `series` is the first dimension that is not used for `x`, and it is omitted when there is none. With several measures, `series` is the measure id.
+
+**Schema**:
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.cartesian_chart.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CartesianChartData",
+  "description": "Data of a cartesian_chart widget, filled by x_series_value, in long format.",
+  "allOf": [
+    {
+      "$ref": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~"
+    },
+    {
+      "type": "object",
+      "required": [
+        "rows"
+      ],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "description": "Rows in long format. series is omitted when the query has one measure and no dimension besides x.",
+          "items": {
+            "type": "object",
+            "required": [
+              "x",
+              "value"
+            ],
+            "properties": {
+              "x": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "series": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
+```
+
+### 6.8 HeatmapData
+
+**GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.heatmap.v1~`
+
+**Description**: The data of `heatmap`. Fill mode `rows_by_member` with the fields `x` from `dimensions[0]`, `y` from `dimensions[1]` and `value` from `measures[0]`.
+
+**Schema**:
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.heatmap.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HeatmapData",
+  "description": "Data of a heatmap widget, filled by rows_by_member.",
+  "allOf": [
+    {
+      "$ref": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~"
+    },
+    {
+      "type": "object",
+      "required": [
+        "rows"
+      ],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "description": "One row per cell value.",
+          "items": {
+            "type": "object",
+            "required": [
+              "x",
+              "y",
+              "value"
+            ],
+            "properties": {
+              "x": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "y": {
+                "type": [
+                  "string",
+                  "number"
+                ]
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
+```
+
+### 6.9 GridData
+
+**GTS ID**: `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~`
+
+**Description**: The data of `grid`. Fill mode `positional_table`. Each row is an array in the canonical member order of the query, and `total` is the row count across all pages. JSON Schema cannot express that each row has one entry for each query member, so the data adapter is bound to that rule, and to `total ≥ offset + rows.length`.
+
+**Schema**:
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GridData",
+  "description": "Data of a grid widget, filled by positional_table.",
+  "allOf": [
+    {
+      "$ref": "gts://gts.frontx.dashboard_m.widget_data.widget_data.v1~"
+    },
+    {
+      "type": "object",
+      "required": [
+        "rows",
+        "total"
+      ],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "description": "One array per row, in the canonical member order of the query. A position that holds no value holds null.",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Row count across all pages, ignoring limit and offset."
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
+```
+
+### 6.10 Fill Modes
+
+The fill modes are template-defined rules, not GTS types. The set is closed. The table gives each mode, what it produces, and the widget types that use it. The rules are the algorithms of section 3.
+
+| Fill mode | Produces | Rule in short | Used by |
+|---|---|---|---|
+| `rows_by_member` | `rows: [{<field>: value, ...}]`, one object per result row | Each `fields[i].field` takes the result value of `fields[i].from`. A field whose `from` names a member that the query does not have is omitted. | `ranked_list_card`, `progress_list_card`, `pie_chart`, `heatmap` |
+| `x_series_value` | `rows: [{x, series?, value}]` | `x` is `time` when `granularity` is set, else the first dimension. One measure: `series` is the first dimension not used for `x`, if any. Several measures: one row per measure, with the measure id as `series`. | `cartesian_chart` |
+| `row_per_measure` | `rows: [{key, value}]` | One row per measure in query order, with the total over the query. | `summary_card` |
+| `positional_table` | `rows: [[...]]` and `total` | One array per result row in the canonical member order. `total` ignores `limit` and `offset`. | `grid` |
+| `scalar_with_series` | `{value, previous_value?, sparkline?}` | Totals computed by the backend. `previous_value` when `time.compare` is set. `sparkline` when `granularity` is set. | `metric_card` |
+
+The `from` grammar: only `rows_by_member` has `fields`. Each entry is `{field, from}`, and `from` is one of `dimensions[i]`, `measures[i]` or `time`, where `i` is a position in the query's own lists. `from: time` resolves only when the query has `granularity`. Which widget type uses which mode is set by the traits `data_shape` and `fill` in `cpt-frontx-dashboard-feature-widget-catalog`.
+
 **Cross-references**:
 
-- No abstract base and no derived type. No widget type references this type; package `m` holds no reference into package `v` (DESIGN section 3.1).
-- Request: the widget data request names a backend metric, with an optional time window and an optional bucketing flag, and the backend returns one result of this type (feature-backend-contract section 6.2).
-- Failures: a result that does not parse, fails this type, is misaligned, or lacks a bound column is widget data that cannot be shown (feature-backend-contract section 6.3).
-- Column bindings and empty states: the columns that each widget type binds, the column-binding check, and the empty state of each widget type are specified with the widget types (feature-widget-catalog).
-- Source: `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-backend-source`, `cpt-frontx-dashboard-fr-widget-catalog`.
+- The query, its members and the canonical member order: `cpt-frontx-dashboard-feature-query-vocabulary`.
+- The traits `data_shape` and `fill` of each widget type: `cpt-frontx-dashboard-feature-widget-catalog`.
+- The `request_data` and `set_data` actions that carry a shape: `cpt-frontx-dashboard-feature-extension-domain-catalog`.
+- The calls of the data adapter and its obligations: `cpt-frontx-dashboard-feature-data-adapter-contract`. The data states of a widget are specified in `cpt-frontx-dashboard-feature-widget-catalog`.
+- Interfaces: `cpt-frontx-dashboard-interface-data-adapter` (the shapes and fill modes that "run a query" returns), `cpt-frontx-dashboard-interface-domain-model`.
+- Requirements: `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-fr-widget-catalog`, `cpt-frontx-dashboard-fr-data-adapter`, `cpt-frontx-dashboard-fr-backend-source`, `cpt-frontx-dashboard-fr-grid-sort-page`.
 
 ## 7. Acceptance Criteria
 
-- [ ] Exactly one widget data type is authored, `gts.frontx.v.widget_data.widget_data.v1~`, with its full JSON Schema. It is concrete, and the template declares no other widget data type.
-- [ ] Its identifier follows GTS grammar and uses the FrontX vendor `frontx`, and the type validates under GTS v0.17 through the FrontX gts-plugin.
+- [ ] The base `gts.frontx.dashboard_m.widget_data.widget_data.v1~` and exactly 8 derived shapes are authored with full JSON Schemas, and no other data shape exists.
+- [ ] Every identifier follows GTS grammar, and every schema validates under GTS v0.17 through FrontX.
 - [ ] `cfs validate --artifact` reports no structural errors for this document.
-- [ ] The type declares `columns`, `rows`, and `percent_columns` and no other field; it declares no `id` and no column types.
-- [ ] Given a result with `columns` `["label", "value"]`, `rows` `[["open", 3], ["closed", 5]]`, and `percent_columns` `[]`, when it is validated against the type, then it passes.
-- [ ] Given a result whose rows are objects keyed by column name, or that carries a field other than the three declared fields, when a widget validates it, then the widget shows its cannot-show state with a diagnostic, nothing of the result, and no Retry.
-- [ ] Given a result that passes the type but has a row with fewer values than `columns`, or names in `percent_columns` a column that is not among `columns`, when the widget runs its column-binding check, then the widget shows its cannot-show state with a diagnostic, nothing of the result, and no Retry.
-- [ ] Given a result that passes the type but lacks a column that the widget's presentation configuration binds, when the widget runs its column-binding check, then the widget shows its cannot-show state with a diagnostic and no Retry.
-- [ ] Given a result that passes the type and the column-binding check and has an empty `rows`, when the widget shows it, then the widget shows its widget type's empty state, not an error.
-- [ ] The type is described as the result of a widget data request that names a metric; nothing describes it as part of the dashboard definition, and no widget type references it.
+- [ ] The `id` of the base uses the literal base operand, and no schema uses the self-reference operand for it.
+- [ ] Given a grid instance with an `id` that names the grid shape, `rows` as arrays and an integer `total`, when FrontX validates it, then it is accepted.
+- [ ] Given a grid instance whose `rows` are objects keyed by a GTS id, when FrontX validates it, then it is rejected.
+- [ ] Given a data instance that violates the shape its own `id` names, when FrontX validates the `set_data`, then it is rejected and the widget does not receive it.
+- [ ] Given a `pie_chart` request answered with an instance whose `id` names the `grid` shape, when the domain owner compares the instance's shape with the `data_shape` of the request, then it drops the answer and does not call `set_data`.
+- [ ] Given a data instance with a field that its shape does not declare, when FrontX validates it, then it is rejected.
+- [ ] Given a `ranked_list_card` query with one measure and `rows_by_member` fields `label`, `value` and `secondary` (from `measures[1]`), when the data adapter fills the shape, then every row has `label` and `value` and no row has `secondary`.
+- [ ] Given a `cartesian_chart` query with one measure, a time with `granularity` and one dimension, when `x_series_value` fills the shape, then `x` is the time value, `series` is the dimension value and `value` is the measure.
+- [ ] Given a `cartesian_chart` query with one measure and one dimension and no `granularity`, when `x_series_value` fills the shape, then `x` is the dimension value and no row has `series`.
+- [ ] Given a `cartesian_chart` query with two measures, a time with `granularity` and no dimension, when `x_series_value` fills the shape, then each time step gives two rows, and the `series` of each row is the id of its measure.
+- [ ] Given a `summary_card` query with three measures, when `row_per_measure` fills the shape, then `rows` has three entries in query order, each with the measure id as `key`.
+- [ ] Given a `grid` query with one dimension, a time with `granularity` and two measures, when `positional_table` fills the shape, then each row has four entries in the order dimension, time, measure, measure.
+- [ ] Given a grid instance with a row whose length differs from the number of query members, then the data adapter violates its obligation, and `cpt-frontx-dashboard-feature-data-adapter-contract` catches it as a conformance failure.
+- [ ] Given a grid instance whose `total` is smaller than `offset + rows.length`, then the data adapter violates its obligation.
+- [ ] Given a `grid` query with `limit` 25 and `offset` 25 over 143 rows, when `positional_table` fills the shape, then `rows` holds one page and `total` is 143.
+- [ ] Given a `metric_card` query with `time.compare` set to `previous_period` and a time with `granularity`, when `scalar_with_series` fills the shape, then `value`, `previous_value` and `sparkline` are present, and `value` is the total from the backend, not the sum of `sparkline`.
+- [ ] Given a `metric_card` query with no `time`, when `scalar_with_series` fills the shape, then `previous_value` and `sparkline` are omitted.
+- [ ] Given a `metric_card` query with a time with `granularity` in which one step has no value, when `scalar_with_series` fills the shape, then that `sparkline` point is `null` and FrontX accepts the instance.
+- [ ] Given a `cartesian_chart` row whose measure has no value, then `value` is `null` and FrontX accepts the instance.
+- [ ] Given a `cartesian_chart` query with a time with `granularity` `month` and a row for March 2026, then `x` is `2026-03-01`. For `week` it is the first day of the week, and for `day` the day itself.
+- [ ] Given a `from` of `time` on a query without `granularity`, then it resolves to nothing and the field is omitted.
+- [ ] Given a `from` of `measures[3]` on a query with two measures, when `rows_by_member` fills the shape, then the field is omitted from every row.
+- [ ] Given a test data adapter that names no backend, when it answers each of the 8 data widget types with an instance of its shape, then FrontX accepts every answer.
+- [ ] A new widget type that reuses a fill mode needs no change to the data adapter.

@@ -1,13 +1,13 @@
 ---
 status: accepted
 version: 1
-date: 2026-10-27
-description: Technical design of the FrontX dashboard template. It covers the GTS (Global Type System) v0.17 domain model and the Viewer host, which requests a backend-delivered dashboard and mounts one widget extension per layout cell. It also covers the 9 widget types, each requesting a backend metric as one generic tabular result, and the larger view in the host modal domain. The backend interface, the host contract with template-shell, the runtime sequences, and the budgets complete it.
+date: 2026-10-30
+description: Technical design of the FrontX dashboard template. It covers the GTS (Global Type System) v0.17 domain model with its query vocabulary and data shapes, and the 9 passive widget types. It covers the dashboards root, which loads a dashboard through the product's data adapter and mounts one widget extension per layout cell, and the larger-view modal, which shows larger-view widgets in the shell's popup domain. The data adapter interface, the actions between widgets and the domain owners, the host contract with template-shell, the runtime sequences, and the budgets complete it.
 ---
 
 # Technical Design — FrontX Dashboard Template
 
-This design describes how `template-dashboard` shows backend-delivered dashboards on FrontX. It covers the GTS domain model; GTS, the Global Type System, provides typed, versioned JSON schemas and identifiers. It also covers the Viewer host, which requests one dashboard and mounts its widgets, and the 9 template widget types with their larger view in the host modal domain. The backend interface, the host contract with `template-shell`, the main runtime sequences, and the budgets complete it.
+This design describes how `template-dashboard` shows dashboards on FrontX. It covers the GTS domain model; GTS, the Global Type System, provides typed, versioned JSON schemas and identifiers. It covers the dashboards root, which loads one dashboard through the consuming product's data adapter and mounts its widgets, and the larger-view modal, which shows larger-view widgets in the shell's `popup` domain. It also covers the 9 template widget types, which render what they are sent. The data adapter interface, the actions, the host contract with `template-shell`, the main runtime sequences, and the budgets complete it.
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-design-dashboard-template`
 
@@ -39,161 +39,190 @@ This design describes how `template-dashboard` shows backend-delivered dashboard
 
 ### 1.1 Architectural Vision
 
-`template-dashboard` is a render-only Viewer host on FrontX. The consuming product's backend is the only source of what a dashboard shows. It returns dashboard definitions, and it computes widget data on request from its own metrics; the template stores no queries and no pre-computed data. One definition is one GTS dashboard instance with an `id`, a `name`, a `description`, and an embedded `layout`. Each layout cell embeds one widget instance. A widget instance is its presentation configuration plus a `source`: the name of a backend metric, with an optional time window and an optional bucketing flag. The definition carries no widget data and no theme. A consuming product may write its dashboards or generate them, for example from a chat request through a language model on its backend. Generation is the consuming product's job; the template supplies the GTS types that a definition is validated against (section 3.6, consumer-side generation). The template computes, aggregates, and narrows nothing. Once the widgets show their data, nothing changes until the dashboard is opened again.
+`template-dashboard` is a render-only dashboards root on FrontX. The template has no backend access of its own. A consuming product copies the template into its project and supplies one **data adapter**: product code behind an interface that the template defines. The data adapter gets dashboards and runs queries against the product's backend. It is the only part that talks to a backend, and it is not part of the template (`cpt-frontx-dashboard-adr-data-adapter`).
 
-The architecture has one orchestrator. The **Viewer host** is a nested host: an MFE (micro-frontend, an independently built and mounted UI unit) with its own FrontX registry. The host application mounts it as a routed screen. The Viewer host requests the dashboard that its route names, once, and validates it through the FrontX gts-plugin. It implements one extension domain, `layout_cells`. For each embedded widget it reads the widget type from the widget's `id`, picks the winning **widget realization** for that type, and generates one cell extension from it. It registers that extension in its own registry, mounts it, and sends the widget its context with `set_widget_context`. The template ships 9 widget types. Each is a presentation type, realized by one cell entry and one modal entry. Each cell widget sends its own widget data request through the FrontX API package, naming its metric. It gets back one generic tabular result, validates it, and checks that the columns its configuration names are present. Each widget shows its own skeleton, error, and Retry. After that, no request follows except Retry after a failure and the larger view's own request. Section 3.3 states the backend interface, and `cpt-frontx-dashboard-feature-backend-contract` specifies it exactly.
+A dashboard is one GTS instance with an `id`, a `name`, an optional `description` and an embedded `layout`. Each layout cell embeds one widget and may embed a second widget for its larger view. A data widget carries one embedded **query** in its `data` field. The query says which measures and dimensions the widget shows, over which time range, filtered, ordered and paged how. The query is typed by a product **dataset**, a query type that the product derives from the template's closed base query type. Measures and dimensions are GTS well-known instances. The data adapter returns the dataset types and the measure and dimension instances together with the dashboard (`cpt-frontx-dashboard-adr-query-vocabulary-and-datasets`). The PRD calls a widget's query its **data definition**; this design uses "query" throughout.
 
-Every widget carries one button that opens it in a larger view, in the host's modal domain. For each widget type, the `dashboard-widgets` manifest declares one static extension of the host modal domain, and the host bootstrap registers it. The larger-view button runs a FrontX actions chain that escalates to the shell: it mounts that static extension and then sends it the same widget context as the cell. Static extensions are needed because FrontX admits an extension only through the registry that holds its domain, and a child cannot register into its host's registry (FrontX ADR-0008). The theme is the host's own theme shared property, forwarded unchanged; the look comes from `@gears-frontx/ui-kit` in every template MFE. The host must render its modal domain through a slot with modal chrome, focus trap, and dismissal, which current `template-shell` does not do yet (section 4, prerequisites). Every FrontX mechanism the template uses is the smallest one that the FrontX rules for isolation, admission, occupancy, and action routing allow.
+The architecture has two domain owners. The **dashboards root** is whatever hosts the dashboards in the product: a screen extension, or code copied into the shell of a single-page application that has no screen domain. This design stays abstract about which. The dashboards root implements the `layout_cells` extension domain. It gets the dashboard from the data adapter, registers the delivered types, and validates the dashboard. It then picks a widget realization per widget, registers one generated cell extension per cell widget, mounts it, and sends it `set_widget_context`. The **larger-view modal** is one static, routed extension of the shell's `popup` domain. It implements its own nested `larger_view` domain and does the same for larger-view widgets. Each owner answers the `request_data` actions sent from its domain, through the data adapter, with `set_data` (`cpt-frontx-dashboard-adr-extension-domain-taxonomy`).
 
-A few FrontX terms recur in this design. An **occupant** is an extension that is currently mounted in an extension domain. Each domain has a named **mount strategy** that governs its occupants. **Concurrent** allows many occupants side by side. **Optional** allows zero or one occupant, which leaves only through an explicit unmount. **Exclusive** keeps exactly one occupant and swaps it when another one mounts. A **bridge** is the channel between a mounted MFE and the host that mounted it; the MFE sends actions and reads shared properties through it.
+Widgets are passive renderers. A data widget sends `request_data` to the extension domain it sits in, shows a loader, and renders the typed data shape that arrives in `set_data`. Each data widget type declares one data shape and one fill mode from a closed set of five, so one data adapter fills every widget type without code per widget (`cpt-frontx-dashboard-adr-subject-agnostic-widget-catalog`). The grid sorts and pages by changing its local copy of the query and asking again. Everything is validated before it mounts: one standard, polymorphic GTS validation per widget checks the widget, its presentation fields and its query against the dataset. A failure shows a static "cannot be shown" placeholder at dashboard level or in one cell or larger view. Data that never arrives keeps the loader; there is no error state for data and no timeout.
+
+Some FrontX terms recur. An **occupant** is an extension that is mounted in an extension domain. Each domain has a named **mount strategy**: **Concurrent** allows many occupants side by side; **Optional** allows zero or one occupant, and a new mount displaces the old one; **Exclusive** keeps exactly one occupant and has no explicit unmount (FrontX ADR-0009). A **bridge** is the channel between a mounted MFE (micro-frontend) and the registry that mounted it. An **actions chain** is a FrontX action with an optional `next` and `fallback`; FrontX delivers each action to the handler that its target registered, wherever the target sits (FrontX ADR-0007). A **domain owner** is the part that implements a template domain: the dashboards root for `layout_cells`, the larger-view modal for `larger_view`.
 
 ### 1.2 Architecture Drivers
 
-The drivers are the PRD requirements and the template's eleven ADRs. Each table below maps a driver to the design element that answers it.
+The drivers are the PRD requirements and the template's twelve ADRs. Each table below maps a driver to the design element that answers it.
 
-**ADRs**: `cpt-frontx-dashboard-adr-frontend-framework`, `cpt-frontx-dashboard-adr-dashboard-layout-grid`, `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`, `cpt-frontx-dashboard-adr-charting-library`, `cpt-frontx-dashboard-adr-data-grid-library`, `cpt-frontx-dashboard-adr-theme-distribution`, `cpt-frontx-dashboard-adr-extension-domain-taxonomy`, `cpt-frontx-dashboard-adr-widget-type-and-mfe-realization`, `cpt-frontx-dashboard-adr-subject-agnostic-widget-catalog`, `cpt-frontx-dashboard-adr-template-packages-and-host-contract`, `cpt-frontx-dashboard-adr-backend-delivered-dashboard`
+**ADRs**: `cpt-frontx-dashboard-adr-frontend-framework`, `cpt-frontx-dashboard-adr-dashboard-layout-grid`, `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`, `cpt-frontx-dashboard-adr-charting-library`, `cpt-frontx-dashboard-adr-data-grid-library`, `cpt-frontx-dashboard-adr-theme-distribution`, `cpt-frontx-dashboard-adr-extension-domain-taxonomy`, `cpt-frontx-dashboard-adr-widget-type-and-mfe-realization`, `cpt-frontx-dashboard-adr-subject-agnostic-widget-catalog`, `cpt-frontx-dashboard-adr-template-packages-and-host-contract`, `cpt-frontx-dashboard-adr-data-adapter`, `cpt-frontx-dashboard-adr-query-vocabulary-and-datasets`
 
 #### Functional Drivers
 
 | Requirement | Design Response |
 |-------------|------------------|
-| `cpt-frontx-dashboard-fr-viewer-host` | The Viewer host is a routed extension in the host screen domain, and its route carries the dashboard's GTS identifier. It requests that dashboard once and validates it. For every embedded widget it generates one `layout_cells` extension from the winning widget realization and registers it in its own registry. Each open dashboard keeps its own loaded definition (`cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-interface-template-domains`, `cpt-frontx-dashboard-principle-own-registry-registration`). |
-| `cpt-frontx-dashboard-fr-backend-source` | The Viewer host requests one GTS dashboard by its identifier, written or generated by the consuming product, and validates it through the FrontX gts-plugin. Each cell widget requests its own backend metric once through the FrontX API package and shows the result as delivered. The consuming product checks metrics and columns when it authors a dashboard; the Viewer host checks types, layout, and grid configuration; each widget checks its bound columns at run time (`cpt-frontx-dashboard-interface-dashboard-payload`, `cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-component-widget-data-request`, `cpt-frontx-dashboard-seq-initial-load`, `cpt-frontx-dashboard-seq-consumer-generation`). |
-| `cpt-frontx-dashboard-fr-loading-error-states` | The dashboard area shows skeletons while the dashboard loads, a banner with Retry when the dashboard request fails, and a diagnostic with no cells when the dashboard or the Viewer host's startup cannot be shown. Each cell shows the Viewer host's cell skeleton until its widget mounts, and its own cannot-show state when its widget type has no single winning realization or its widget fails to mount. Each widget then shows its own skeleton, its error with Retry, its cannot-show state, or its empty state. A failing widget affects only its own cell (`cpt-frontx-dashboard-seq-failure-handling`, `cpt-frontx-dashboard-interface-dashboard-payload`). |
-| `cpt-frontx-dashboard-fr-widget-catalog` | One widget package ships one manifest, 9 cell entries, 9 modal entries, 9 static modal extensions, and 9 widget realizations of weight 1, one set per subject-agnostic widget type. Each widget type names the result columns it uses for each role. The `grid` widget type shows frozen columns, grouped column headers, row coloring from kit tokens, and up to 5,000 rows without paging; `markdown_card` shows delivered markdown with its formatting; embedded HTML in a markdown card is shown as plain text, not rendered, the single exception to showing delivered content in full (`cpt-frontx-dashboard-component-widget-library`, `cpt-frontx-dashboard-component-widget-data-request`, `cpt-frontx-dashboard-interface-widget-realization`). |
-| `cpt-frontx-dashboard-fr-widget-modal` | The shared widget chrome adds one larger-view button. It runs a chain that escalates to the shell: `mount_ext` of the widget type's static extension in the host modal domain, then `set_widget_context` with the same widget and data endpoint as the cell. The modal entry sends the same widget data request as the cell. The host modal domain owns its single occupant; Close and dismissal are the shell's `unmount_ext` (`cpt-frontx-dashboard-component-widget-library`, `cpt-frontx-dashboard-interface-host-actions`, `cpt-frontx-dashboard-interface-widget-realization`, `cpt-frontx-dashboard-seq-widget-modal-open`). |
-| `cpt-frontx-dashboard-fr-theme` | The theme input is the host's theme shared property. The Viewer host forwards it unchanged on `layout_cells`, and the host modal domain gives it to modal entries. Every template MFE uses `@gears-frontx/ui-kit` and maps the host theme id to the kit's light or dark scope, so the template's look is the same in a cell and in the larger view. Chart widgets build their ECharts theme `frontx-dashboard` from kit tokens. A theme switch is a shared-property change only (`cpt-frontx-dashboard-seq-theme-switch`). |
-| `cpt-frontx-dashboard-fr-domain-model` | The `gts.frontx.v.*` and `gts.frontx.m.*` types on GTS v0.17: a dashboard root with an embedded layout, the abstract widget base with its typed `source`, the 9 widget types with their column bindings, one generic widget data type, and the widget realization type. A consuming product validates the dashboards it writes or generates against these types. In v1 it configures each widget through its presentation configuration and `source`; consumer widget types and consumer widget settings are a later stage (section 3.1, `cpt-frontx-dashboard-seq-consumer-generation`, section 4). |
-| `cpt-frontx-dashboard-fr-replacement-widget` | A consuming product ships a replacement widget realization in its own package, with its own cell entry, modal entry, static modal extension, and a weight above 1. By realization precedence the single highest-weight realization wins for that widget type, so the Viewer host mounts the replacement's cell entry for every widget of that type, and the larger-view button opens the replacement's static modal extension; the template's realizations keep serving the other widget types. The replacement receives `set_widget_context` like a template widget and keeps the per-widget states, the theme mapping, and the accessibility rules itself. It adds no widget type and no widget settings in v1 (`cpt-frontx-dashboard-interface-widget-realization`, `cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-topology-overlay-packages`). |
+| `cpt-frontx-dashboard-fr-dashboards-root` | The dashboards root is either a routed screen extension, whose route carries the dashboard's GTS identifier, or code in the shell that takes the identifier from the host's address. It gets that dashboard from the data adapter, validates it, and mounts one generated cell extension per cell widget in `layout_cells`. Each open dashboard runs in its own application instance and keeps only its own loaded dashboard (`cpt-frontx-dashboard-component-dashboards-root`, `cpt-frontx-dashboard-interface-template-domains`, `cpt-frontx-dashboard-principle-own-registry-registration`, `cpt-frontx-dashboard-constraint-one-dashboards-root-per-tree`). |
+| `cpt-frontx-dashboard-fr-data-adapter` | The template defines one code interface with two operations, "get a dashboard" and "run a query", and one declaration, the query families the data adapter serves, which returns the family type schemas. The product implements it once in its copy of the template. The dashboards root and the larger-view modal call it for every widget of every dashboard. The data adapter implements the five fill modes, so a new dataset, dashboard or widget type that reuses a fill mode needs no new adapter code (`cpt-frontx-dashboard-interface-data-adapter`, `cpt-frontx-dashboard-component-data-adapter`). |
+| `cpt-frontx-dashboard-fr-backend-source` | Template code makes no backend call. The dashboard and every data shape instance come from the data adapter. A widget's query is the only thing that decides its data, its limits and its paging, and presentation fields never reach the data adapter. Generated and written dashboards load the same way. A widget shows its delivered data in full; a markdown card shows typical markdown as formatted text and embedded HTML as plain text. A product checks a dashboard before it serves it with the same GTS types and checks that the domain owners use (`cpt-frontx-dashboard-principle-render-only-dashboards-root`, `cpt-frontx-dashboard-seq-initial-load`, `cpt-frontx-dashboard-seq-consumer-generation`). |
+| `cpt-frontx-dashboard-fr-loading-error-states` | The dashboards root shows a loader in place of the dashboard while it waits for it. A data widget shows a loader before its first `set_data`, a busy indicator over its content on a repeated request, and an empty state for valid data with no rows; `markdown_card` renders at once. The domain owner shows a static "cannot be shown" placeholder at two levels: in place of the dashboard, or in one cell or larger view. There is no error message for data and no timeout (`cpt-frontx-dashboard-seq-cannot-show`, `cpt-frontx-dashboard-component-widget-library`). |
+| `cpt-frontx-dashboard-fr-widget-catalog` | One `widgets` package ships 9 entries, one per subject-agnostic widget type, and the template's GTS file holds 9 widget realizations of weight 1. Eight data widget types each declare a data shape, a fill mode and limits on their query; `markdown_card` has no query. The ranked list card takes a secondary measure, the progress list card a target measure, the cartesian chart several measures, and the metric card a previous-period value for its trend. The grid has frozen columns, column groups, alignment, row colouring by member and local resizing (`cpt-frontx-dashboard-component-widget-library`, `cpt-frontx-dashboard-interface-widget-realization`). |
+| `cpt-frontx-dashboard-fr-grid-sort-page` | The grid always pages, with `page_sizes` required and at most 500 rows per page. Sorting, paging and a new page size change the widget's local copy of its query (`order`, `limit`, `offset`) and send a new `request_data`. The grid keeps its rows under a busy indicator and applies only the answer to its latest request (`cpt-frontx-dashboard-seq-query-change`, `cpt-frontx-dashboard-component-widget-library`). |
+| `cpt-frontx-dashboard-fr-widget-modal` | A cell may embed a larger-view widget; without one the cell widget hides its button. The button runs one chain: `mount_ext` of the larger-view modal in the shell's `popup` domain with `history: "none"`, then `show_larger_view` with the dashboard id and the larger-view widget id. The larger-view modal loads that dashboard if needed, mounts the larger-view widget in `larger_view`, and answers its data requests. It closes with its own close button or a click outside, and it keeps both ids in its own private subroute, so it is open again after a page refresh (`cpt-frontx-dashboard-component-larger-view-modal`, `cpt-frontx-dashboard-seq-widget-modal-open`, `cpt-frontx-dashboard-seq-larger-view-refresh`, `cpt-frontx-dashboard-seq-larger-view-close`). |
+| `cpt-frontx-dashboard-fr-theme` | The theme input is the host's theme shared property. The dashboards root publishes it unchanged on `layout_cells`. The larger-view modal receives it from the shell's `popup` domain and publishes it on `larger_view`. Every template MFE maps the host theme id to the light or dark scope of `@gears-frontx/ui-kit`, and chart widgets build their ECharts theme `frontx-dashboard` from kit tokens. A theme switch is a shared-property change only (`cpt-frontx-dashboard-seq-theme-switch`). |
+| `cpt-frontx-dashboard-fr-replacement-widget` | A consuming product ships its own entry in its own package and adds a widget realization with a weight above 1 to its copy of the template's GTS file. The single highest-weight realization wins, so both domain owners mount the replacement for every widget of that type, in a cell and in the larger view. The replacement lists `set_widget_context` and `set_data` and sends `request_data` like a template widget (`cpt-frontx-dashboard-interface-widget-realization`, `cpt-frontx-dashboard-topology-overlay-packages`). |
+| `cpt-frontx-dashboard-fr-domain-model` | GTS v0.17 types in the packages `dashboard_m` and `dashboard_v`: the dashboard with its embedded layout, the widget base, the abstract data widget, the 9 widget types, the closed base query type with the measure and dimension bases, the 8 data shapes, the 4 template actions, the 2 domains with their extension types, and the widget realization type. A product describes its datasets as query types derived from the base and its vocabulary as measure and dimension instances. It cannot add widget types or widget settings (section 3.1, `cpt-frontx-dashboard-constraint-gts-id-convention`). |
 
 #### NFR Allocation
 
 | NFR ID | NFR Summary | Allocated To | Design Response | Verification Approach |
 |--------|-------------|--------------|-----------------|----------------------|
-| `cpt-frontx-dashboard-nfr-visual-quality` | One consistent look in light and dark | `@gears-frontx/ui-kit` in every template MFE, chart widgets, grid shell | Every color, font, and spacing value comes from ui-kit tokens in the light or dark scope chosen from the host theme id. Chart widgets build one ECharts theme from those tokens. Grid row coloring uses kit tokens. No widget carries manual styling. | Design inspection of all 9 widget types in both scopes, in a cell and in the larger view, against the design-system reference. |
-| `cpt-frontx-dashboard-nfr-initial-render` | First full render p95 < 3 s (provisional), from the moment the dashboard viewer opens the dashboard address until every widget shows its data | Viewer host (dashboard request, parallel mount), widget library (parallel widget data requests) | One dashboard request per dashboard. After the dashboard resolves, the cell extensions mount in parallel, and each widget requests its data at once, in parallel with the others. This budget also covers the evaluation cost of every MFE and of the shared packages. Reference conditions are fixed in section 3.9. | Timed runs under the reference conditions; budget confirmed or revised from the results. |
-| `cpt-frontx-dashboard-nfr-large-table` | A grid of up to 5,000 rows stays responsive while scrolling, without paging | Widget library: the grid shell of the `grid` widget type | The grid shell renders rows virtualized, so only the rows in view are in the DOM, whatever the delivered row count. It offers no paging. | Scrolling the 5,000-row reference grid in a cell under the reference conditions of section 3.9, with the longest pause recorded against the provisional threshold. |
-| `cpt-frontx-dashboard-nfr-compatibility` | Works with the current stable FrontX release, depends on `template-shell` only | Packaging, host contract | Role-based host identifiers resolved from shell constants in code; manifest-declared extensions carry the current identifiers; FrontX packages pinned to exact published versions (section 3.5); no dependency on `template-mfe` or on any other template. | A build on a `template-shell` project that renders the modal-domain slot and gives the host modal domain theme and language, with a dependency check that finds only `template-shell` and the FrontX packages. |
-| `cpt-frontx-dashboard-nfr-bundle-budget` | Download-size budget | Viewer host entry, every widget entry (cell and modal) | Provisional figures from section 3.9, counted as transferred gzipped bytes on a cold load of the reference dashboard. The Viewer host stays under 500 KB, including the shared packages it fetches. Each widget stays under 100 KB of its own code. Shared packages are counted once in an uncapped page total. Every MFE declares all its packages as shared. | Transferred bytes measured on a cold load of the reference dashboard against the provisional figures. |
-| `cpt-frontx-dashboard-nfr-accessibility` | Host accessibility policy and keyboard operability | Widget chrome with larger-view button and Retry, grid shell, Viewer host chrome and Retry | Every control follows the host policy. The grid shell exposes ARIA grid semantics, also for virtualized rows. The larger-view button and both Retry actions are keyboard-operable. The host's modal-domain slot provides the modal frame, Close, focus trap, and dismissal (section 4, prerequisites). | Host accessibility checks in both scopes and a keyboard-only walkthrough of the reference dashboard (section 3.9) that opens and closes the larger view of every widget. |
-| `cpt-frontx-dashboard-nfr-consumer-docs` | Shipped consumer guide | Consumer guide shipped with the template | The guide covers the backend interface that a consuming product backend implements: the dashboard request, the widget data request and result, the failure classes, and the viewer-access prerequisite (`cpt-frontx-dashboard-feature-backend-contract`). It also covers validation of dashboards against the template types, the column binding of each widget type with the authoring-time check of metrics and columns, replacement widget realizations, the form of the endpoint configuration, and the host contract. The guide states that the consuming product owns dashboard size and data size. | Walkthrough by a developer who did not build the template. |
+| `cpt-frontx-dashboard-nfr-visual-quality` | One consistent look in light and dark | `@gears-frontx/ui-kit` in every template MFE, chart widgets, grid shell | Every color, font and spacing value comes from ui-kit tokens in the light or dark scope that the host theme id maps to. Chart widgets build one ECharts theme from those tokens. Grid row colours are kit tokens. No widget carries manual styling. | Design inspection of all 9 widget types in both scopes, in a cell and in the larger view, against the design-system reference. |
+| `cpt-frontx-dashboard-nfr-initial-render` | First full render p95 < 3 s (provisional), from opening the dashboard address to the moment every data widget shows its data | Dashboards root (one "get a dashboard" call, parallel mounts), widget library (one `request_data` per data widget), data adapter (answers asynchronously) | One dashboard load, then the cell extensions mount in parallel, and each data widget sends one request after its context. The `request_data` handler resolves when it accepts the request, so no chain waits for the data adapter. The budget includes the evaluation cost of every MFE and shared package. Reference conditions are in section 3.9. | Timed runs under the reference conditions with a test data adapter that names no backend; budget confirmed or revised from the results. |
+| `cpt-frontx-dashboard-nfr-large-table` | A page of up to 500 rows renders and scrolls smoothly; the grid always pages | Widget library: the grid shell of the `grid` widget type | `page_sizes` is required and its largest value is at most 500, and `data.limit` is one of the `page_sizes` values. The grid shell renders the rows of a page virtualized, so only the rows in view are in the DOM. | Scrolling a 500-row page of the reference grid in a cell under the reference conditions of section 3.9, with the longest pause recorded against the provisional threshold. |
+| `cpt-frontx-dashboard-nfr-compatibility` | Works on a FrontX version that supports GTS v0.17 and shares the GTS type store across the realm; depends on `template-shell` only | Packaging, host contract | Role-based host identifiers resolved from shell constants in code; manifest-declared extensions carry the current identifiers; FrontX packages pinned to exact published versions (section 3.5); no dependency on `template-mfe` or on any other template. The larger view additionally needs the modal container for the shell's `popup` domain (section 4, prerequisites). | A build on a `template-shell` project with FrontX on GTS v0.17 and a realm-shared type store (a check that a type registered by the shell validates in a nested owner), with a dependency check that finds only `template-shell` and the FrontX packages. |
+| `cpt-frontx-dashboard-nfr-bundle-budget` | Download-size budget | Dashboards root, larger-view modal, every widget entry | Provisional figures from section 3.9, counted as transferred gzipped bytes on a cold load of the reference dashboard. The dashboards root stays under 500 KB, including the shared dependencies it fetches itself; the larger-view modal is counted by the same rule against the same figure. Each widget entry stays under 100 KB of its own code. Shared dependencies are counted once in an uncapped page total. The product's data adapter and backend client are outside the budget. | Transferred bytes measured on a cold load of the reference dashboard and on the first larger-view opening, against the provisional figures. |
+| `cpt-frontx-dashboard-nfr-accessibility` | Host accessibility policy and keyboard operability | Widget chrome with the larger-view button, grid shell with sort, pager, page size and resize controls, larger-view modal with its close button, the shell's modal container | Every control follows the host policy. The grid shell exposes ARIA grid semantics, including row counts, positions and sort state for virtualized rows. All grid controls, the larger-view button and the close button work with the keyboard alone. The shell's modal container keeps keyboard focus inside the larger-view modal while it is open (section 4, prerequisites). No widget conveys meaning by color alone. | Host accessibility checks in both scopes and a keyboard-only walkthrough of the reference dashboard (section 3.9) that opens and closes every larger view and sorts, pages, resizes and changes the page size of every grid. |
+| `cpt-frontx-dashboard-nfr-consumer-docs` | Shipped consumer guide | Consumer guide shipped with the template | The guide covers the data adapter interface and its obligations (the five fill modes, data instance ids, answering every request, owning backend errors, access and the session); query families, datasets and the measure and dimension vocabulary, with a new version id for an entry with new content; checking a dashboard before serving it with the template types and checks; that every viewer who may see a dashboard must get the data of its widgets; the host requirements; replacement realizations in the product's copy of the template's GTS file; and that the product owns dashboard size and data size. | Walkthrough by a developer who did not build the template. |
 
 #### Architecture Decision Records
 
 | ADR | Effect on this design |
 |-----|-----------------------|
-| `cpt-frontx-dashboard-adr-frontend-framework` | FrontX with TypeScript and MFE packaging; per-instance isolation shapes every component boundary. |
-| `cpt-frontx-dashboard-adr-dashboard-layout-grid` | 60-column integer cells rendered with CSS Grid in the Viewer host; layout checks in the Viewer host with no repair. |
-| `cpt-frontx-dashboard-adr-shared-data-types-and-schemas` | GTS v0.17 on FrontX bases, vendor `frontx`, packages `v` and `m`, the ID-form convention with combined instance identifiers, `x-gts-type-ref`, `x-gts-instance-ref`, and `x-gts-pattern-ref` references, the abstract widget base with a typed `source` and no traits, one generic widget data type, validation through the FrontX gts-plugin, and the `v1` freeze. |
-| `cpt-frontx-dashboard-adr-charting-library` | ECharts in each chart widget, with an ECharts theme built from ui-kit tokens and registered per widget instance; the library is evaluated per instance. |
-| `cpt-frontx-dashboard-adr-data-grid-library` | TanStack Table behind one grid shell in the `grid` widget, used for rendering only, with virtualized row rendering for up to 5,000 rows and cell values shown as text. The grid shows the delivered rows in the delivered order, without sorting, grouping, pagination, filtering, or user-driven column resizing in the browser; column width and alignment are presentation hints in the configuration. |
-| `cpt-frontx-dashboard-adr-theme-distribution` | The theme is the host's theme shared property, forwarded unchanged by the Viewer host on `layout_cells` and given by the host modal domain to modal entries. The look comes from `@gears-frontx/ui-kit` in every template MFE; the template defines no theme of its own. |
-| `cpt-frontx-dashboard-adr-extension-domain-taxonomy` | One template domain, `layout_cells`, with the Concurrent strategy in the Viewer host's own registry, and one template action, `set_widget_context`. The larger view uses one static extension of the host modal domain per widget type, reached by an escalated chain. Each nested host registers extensions only in its own registry. |
-| `cpt-frontx-dashboard-adr-widget-type-and-mfe-realization` | Widget types (package `m`) and widget MFE entries are joined by widget realization instances (package `v`) that name a widget type, a cell entry, a modal extension, and a weight. Widget entries are plain FrontX Module Federation entries. For each widget type the single highest-weight realization wins. |
-| `cpt-frontx-dashboard-adr-subject-agnostic-widget-catalog` | The 9 template widget types are presentation types over one generic tabular result. Each names the result columns it uses for each role, and each widget names its backend metric in `source`. There are no consumer widget types in v1. |
-| `cpt-frontx-dashboard-adr-template-packages-and-host-contract` | Two packages, `dashboard-viewer` and `dashboard-widgets`, on `template-shell`; host domains by role; a manifest channel that carries GTS types, MFE entries, widget realizations, and static extensions; a consumer replacement realization ships in its own package; every MFE declares all its packages as shared; the rendered modal-domain slot is a host requirement. |
-| `cpt-frontx-dashboard-adr-backend-delivered-dashboard` | The backend returns the dashboard definition, with the layout and the widgets embedded, requested once by its identifier. Each cell widget requests its backend metric once through the FrontX API package and gets one generic tabular result. The modal entry repeats the same request. Nothing else is requested after render except Retry after a failure. |
+| `cpt-frontx-dashboard-adr-frontend-framework` | FrontX with TypeScript and MFE packaging; per-instance isolation shapes every component boundary; the dashboards root, the larger-view modal and the widgets exchange typed FrontX actions. |
+| `cpt-frontx-dashboard-adr-dashboard-layout-grid` | 60-column integer cells rendered with CSS Grid; a cell holds one widget and an optional larger-view widget; layout checks with no repair, including a repeated widget id; a failed layout check is the dashboard-level cannot-show state. |
+| `cpt-frontx-dashboard-adr-shared-data-types-and-schemas` | GTS v0.17 as a prerequisite; packages `dashboard_m` and `dashboard_v` with a one-way dependency; literal base operands for id fields; one polymorphic validation per instance; arrays of objects instead of id-keyed maps; registry access limited to what FrontX offers, with a template trait helper and the template's GTS file; data shape checking through FrontX's validation of `set_data`. |
+| `cpt-frontx-dashboard-adr-charting-library` | ECharts in each chart widget, with an ECharts theme built from ui-kit tokens and registered per widget instance; `cartesian_chart` draws one or more measures as series. |
+| `cpt-frontx-dashboard-adr-data-grid-library` | TanStack Table v8 behind one grid shell, for rendering and local column resizing only; the grid always pages with at most 500 rows per page; sorting and paging are query changes; frozen columns, column groups, alignment and row colour keyed by query member; grid cross-checks run by the domain owner. |
+| `cpt-frontx-dashboard-adr-theme-distribution` | The host's theme shared property, used unchanged; published by the dashboards root on `layout_cells` and by the larger-view modal on `larger_view`; the look comes from `@gears-frontx/ui-kit` in every template MFE. |
+| `cpt-frontx-dashboard-adr-extension-domain-taxonomy` | Domains `layout_cells` (Concurrent, dashboards root) and `larger_view` (Optional, larger-view modal); actions `set_widget_context`, `request_data`, `set_data` and `show_larger_view`; no relays; handlers that resolve on acceptance; generated extensions with deterministic ids registered only when an owner loads a dashboard; the larger view restored after a refresh from the larger-view modal's own subroute. |
+| `cpt-frontx-dashboard-adr-widget-type-and-mfe-realization` | Widget realizations in `dashboard_v` link widget types to plain FrontX MFE entries; one entry per widget type serves a cell and the larger view, with an optional `larger_view_entry`; the single highest-weight realization wins. |
+| `cpt-frontx-dashboard-adr-subject-agnostic-widget-catalog` | Widget base, abstract data widget with the traits `data_shape`, `fill` and `member_kinds`, 8 data widget types and `markdown_card`; 8 data shapes; 5 fill modes; per-type query limits; multi-measure types; closed presentation fields. |
+| `cpt-frontx-dashboard-adr-template-packages-and-host-contract` | Two packages, `dashboard` and `widgets`, on `template-shell`; hosting of the dashboards root left to the product; no backend configuration; the template's GTS file; shared dependencies by manifest `shared` array and `contentHash`; the shell's `popup` domain and its modal container in the host contract. |
+| `cpt-frontx-dashboard-adr-data-adapter` | The data adapter as product code behind a template interface, called by the dashboards root and the larger-view modal; self-contained `request_data` answered with `set_data` and timestamp matching; loader, busy and empty states; cannot-show at two levels; data that never arrives as a stated limitation. |
+| `cpt-frontx-dashboard-adr-query-vocabulary-and-datasets` | One embedded anonymous query per data widget; the closed base query type and its vocabulary, with range forms, `compare` and the canonical member order; datasets as product query types derived through a query family; measures and dimensions as GTS well-known instances; product types delivered with the dashboard and registered before validation. |
 
 ### 1.3 Architecture Layers
 
 ```mermaid
 graph TB
     subgraph Host["Host application (template-shell)"]
-        SCR["Host screen domain (Exclusive)"]
-        POP["Host modal domain (Optional)"]
-        SME["Static modal extensions, one per widget type"]
+        SCR["Shell screen domain (Exclusive), used when the dashboards root is a screen extension"]
+        POP["Shell's popup domain (Optional, routed) with its modal container"]
         MAN["Manifest channel"]
-        SES["Auth session, theme and language"]
+        PROPS["Theme and language shared properties"]
     end
-    subgraph Viewer["Viewer host (nested host with its own registry)"]
-        ORCH["Orchestrator: request, validate, pick realizations, register, mount"]
+    subgraph Root["Dashboards root (owns its registry)"]
+        ORC["Orchestrator: load, register types, validate, select realizations, register and mount, answer request_data"]
         LC["layout_cells domain (Concurrent)"]
     end
-    CW["Cell widget extensions (dashboard-widgets)"]
-    MW["Modal widget extension (dashboard-widgets)"]
-    API["FrontX API package"]
-    BE["Consuming product backend"]
+    subgraph LVM["Larger-view modal (static extension, own nested registry)"]
+        ORM["Orchestrator for larger-view widgets"]
+        LV["larger_view domain (Optional, not routed)"]
+    end
+    CW["Cell widget extensions (widgets)"]
+    LW["Larger-view widget extension (widgets)"]
+    GF["Template GTS file"]
+    DA["Data adapter: product code in the product's copy of both owners"]
+    BE["Consuming product backend (outside the template)"]
 
-    SCR --> Viewer
-    MAN -- "types, entries, realizations" --> ORCH
-    MAN -- "static extensions" --> SME
-    SME --> POP
-    ORCH --> LC
+    SCR --> Root
+    POP --> LVM
+    MAN -- "entries, static extension of the larger-view modal" --> POP
+    PROPS --> Root
+    PROPS --> LVM
+    GF -- "widget realizations" --> ORC
+    GF -- "widget realizations" --> ORM
+    ORC --> LC
     LC --> CW
-    CW -- "escalated chain: mount_ext, set_widget_context" --> POP
-    POP --> MW
-    ORCH -- "dashboard request" --> API
-    CW -- "widget data request" --> API
-    MW -- "widget data request" --> API
-    API --> BE
-    SES -. "session" .-> API
+    CW -- "request_data" --> LC
+    CW -- "chain: mount_ext, then show_larger_view" --> POP
+    ORM --> LV
+    LV --> LW
+    LW -- "request_data" --> LV
+    ORC -- "get a dashboard, run a query" --> DA
+    ORM -- "get a dashboard, run a query" --> DA
+    DA -. "product code only" .-> BE
 ```
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-tech-frontx-stack`
 
 | Layer | Responsibility | Technology |
 |-------|---------------|------------|
-| Host | Screen and modal domains with rendered slots, manifest channel, auth session, theme and language shared properties | `template-shell` on the current stable FrontX release |
-| Presentation | Layout grid, widget presentation, larger-view button, per-widget loading, error, and empty states | React, `@gears-frontx/ui-kit`, CSS Grid, ECharts with echarts-for-react, TanStack Table v8 with the TanStack virtualizer |
-| Orchestration | Dashboard request, validation, realization choice, cell extension registration, mount chains, theme and language forwarding | Viewer host (TypeScript strict), FrontX registry and actions chains |
-| Data | One dashboard per dashboard request and one generic tabular result per widget data request, computed by the consuming product backend from the named metric | Requests through the FrontX API package under the host session |
-| Contracts | Types and instances for dashboards, embedded layouts, widgets, widget data, widget realizations, the template domain, and the template action | GTS v0.17 on `gts.frontx.mfes.*` bases, validated through the FrontX gts-plugin |
+| Host | Screen domain when the dashboards root is a screen extension, the `popup` domain with its modal container, manifest channel, theme and language shared properties | `template-shell` on FrontX with GTS v0.17 |
+| Presentation | Layout grid, widget presentation, larger-view button and close button, loader, busy and empty states, the "cannot be shown" placeholder, grid sort, pager, page size and resize controls | React, `@gears-frontx/ui-kit`, CSS Grid, ECharts with echarts-for-react, TanStack Table v8 with the TanStack virtualizer |
+| Orchestration | Template GTS file load, dashboard load through the data adapter, registration of delivered types, validation and cross-checks, realization choice, registration of generated extensions, mount chains, `set_widget_context`, answers to `request_data` | Dashboards root and larger-view modal (TypeScript strict), FrontX registry, actions chains and routing, the template's trait helper |
+| Data access | Get a dashboard with its dataset types and vocabulary instances; run a query and fill the requested data shape by the requested fill mode | The data adapter: product code behind the template's interface, in the product's copy of the dashboards root and the larger-view modal. It is outside the template's scope and is the only part that reaches a backend. |
+| Contracts | Types and instances for dashboards, embedded layouts, widgets, queries, the measure and dimension bases, data shapes, actions, domains, extension types and widget realizations | GTS v0.17 types under the `frontx.dashboard_m` and `frontx.dashboard_v` packages on `gts.frontx.mfes.*` bases, validated through the FrontX gts-plugin |
 
 ## 2. Principles & Constraints
 
 ### 2.1 Design Principles
 
-When two principles conflict, the one earlier in this order wins: render-only Viewer host, per-instance isolation, registration only in the own registry, contracts as GTS data, and Viewer host orchestration last.
+When two principles conflict, the one earlier in this order wins: render-only dashboards root, per-instance isolation, registration only in the own registry, contracts as GTS data, and orchestration by the domain owners last.
 
-#### Render-Only Viewer host
+#### Render-Only Dashboards Root
 
-- [ ] `p1` - **ID**: `cpt-frontx-dashboard-principle-render-only-viewer`
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-principle-render-only-dashboards-root`
 
-The template shows what the backend delivers and nothing more. The dashboard definition carries the dashboard, its embedded layout, and every widget's configuration with its `source`. Each widget's data is the backend's result for that widget's own request, computed from the backend's own data for the named metric. The widget shows it as delivered: it does not compute, aggregate, narrow, hide, or cut off any part of it. The single exception is the markdown safety rule: embedded HTML in a markdown card (`markdown_card`) is shown as plain text, not rendered; the card's markdown formatting still applies (section 3.1). The layout, with the widget configuration that each cell carries, fully defines how the widgets are composed and presented. The Viewer host lays it out as given and does not sort, group, page, or re-arrange anything in the browser. There is no filter, no dashboard-level time range, and no user query. After the widgets show their data, nothing changes: no request follows except Retry after a failure and the larger view's own request, and no cell widget receives new data. Interactive exploration is later-stage work and needs a new decision.
+The template shows what the product's data adapter delivers and nothing more. The dashboard carries its embedded layout and every widget with its presentation fields and, for a data widget, its query. Each data widget's data is one instance of its widget type's data shape, filled by the data adapter from the query. The widget shows it as delivered: it does not aggregate, narrow, hide or cut off any part of it. A widget only formats values for the host language from the member metadata, and the metric card computes its trend from the two values it is sent. A markdown card shows typical markdown (CommonMark, including links and images) as formatted text; embedded HTML in it is shown as plain text, never rendered.
 
-**PRD**: `cpt-frontx-dashboard-fr-backend-source`, `cpt-frontx-dashboard-fr-viewer-host`
+The layout, with the widget instances it embeds, fully defines how the widgets are composed and presented. The dashboards root lays it out as given and moves nothing. There is no dashboard-wide filter, no dashboard-wide time range and no refresh while the dashboard is open. The viewer can sort and page a grid and change its page size; each of these changes the widget's local copy of its query, which is never saved, and asks the data adapter again. Resizing a grid column redraws locally and asks nothing. The domain owners keep no widget data between requests.
 
-**ADRs**: `cpt-frontx-dashboard-adr-backend-delivered-dashboard`, `cpt-frontx-dashboard-adr-subject-agnostic-widget-catalog`
+**PRD**: `cpt-frontx-dashboard-fr-backend-source`, `cpt-frontx-dashboard-fr-dashboards-root`, `cpt-frontx-dashboard-fr-grid-sort-page`
 
-#### Per-Instance Isolation, No Shared Singletons
+**ADRs**: `cpt-frontx-dashboard-adr-data-adapter`, `cpt-frontx-dashboard-adr-subject-agnostic-widget-catalog`, `cpt-frontx-dashboard-adr-data-grid-library`
+
+#### Per-Instance Isolation
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-principle-per-instance-isolation`
 
-FrontX gives every MFE load its own module graph (FrontX ADR-0011). No library, store, or theme object of the template is shared between MFE instances. Each open dashboard owns its own loaded definition. Each chart widget registers its own ECharts theme. Each widget sends its own data request and holds the result itself. Every template MFE declares all its packages as shared, which FrontX allows also for stateful packages; sharing reuses a package's source text by content hash (FrontX ADR-0034) and saves fetches, while each instance still evaluates its own copy (section 3.9). Two FrontX packages keep realm-wide state by their own design, and the template relies on it without adding any: the FrontX API package shares its API cache across runtimes, and the FrontX gts-plugin shares one type store pair per compatible copy in a realm (FrontX gts-plugin ADR-0001). The template treats Module Federation only as the bundling format; FrontX resolves dependencies itself.
+FrontX isolates every MFE instance: each instance evaluates its own copy of its code (FrontX ADR-0011). No library, store or theme object of the template is held in common between MFE instances. Each open dashboard holds its own loaded dashboard. Each chart widget registers its own ECharts theme. Each widget holds only the data it was last sent and its own local copy of its query.
 
-**PRD**: `cpt-frontx-dashboard-fr-viewer-host`, `cpt-frontx-dashboard-fr-loading-error-states`, `cpt-frontx-dashboard-nfr-initial-render`, `cpt-frontx-dashboard-nfr-bundle-budget`
+Every template MFE lists its packages in the `shared` array of its manifest, so each is built as a shared dependency. Its source text is fetched once per realm only when every template MFE publishes the same `contentHash` for it (FrontX ADR-0034, FrontX ADR-0035). Each instance still evaluates its own copy, so source reuse saves fetches, not evaluation (section 3.9). Per-instance memory is held per extension id for the life of the page (FrontX ADR-0011). Deterministic ids of generated extensions keep it bounded: loading the same dashboard again reuses the same ids.
 
-**ADRs**: `cpt-frontx-dashboard-adr-frontend-framework`, `cpt-frontx-dashboard-adr-template-packages-and-host-contract`, `cpt-frontx-dashboard-adr-backend-delivered-dashboard`
+The template relies on the realm-shared GTS type store of FrontX gts-plugin ADR-0001, a prerequisite of section 4, and adds no shared state of its own: the types that a domain owner registers are known to the FrontX validation of every action that carries them.
 
-#### Each Nested Host Registers Only in Its Own Registry
+**PRD**: `cpt-frontx-dashboard-fr-dashboards-root`, `cpt-frontx-dashboard-fr-loading-error-states`, `cpt-frontx-dashboard-nfr-initial-render`, `cpt-frontx-dashboard-nfr-bundle-budget`
+
+**ADRs**: `cpt-frontx-dashboard-adr-frontend-framework`, `cpt-frontx-dashboard-adr-template-packages-and-host-contract`, `cpt-frontx-dashboard-adr-widget-type-and-mfe-realization`, `cpt-frontx-dashboard-adr-extension-domain-taxonomy`
+
+#### Each Domain Owner Registers Only in Its Own Registry
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-principle-own-registry-registration`
 
-FrontX admits an extension only through `registerExtension` on the registry that holds the extension's domain. A child's bridge exposes only `executeActionsChain`, `subscribeToProperty`, `getProperty`, and `registerActionHandler`, so a child cannot register anything into its host's registry (FrontX ADR-0008; FrontX mfe-registry FEATURE). The template follows this rule as a principle. The Viewer host registers only `layout_cells` extensions, only in its own registry, and only when it resolves a dashboard. It registers nothing when the larger view opens or on any other click. The larger view of each widget type is a static extension of the host modal domain, declared in the `dashboard-widgets` manifest and registered by the host bootstrap. Opening a larger view therefore only mounts and configures an extension that is already registered. A cell widget reaches the host modal domain by an actions chain that its own registry cannot resolve, so the chain escalates to the shell (FrontX ADR-0007). Per-instance modal extensions would need a FrontX change and are a later stage (section 4).
+FrontX admits an extension only through `registerExtension` on the registry that holds the extension's domain. A child's bridge offers only `executeActionsChain`, `subscribeToProperty`, `getProperty` and `registerActionHandler`, so a child cannot register anything into an ancestor's registry (FrontX ADR-0008). The template follows this as a principle:
 
-**PRD**: `cpt-frontx-dashboard-fr-viewer-host`, `cpt-frontx-dashboard-fr-widget-modal`, `cpt-frontx-dashboard-contract-host-areas`
+- The dashboards root registers the generated cell extensions in `layout_cells`, in its own registry: its nested registry when it is a screen extension, or the shell's registry when it is code in the shell.
+- The larger-view modal registers the generated larger-view extensions in `larger_view`, in its own nested registry.
+- Nothing is ever registered into an ancestor's registry. The larger-view modal itself is static: the shell's bootstrap registers it from the `dashboard` package manifest.
+
+An owner registers generated extensions only when it loads a dashboard, never on a click. FrontX keeps per-extension state, such as the extension's bridge, across unmounting and unregistration, so an extension id is never fully released. Generated ids are therefore deterministic: each is a UUIDv5 derived from the widget's full id, its role (cell or larger view) and the entry of its winning realization. Loading the same dashboard again uses the same ids. The dashboards root unregisters its generated extensions when it loads another dashboard and when it goes away. The larger-view modal keeps the dashboard it loaded, and its generated extensions, while it is closed, and unregisters them only when it loads a different dashboard.
+
+**PRD**: `cpt-frontx-dashboard-fr-dashboards-root`, `cpt-frontx-dashboard-fr-widget-modal`, `cpt-frontx-dashboard-contract-host-areas`
 
 **ADRs**: `cpt-frontx-dashboard-adr-extension-domain-taxonomy`, `cpt-frontx-dashboard-adr-widget-type-and-mfe-realization`, `cpt-frontx-dashboard-adr-template-packages-and-host-contract`
-
-#### Viewer Host Orchestrates, Widgets Request and Present Their Own Data
-
-- [ ] `p1` - **ID**: `cpt-frontx-dashboard-principle-viewer-host-orchestration`
-
-The Viewer host requests and validates the dashboard, picks a widget realization for each widget, registers and mounts the cell extensions, and sends each widget its context. It holds no widget data and runs no queries. A widget receives `set_widget_context` with its widget instance, requests its own data with the `source` from that instance, validates the result, and presents it. Widgets never request anything but their own data and never reach the Viewer host's internals.
-
-**PRD**: `cpt-frontx-dashboard-fr-viewer-host`, `cpt-frontx-dashboard-fr-backend-source`, `cpt-frontx-dashboard-fr-loading-error-states`
-
-**ADRs**: `cpt-frontx-dashboard-adr-backend-delivered-dashboard`, `cpt-frontx-dashboard-adr-extension-domain-taxonomy`
 
 #### Contracts Are GTS Data
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-principle-gts-contracts`
 
-Dashboards with their embedded layouts, widgets, widget data, widget realizations, the template domain, and the template action are GTS types chained from FrontX bases. The request forms of the backend interface are not GTS types; they are specified in `cpt-frontx-dashboard-feature-backend-contract`. Because dashboards and widgets are GTS-typed, a consuming product adds a dashboard as data, whether written or generated, and validates it against the registered template types before its backend serves it. In the browser, all schema validation goes through the FrontX gts-plugin; the template writes no validation code of its own. The manifest channel carries GTS types, MFE entries, widget realizations, and static extensions. Contracts that stay inside one runtime stay TypeScript-internal.
+Dashboards with their embedded layouts and widgets, queries, the measure and dimension bases, data shapes, actions, domains, extension types and widget realizations are GTS v0.17 types chained from FrontX bases. The product's query families and datasets are GTS types derived from the template's base query type, and its measures and dimensions are GTS instances. One standard GTS validation per instance checks everything embedded in it, because GTS validates each embedded instance against the derived type named by its own id. The template writes no validation code of its own, except the cross-checks that JSON Schema cannot express (section 3.1). FrontX validates every action instance, so the data in `set_data` is checked against the exact data shape that its id names. The owner drops an answer whose shape differs from the request's `data_shape`; widgets never compare shapes.
+
+Because dashboards are GTS-typed, a product adds a dashboard or a dataset as data, written or generated, and checks it against the registered types before it serves it. The widget realizations travel as GTS instances in the template's GTS file. The data adapter interface stays a TypeScript interface, because it is called inside one runtime and carries GTS-typed values only.
 
 **PRD**: `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-contract-consuming-backend`
 
-**ADRs**: `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`, `cpt-frontx-dashboard-adr-widget-type-and-mfe-realization`, `cpt-frontx-dashboard-adr-backend-delivered-dashboard`
+**ADRs**: `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`, `cpt-frontx-dashboard-adr-query-vocabulary-and-datasets`, `cpt-frontx-dashboard-adr-subject-agnostic-widget-catalog`, `cpt-frontx-dashboard-adr-widget-type-and-mfe-realization`
+
+#### Domain Owners Orchestrate, Widgets Render
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-principle-dashboards-root-orchestration`
+
+The dashboards root orchestrates the dashboard, and the larger-view modal does the same for larger-view widgets. Each owner gets the dashboard from the data adapter, registers the delivered types, validates and cross-checks the widgets of its domain, picks their realizations, registers and mounts their extensions, and sends each widget `set_widget_context`. Each owner answers every `request_data` from its domain through the data adapter with `set_data`, and keeps no widget data between requests.
+
+A widget renders its presentation fields and the data it is sent. A data widget asks for its data only with `request_data` to the domain it sits in, first with the query as the dashboard defines it and then after each interaction that changes the query. A widget never calls a backend, never reaches into an owner, and never sees the data adapter. Action delivery is FrontX's concern: no template part passes actions on.
+
+**PRD**: `cpt-frontx-dashboard-fr-dashboards-root`, `cpt-frontx-dashboard-fr-data-adapter`, `cpt-frontx-dashboard-fr-loading-error-states`
+
+**ADRs**: `cpt-frontx-dashboard-adr-data-adapter`, `cpt-frontx-dashboard-adr-extension-domain-taxonomy`
 
 ### 2.2 Constraints
 
@@ -201,39 +230,47 @@ Dashboards with their embedded layouts, widgets, widget data, widget realization
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-constraint-shell-only-dependency`
 
-The template depends on `template-shell` and on the FrontX packages it pins, and on nothing else: it takes nothing from `template-mfe` or from any other template. It requires one host capability that current `template-shell` lacks: a rendered slot for the host modal domain with modal chrome, focus trap, and dismissal, through which the host modal domain gives theme and language to the modal entries (section 3.5). That capability is a prerequisite `template-shell` change, tracked outside `template-dashboard` (section 4). FrontX packages are pinned to exact published versions (section 3.5, FrontX Ecosystem).
+The template depends on `template-shell` and on the FrontX packages it pins to exact published versions, and on nothing else. It takes nothing from `template-mfe` or from any other template. The prerequisites of section 4 lie outside the template. Those that bear on packaging are:
 
-**ADRs**: `cpt-frontx-dashboard-adr-template-packages-and-host-contract`, `cpt-frontx-dashboard-adr-frontend-framework`
+- **FrontX on GTS v0.17.** The template relies on `x-gts-instance-ref`, `x-gts-type-ref`, `x-gts-abstract` and traits as GTS v0.17 defines them. A FrontX gts-plugin on an older GTS version does not apply these keywords, and a dashboard cannot be validated end to end. The template targets v0.17 without interim workarounds.
+- **A realm-shared GTS type store.** The FrontX release must share registered type definitions across the realm (section 4, prerequisite (b)). Without it, nested owners cannot validate chains that reference the shell's definitions.
+- **A modal container for the shell's `popup` domain.** `template-shell` registers the `popup` domain with the Optional strategy, routing, the theme and language shared properties, and `mount_ext` and `unmount_ext`, but renders no container for it. The shell must render one that shows the occupant in the shell's modal area, keeps keyboard focus inside it while it is open, and unmounts the occupant on a click outside it. Without it, no larger view can be shown, while the rest of the dashboard works.
+
+**ADRs**: `cpt-frontx-dashboard-adr-template-packages-and-host-contract`, `cpt-frontx-dashboard-adr-frontend-framework`, `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`
 
 #### Host Identifiers by Role
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-constraint-role-based-host-ids`
 
-Documents name host domains by role. The **host screen domain** is the host application's extension domain in which full screens are mounted; it realizes the PRD's host screen area. The **host modal domain** is the host application's extension domain in which one modal occupant is mounted; together with the host's rendered modal-domain slot it realizes the PRD's host modal area. TypeScript code resolves their current identifiers from `template-shell` framework constants and never writes them as literals; this includes the host modal domain identifier that the Viewer host puts into `set_widget_context`. Manifest-declared extensions in `mfe.json`, such as the Viewer host's routed extension and the static modal extensions of the widget types, are data. They carry the current identifiers, or are generated from the constants at build time. The host contract table in section 3.5 is the single place that maps roles to current identifiers.
+Documents name shell domains by role. The **shell screen domain** is the domain in which full screens are mounted; the dashboards root uses it only when it is a screen extension. The **shell's `popup` domain** is the domain in which one modal occupant is mounted; with its modal container it realizes the PRD's host modal window. TypeScript code resolves their current identifiers from `template-shell` framework constants and never writes them as literals. This includes the cell widget, which resolves the `popup` domain id by role to open the larger view. Manifest-declared extensions in `mfe.json`, such as the larger-view modal's static extension and, when used, the dashboards root's routed extension, are data. They carry the current identifiers, or are generated from the constants at build time. The host contract table in section 3.5 is the single place that maps roles to current identifiers.
 
-**ADRs**: `cpt-frontx-dashboard-adr-template-packages-and-host-contract`
+**ADRs**: `cpt-frontx-dashboard-adr-template-packages-and-host-contract`, `cpt-frontx-dashboard-adr-extension-domain-taxonomy`
 
 #### GTS Identifier Form and Freeze
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-constraint-gts-id-convention`
 
-The template targets GTS specification v0.17. Type identifiers end with `~` and instance identifiers do not. An instance identifier always carries its type chain and is never split into parts. A well-known instance ends in a named segment. A dashboard or widget instance uses the combined anonymous form: its type chain followed by a UUID that the consuming product backend generates. No instance carries a separate `type` field. A field that holds an identifier is constrained with `x-gts-type-ref`, `x-gts-instance-ref`, or `x-gts-pattern-ref`, according to whether it holds a type, an instance, or a pattern; `x-gts-ref` is not used. The template's own segments use vendor `frontx` and only the packages `v` and `m`. Every identifier starts at `v1` and is frozen from the first non-alpha release; after the freeze, an incompatible change ships as a new version.
+The template targets GTS specification v0.17. Type identifiers end with `~` and instance identifiers do not. An instance identifier always carries its type chain and is never split into parts. A well-known instance ends in a named segment, such as a measure or a widget realization. A combined anonymous instance ends in a UUID: a dashboard, a widget and a query take a UUID from whoever writes the dashboard, a data instance takes one from the data adapter, and a generated extension takes a UUIDv5 from its domain owner. No instance carries a separate `type` field.
 
-**ADRs**: `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`
+The template's own types use vendor `frontx` and two GTS packages. `dashboard_m` is the model: the dashboard, the layout, the widgets, the query vocabulary and the data shapes. `dashboard_v` is the view: the actions, the domains, the extension types and the widget realizations. Identifiers look like `gts.frontx.dashboard_m.*` and `gts.frontx.dashboard_v.*`, with chained segments for derived types. `dashboard_v` refers to `dashboard_m` types only; `dashboard_m` never refers to `dashboard_v`.
+
+A field that holds an identifier is constrained with `x-gts-type-ref`, `x-gts-instance-ref` or `x-gts-pattern-ref`, by whether it holds a type, an instance or a pattern. An id field names its base type as a literal operand, such as `gts.frontx.dashboard_m.widget.widget.v1~`, so it holds wherever the type is embedded; no id field refers to the schema's own identifier. GTS ids are never object keys where they need validating: such collections are arrays of objects. Every identifier starts at `v1` and is frozen from the first non-alpha release; an incompatible change after the freeze ships as a new version.
+
+**ADRs**: `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`, `cpt-frontx-dashboard-adr-query-vocabulary-and-datasets`
 
 #### Fixed 60-Column Layout
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-constraint-sixty-column-grid`
 
-The layout embedded in each dashboard uses 60 columns with integer cell coordinates `x`, `y`, `w`, `h` and one embedded widget per cell. The Viewer host repairs nothing at run time: a layout with out-of-range or overlapping cells makes the dashboard one that cannot be shown, with a diagnostic that names the failing cells.
+The layout embedded in each dashboard uses 60 columns with integer cell coordinates `x`, `y`, `w`, `h`. Each cell embeds one widget and may embed one larger-view widget. The dashboards root repairs nothing at run time. A layout with out-of-range or overlapping cells, or a dashboard that repeats a widget id, in a cell or as a larger-view widget, fails the layout checks and is the dashboard-level cannot-show state.
 
 **ADRs**: `cpt-frontx-dashboard-adr-dashboard-layout-grid`
 
-#### One Viewer Host per Application Tree
+#### One Dashboards Root per Application Tree
 
-- [ ] `p2` - **ID**: `cpt-frontx-dashboard-constraint-one-viewer-per-tree`
+- [ ] `p2` - **ID**: `cpt-frontx-dashboard-constraint-one-dashboards-root-per-tree`
 
-The `layout_cells` domain identifier and the cell extension identifiers are fixed instance identifiers, and the FrontX collision guard is tree-global (FrontX ADR-0007). The template's consequence of that guard is its supported topology: one mounted Viewer host per application tree, which the Exclusive host screen domain already guarantees. Switching dashboards happens through the Viewer host's route, and independent Viewer hosts run in separate application instances, such as two browser tabs.
+The `layout_cells` and `larger_view` domain identifiers and the larger-view modal's extension identifier are fixed, and target identifiers are unique in the whole tree (FrontX ADR-0007). The supported topology is therefore one dashboards root and one larger-view modal per application tree. Switching dashboards happens through the dashboards root's address. Dashboards open at the same time run in separate application instances, such as two browser tabs, each with its own dashboards root and larger-view modal.
 
 **ADRs**: `cpt-frontx-dashboard-adr-extension-domain-taxonomy`, `cpt-frontx-dashboard-adr-template-packages-and-host-contract`
 
@@ -241,14 +278,14 @@ The `layout_cells` domain identifier and the cell extension identifiers are fixe
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-constraint-licensing-compliance-resources`
 
-- **Regulatory and privacy**: not applicable because the template is a read-only information UI that stores nothing. The dashboard definition and the widget data stay in browser memory while the dashboard is open and are released when it closes; processing of personal data belongs to the consuming product backend (PRD section 6.2).
-- **Data residency**: not applicable because the template stores no data and runs no service. The Viewer host and the widgets read only from the consuming product's backend, whose residency the consuming product owns.
-- **Licensing**: every third-party runtime library must carry a permissive license that allows distribution as source inside a consuming product, Apache-2.0 or MIT, as listed in section 3.5. The package-wide license check verifies every package that a template MFE declares, shared or not.
-- **Resource constraints**: the browser only lays out and presents data; the consuming product backend computes every value the widgets show, and result size is the backend's concern. Download cost is bounded by the bundle budget, and evaluation cost by the initial-render budget, both in section 3.9. No server, storage, or network resource is provisioned by the template.
-- **Legacy integration**: the template integrates with `template-shell` as it is today and itself changes nothing in it. The one host capability that is missing, the rendered modal-domain slot, is the prerequisite in section 4.
+- **Regulatory and privacy**: not applicable because the template is a read-only information UI that stores nothing. The dashboard and the widget data stay in browser memory while the dashboard is open. Processing of personal data belongs to the consuming product and its data adapter (PRD section 6.2).
+- **Data residency**: not applicable because the template stores no data, runs no service and reaches no backend. Only the product's data adapter reaches the product's backend, whose residency the product owns.
+- **Licensing**: every third-party runtime library must carry a permissive license that allows distribution as source inside a consuming product, Apache-2.0 or MIT, as listed in section 3.5. The package-wide license check verifies every package that a template MFE lists, shared or not.
+- **Resource constraints**: the browser lays out and presents data; the product's data adapter and backend compute every value. Dashboard size and data size are the product's concern, and the grid holds at most one page of 500 rows. Download cost is bounded by the bundle budget, and evaluation cost by the initial-render budget, both in section 3.9. The template provisions no server, storage or network resource.
+- **Legacy integration**: the template integrates with `template-shell` as it is and changes nothing in it. The prerequisites of section 4 (GTS v0.17, the realm-shared GTS type store, the modal container for the shell's `popup` domain and data access for every viewer) are tracked outside the template (section 4).
 - **Team and schedule**: not applicable because the template has no delivery schedule or team constraint of its own.
 
-**ADRs**: `cpt-frontx-dashboard-adr-template-packages-and-host-contract`, `cpt-frontx-dashboard-adr-backend-delivered-dashboard`
+**ADRs**: `cpt-frontx-dashboard-adr-template-packages-and-host-contract`, `cpt-frontx-dashboard-adr-data-adapter`
 
 ## 3. Technical Architecture
 
@@ -256,238 +293,348 @@ The `layout_cells` domain identifier and the cell extension identifiers are fixe
 
 **Technology**: GTS (Global Type System) specification v0.17 types and instances chained from the FrontX `gts.frontx.mfes.*` bases, validated through the FrontX gts-plugin.
 
-**Location**: type files in `src-app/mfe_packages/dashboard-viewer/` (engine `v` and `m` types, the template action, the `layout_cells` domain and its extension type, the widget realization type) and `src-app/mfe_packages/dashboard-widgets/` (manifest, cell and modal entries, static modal extensions, widget realizations). The concrete types are specified in the domain-model FEATURE documents named below.
+**Location**: type files and the template's GTS file in `src-app/mfe_packages/dashboard/`; widget entries in `src-app/mfe_packages/widgets/`. The concrete types are specified in the domain-model FEATURE documents named in the parts table below.
 
-**Instance source**: the dashboard instance, with its embedded layout and the widget instances embedded in its cells, is the dashboard definition that the consuming product writes or generates and its backend returns for one dashboard request. The backend generates the UUIDs of the dashboard and widget identifiers. Each widget's data comes from the backend's result for that widget's own request (`cpt-frontx-dashboard-fr-backend-source`, `cpt-frontx-dashboard-adr-backend-delivered-dashboard`). Package `mfe.json` files carry GTS types, MFE entries, widget realizations, and static extensions, which reach the registries through the manifest channel (section 3.5); no dashboard content travels through them.
+**Instance source**: the dashboard, with its embedded layout and the widget instances embedded in its cells, comes from the product's data adapter. The data adapter returns it together with the dataset types and the measure and dimension instances that its queries use. Whoever writes the dashboard, the product or a language model, generates the UUIDs of the dashboard, widget and query identifiers. Each data instance comes from the data adapter's answer to one `request_data`. The widget realizations come from the template's GTS file. Package `mfe.json` files carry GTS types, MFE entries and static extensions only; no GTS instance and no dashboard content travels through them (section 3.5).
 
 **Core Entities**:
 
 | Entity | Description | Schema |
 |--------|-------------|--------|
-| Dashboard definition | One per dashboard, written or generated by the consuming product and returned by its backend for the dashboard request: one dashboard instance with its embedded layout and each widget instance embedded in a layout cell; no widget data and no theme | the dashboard instance below; interface `cpt-frontx-dashboard-interface-dashboard-payload` (section 3.3) |
-| Dashboard | Root: `id`, `name`, `description`, embedded `layout` | `gts.frontx.m.dashboard.dashboard.v1~` (FEATURE [dashboard-root-types](./features/feature-dashboard-root-types/FEATURE.md)) |
-| Layout | Embedded object of the dashboard, without an own identifier: `columns` (always 60) and an ordered list of cells | `gts.frontx.m.layout.layout.v1~` (FEATURE [layout-types](./features/feature-layout-types/FEATURE.md)) |
-| Layout cell | Embedded object of the layout: position `x`, `y`, `w`, `h` and one embedded widget instance | `gts.frontx.m.layout.cell.v1~` (FEATURE [layout-types](./features/feature-layout-types/FEATURE.md)) |
-| Widget | Abstract base of the 9 template widget types: `id`, `title`, the typed `source`, and the widget type's presentation configuration with its column binding | `gts.frontx.m.widget.widget.v1~` (inline below; widget types in FEATURE [widget-catalog](./features/feature-widget-catalog/FEATURE.md)) |
-| Widget data | One concrete type for the generic tabular result of every widget data request | `gts.frontx.v.widget_data.widget_data.v1~` (FEATURE [widget-data-catalog](./features/feature-widget-data-catalog/FEATURE.md)) |
-| Widget realization | Binds one widget type to its cell entry, its static modal extension, and a weight | `gts.frontx.v.mfe.widget_realization.v1~` (FEATURE [mfe-entries](./features/feature-mfe-entries/FEATURE.md)) |
-| Template action | `set_widget_context` | `gts.frontx.mfes.comm.action.v1~frontx.v.mfe.set_widget_context.v1~` (FEATURE [extension-domain-catalog](./features/feature-extension-domain-catalog/FEATURE.md)) |
-| Domain and extension type | `layout_cells` and the type of its cell extensions | `gts.frontx.mfes.ext.domain.v1~frontx.v.layout.layout_cells.v1` and `gts.frontx.mfes.ext.extension.v1~frontx.v.layout.layout_cells.v1~` (FEATURE [extension-domain-catalog](./features/feature-extension-domain-catalog/FEATURE.md)) |
+| Dashboard | Root: `id`, `name`, optional `description`, embedded `layout`; no widget data and no theme | `gts.frontx.dashboard_m.dashboard.dashboard.v1~` (FEATURE [dashboard-root-types](./features/feature-dashboard-root-types/FEATURE.md)) |
+| Layout | Embedded object of the dashboard, without an identifier: `columns` (always 60) and an ordered list of cells | `gts.frontx.dashboard_m.layout.layout.v1~` (FEATURE [layout-types](./features/feature-layout-types/FEATURE.md)) |
+| Layout cell | Embedded object of the layout: `x`, `y`, `w`, `h`, one embedded `widget`, and an optional embedded `larger_view` widget | `gts.frontx.dashboard_m.layout.cell.v1~` (FEATURE [layout-types](./features/feature-layout-types/FEATURE.md)) |
+| Widget | Abstract base of every widget type: `id` and `title` | `gts.frontx.dashboard_m.widget.widget.v1~` (FEATURE [widget-catalog](./features/feature-widget-catalog/FEATURE.md)) |
+| Data widget | Abstract intermediate type of the 8 data widget types: adds the required `data` field and the traits `data_shape`, `fill` and `member_kinds` | `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~` (FEATURE [widget-catalog](./features/feature-widget-catalog/FEATURE.md)) |
+| Widget type | One of the 9 concrete types: 8 data widget types and `markdown_card` | under the two types above (FEATURE [widget-catalog](./features/feature-widget-catalog/FEATURE.md)) |
+| Query | The embedded anonymous instance in a data widget's `data` field, typed by a product dataset; the PRD's data definition | base `gts.frontx.dashboard_m.data.query.v1~` (query vocabulary FEATURE) |
+| Query family | Product type between the base query and its datasets; declares the shape of the backend binding | product type derived from the query base |
+| Dataset | Product query type; narrows the members it allows with enums and carries its backend binding as type traits | product type derived from a query family |
+| Measure, dimension | Product vocabulary as GTS well-known instances with `title`, `value_type` and, for a measure, an optional `unit` | `gts.frontx.dashboard_m.data.measure.v1~`, `gts.frontx.dashboard_m.data.dimension.v1~` (query vocabulary FEATURE) |
+| Data shape | Abstract base with `id`, and one derived shape per data widget type | `gts.frontx.dashboard_m.widget_data.widget_data.v1~` (FEATURE [widget-data-catalog](./features/feature-widget-data-catalog/FEATURE.md)) |
+| Widget realization | Binds one widget type to its entry, an optional larger-view entry and a weight | `gts.frontx.dashboard_v.mfe.widget_realization.v1~` (FEATURE [mfe-entries](./features/feature-mfe-entries/FEATURE.md)) |
+| Template actions | `set_widget_context`, `request_data`, `set_data`, `show_larger_view` | types under `gts.frontx.mfes.comm.action.v1~frontx.dashboard_v.mfe.*` (FEATURE [extension-domain-catalog](./features/feature-extension-domain-catalog/FEATURE.md)) |
+| Domains and extension types | `layout_cells` and `larger_view`, each with the extension type of its generated extensions | instances of the FrontX domain base and types derived from the FrontX extension base (FEATURE [extension-domain-catalog](./features/feature-extension-domain-catalog/FEATURE.md)) |
 
 **Relationships**:
 
-- Dashboard definition → Dashboard, Layout, Widget: one definition is one dashboard instance with its embedded layout and every widget instance embedded in a cell. It carries no widget data and no theme.
-- Dashboard → Layout: the dashboard embeds one layout object, which has no identifier of its own. The layout embeds its cells, and each cell embeds one widget instance. Widgets are never referenced by identifier.
-- Widget → Widget data: each widget instance names a backend metric in its `source`. The widget sends that request, and the result must validate against the single widget data type and contain every column that the widget's presentation configuration names.
-- Widget type → Widget realization: each of the 9 template widget types is the `widget_type` of one template widget realization of weight 1. A consuming product may add a replacement realization with a higher weight.
-- Widget realization → MFE entry and modal extension: a realization names the cell entry from which the Viewer host generates the cell extension, and the static extension of the host modal domain that shows the larger view.
-- Domain → Widget: `layout_cells` mounts the cell extensions that the Viewer host generates from realizations. Theme and language are its shared properties.
+- Dashboard → Layout → Layout cell → Widget: the dashboard embeds one layout, the layout embeds its cells, and each cell embeds one widget and optionally one larger-view widget. Layouts and cells have no identifier; widgets are never referenced by identifier.
+- Widget → Widget type: the rightmost type of the widget's `id` chain is its widget type.
+- Data widget → Query: containment in the `data` field. The widget type limits the form of the query; the dataset limits its members.
+- Query → Dataset → Query family → Query base: the query's `id` chain names all three types.
+- Query → Measure, Dimension: by instance id, in `measures`, `dimensions`, `time.dimension`, `filters[].member` and `order[].member`.
+- Data widget type → Data shape: by its `data_shape` trait, inside `dashboard_m`.
+- Widget type → Widget realization: each of the 9 widget types is the `widget_type` of one template realization of weight 1; a product may add one with a higher weight.
+- Widget realization → MFE entry: `entry` for a cell and for the larger view, or `larger_view_entry` for the larger view when it is named.
+- Domain → Generated extension: `layout_cells` holds one generated extension per cell widget; `larger_view` holds one per larger-view widget of the loaded dashboard.
 
 #### Packages, Namespaces, and the Model–View Split
 
-The template's own types sit in two packages under the `frontx` vendor. Package `m` (model) holds what describes a dashboard: dashboard, layout, cell, the widget base, and the 9 template widget types. Package `v` (view runtime) holds what the runtime exchanges: the widget data type, the template action, the domain, the extension type, and the widget realization type.
+The template's code ships in two template packages, `dashboard` and `widgets` (section 3.8). Its GTS types live in two GTS packages under vendor `frontx`, which are a separate notion: `dashboard_m` and `dashboard_v`. All types of both GTS packages are files of the `dashboard` template package.
 
-The split keeps one deliberate reference from `v` into `m` (`cpt-frontx-dashboard-adr-widget-type-and-mfe-realization`):
+- `dashboard_m` (model) holds what describes a dashboard and its data: the dashboard, the layout and the cell, the widget base, the data widget, the 9 widget types, the query base with the measure and dimension bases, and the data shape base with its 8 derived shapes.
+- `dashboard_v` (view) holds what the runtime exchanges: the 4 action types, the 2 domains and their extension types, and the widget realization type.
 
-| From | To | Meaning |
+The dependency runs from `dashboard_v` to `dashboard_m` only:
+
+| From (`dashboard_v`) | To (`dashboard_m`) | Meaning |
 |------|----|---------|
-| `gts.frontx.v.mfe.widget_realization.v1~` field `widget_type` (`v` → `m`) | `gts.frontx.m.widget.widget.v1~` | A realization names the widget type it realizes; the field holds a type identifier and uses `x-gts-type-ref`. |
+| Widget realization `widget_type` | widget base | A realization names the widget type it realizes; `x-gts-type-ref`. |
+| `set_widget_context` `widget` | widget base | The payload carries the widget instance, validated against the type its own id names. |
+| `request_data` `data` and `data_shape` | query base, data shape base | The request carries the widget's current query and the id of the data shape it needs. |
+| `set_data` `data` | data shape base | The answer carries one data instance, validated against the shape its own id names. |
 
-Package `m` holds no reference into `v`: a widget does not name its data type, because every widget validates its result against the one widget data type. The dashboard's embedded `layout` and the cell's embedded `widget` stay inside package `m`, so they are not cross-package references. The split lets the widget MFEs be released independently of the dashboards that use them.
+Data widget types reference their data shapes through the `data_shape` trait inside `dashboard_m`. Nothing in `dashboard_m` references `dashboard_v`, so dashboards can be written, generated and checked without any view type, and widget entries can be released and substituted apart from the dashboards that use them.
 
-**ID-form convention.** Identifiers with a trailing `~` are types; identifiers without it are instances. Every instance identifier carries its type chain (GTS v0.17, sections 2 and 3.7): a well-known instance ends in a named segment, and a combined anonymous instance ends in a UUID. The following table fixes the form for every family:
+**ID-form convention.** Identifiers with a trailing `~` are types; identifiers without it are instances. Every instance identifier carries its type chain (GTS v0.17, sections 2 and 3.7). The vendor `acme.example` in the examples is illustrative. The following table fixes the form for every family:
 
 | Family | Form | Example |
 |--------|------|---------|
-| Template action (1) | type, derived from the FrontX action base | `gts.frontx.mfes.comm.action.v1~frontx.v.mfe.set_widget_context.v1~` |
-| Extension type | type | `gts.frontx.mfes.ext.extension.v1~frontx.v.layout.layout_cells.v1~` |
-| Widget realization type | type | `gts.frontx.v.mfe.widget_realization.v1~` |
-| Engine schemas | type | `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~`, `gts.frontx.v.widget_data.widget_data.v1~` |
-| Dashboards | combined anonymous instance; UUID generated by the consuming product backend | `gts.frontx.m.dashboard.dashboard.v1~<uuid>` |
-| Widgets embedded in a dashboard | combined anonymous instance of one of the 9 template widget types; UUID generated by the consuming product backend | `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~<uuid>` |
-| Widget data | no identifier; validated against the single widget data type | none |
-| Domain | instance | `gts.frontx.mfes.ext.domain.v1~frontx.v.layout.layout_cells.v1` |
-| Cell extensions | instance of the `layout_cells` extension type, generated by the Viewer host from the zero-based cell index | `gts.frontx.mfes.ext.extension.v1~frontx.v.layout.layout_cells.v1~frontx.v.layout.cell_2.v1` |
-| Widget realizations (9 in the template) | instance | `gts.frontx.v.mfe.widget_realization.v1~frontx.v.mfe.grid.v1` |
-| Widget cell entries (9) | instance of the FrontX `entry_mf` type | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.v.mfe.grid.v1` |
-| Widget modal entries (9) | instance of the FrontX `entry_mf` type; exact form in FEATURE `mfe-entries` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.v.mfe.grid_modal.v1` |
-| Static modal extensions (9) | instance of the FrontX extension base, mounted in the host modal domain; exact form in FEATURE `mfe-entries` | `gts.frontx.mfes.ext.extension.v1~frontx.v.mfe.grid_modal.v1` |
-| Viewer host entry | instance of the FrontX `entry_mf` type | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.v.mfe.viewer.v1` |
-| Viewer host routed extension | instance of the shell screen extension type | `gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.v.screens.viewer.v1` |
-| Viewer host manifest | instance | `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.v.viewer.manifest.v1` |
-| Widget manifest | instance | `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.v.widgets.manifest.v1` |
+| Dashboard type | type | `gts.frontx.dashboard_m.dashboard.dashboard.v1~` |
+| Dashboards | combined anonymous instance; UUID from the author | `gts.frontx.dashboard_m.dashboard.dashboard.v1~<uuid>` |
+| Layout and cell | embedded object types; their objects carry no identifier | `gts.frontx.dashboard_m.layout.layout.v1~`, `gts.frontx.dashboard_m.layout.cell.v1~` |
+| Widget base and data widget | abstract types | `gts.frontx.dashboard_m.widget.widget.v1~`, `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~` |
+| Data widget types (8) | types under the data widget | `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.grid.v1~` |
+| `markdown_card` | type directly under the widget base | `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.markdown_card.v1~` |
+| Widgets in a dashboard | combined anonymous instance of one of the 9 widget types; UUID from the author | `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.grid.v1~<uuid>` |
+| Query base | abstract, closed type | `gts.frontx.dashboard_m.data.query.v1~` |
+| Query family | abstract product type | `gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~` |
+| Dataset | product type | `gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~` |
+| Queries | combined anonymous instance of a dataset, embedded in a widget's `data`; UUID from the author | `gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~<uuid>` |
+| Measure and dimension bases | types | `gts.frontx.dashboard_m.data.measure.v1~`, `gts.frontx.dashboard_m.data.dimension.v1~` |
+| Measures and dimensions | well-known product instances | `gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1` |
+| Data shape base and shapes (8) | abstract base and types | `gts.frontx.dashboard_m.widget_data.widget_data.v1~`, `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~` |
+| Data instances | combined anonymous instance of a data shape; UUID from the data adapter | `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~<uuid>` |
+| Template actions (4) | types derived from the FrontX action base | `gts.frontx.mfes.comm.action.v1~frontx.dashboard_v.mfe.request_data.v1~` |
+| Domains (2) | instances of the FrontX domain base | `gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.layout_cells.v1`, `gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.larger_view.v1` |
+| Extension types (2) | types derived from the FrontX extension base | `gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~`, `gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.larger_view.v1~` |
+| Generated extensions | combined anonymous instance of its domain's extension type; UUIDv5 from the domain owner | `gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~<uuidv5>` |
+| Widget realization type | type | `gts.frontx.dashboard_v.mfe.widget_realization.v1~` |
+| Widget realizations (9 in the template) | well-known instances in the template's GTS file | `gts.frontx.dashboard_v.mfe.widget_realization.v1~frontx.dashboard_v.mfe.grid.v1` |
+| Widget entries (9) | instances of the FrontX MFE entry type | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard_v.mfe.grid.v1` |
+| Larger-view modal entry | instance of the FrontX MFE entry type | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard_v.mfe.larger_view_modal.v1` |
+| Larger-view modal extension | static, routed extension of the shell's `popup` domain with a fixed identifier; exact form in FEATURE `mfe-entries` | `gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.mfe.larger_view_modal.v1` |
+| Dashboards root entry and routed extension | only when the dashboards root is a screen extension; instances of the FrontX MFE entry type and of the shell screen extension type | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard_v.mfe.dashboards_root.v1`, `gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.dashboard_v.screens.dashboards_root.v1` |
+| Manifests (2) | instances of the FrontX manifest type | `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard_v.dashboard.manifest.v1`, `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard_v.widgets.manifest.v1` |
 
-#### Abstract Bases and Concrete Types
+#### Widgets, Queries, and Data Shapes
 
-The DESIGN carries the abstract widget base inline, plus the base-level shape of the other families that the component model depends on. Field-level schemas of concrete types are owned by the FEATURE documents.
+The DESIGN carries the base-level shape of each family that the component model depends on. Field-level schemas of concrete types are owned by the FEATURE documents.
 
-**Widget base** `gts.frontx.m.widget.widget.v1~`. It is abstract (`x-gts-abstract: true`), so every widget instance belongs to one of the 9 concrete template widget types, `gts.frontx.m.widget.widget.v1~frontx.m.widget.<widget_type>.v1~`. Each widget instance carries its whole presentation configuration and its `source`; the data itself is not part of the definition. A widget instance is identified only by its GTS `id`; it has no unique name. The base declares no traits.
+**Widget base** `gts.frontx.dashboard_m.widget.widget.v1~`. It is abstract (`x-gts-abstract: true`), so every widget instance belongs to one of the 9 concrete widget types.
 
 | Field | Required | Meaning |
 |-------|----------|---------|
-| `id` | yes | Combined anonymous instance identifier, constrained with `x-gts-instance-ref: "/$id"`, so it must be rooted at the widget's own type; the consuming product backend generates the UUID. The rightmost type of the chain is the widget type. |
+| `id` | yes | Combined anonymous instance identifier, constrained with `x-gts-instance-ref` to the literal base `gts.frontx.dashboard_m.widget.widget.v1~`. The rightmost type of the chain is the widget type. |
 | `title` | yes | Display title of the widget, shown as delivered. |
-| `source` | yes | Typed object that names what the widget requests: `metric`, a required non-empty string that names a backend metric; `range`, an optional time window in the form the backend defines; and `bucket`, an optional boolean bucketing flag. The template passes these values through unchanged and gives them no meaning (section 3.3). |
 
-`source.metric` is a plain string, not a GTS type or reference, because metrics are run-time data of the backend. The consuming product checks that each metric exists and returns the columns that the widget names when it authors the dashboard; the widget checks the same at run time (section 3.3).
+Every GTS instance id is unique, so a dashboard never holds the same widget instance twice. Each cell widget and each larger-view widget has its own id, and a dashboard that repeats a widget id fails the layout checks. A larger-view widget that should look like its cell widget is a second widget instance with the same settings.
 
-**Widget types and column binding.** The 9 template widget types are `summary_card`, `metric_card`, `ranked_list_card`, `progress_list_card`, `grid`, `cartesian_chart`, `pie_chart`, `heatmap`, and `markdown_card`. Each is a presentation type: a presentation schema, and the target of a widget realization. Its presentation configuration names, for each role, the result column that fills it:
+**Data widget** `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~`. It is abstract and derives from the widget base. It adds the required field `data`, whose schema is the query base, and declares three traits:
 
-| Widget type | Bound columns |
-|-------------|---------------|
-| `grid` | `columns[].key`, one per displayed column, and optional `row_color_column`, which need not be displayed |
-| `cartesian_chart` | `x`, and `series[].column` for each series |
-| `pie_chart` | `label`, `value` |
-| `metric_card` | `value`, optional `trend`, optional `sparkline` |
-| `summary_card` | `label`, `value` |
-| `ranked_list_card` | `label`, `value`, optional `secondary` |
-| `progress_list_card` | `label`, `current`, `target` |
-| `heatmap` | `x`, `y`, `value` |
-| `markdown_card` | `body`, taken from the first row |
+| Trait | Required | Meaning |
+|-------|----------|---------|
+| `data_shape` | yes | The identifier of the data shape that the widget type needs, constrained with `x-gts-type-ref` to the data shape base. |
+| `fill` | yes | The fill mode, one of the five below, and, for `rows_by_member` only, its `fields`: a list of `{field, from}`, where `from` is `dimensions[i]`, `measures[i]` or `time`. |
+| `member_kinds` | no | The allowed `value_type` values of the query's measures and dimensions. The domain owner checks them against the member instances. |
 
-The `grid` widget type also carries presentation settings: for each column an optional width hint (`columns[].width`) and an optional alignment (`columns[].align`), frozen columns, grouped column headers, and row coloring by a result column with ui-kit tokens. The width and alignment are presentation hints; the grid offers no user-driven column resizing in the browser. Row coloring uses the optional `row_color_column`, which is a bound column when set, so a result that lacks it cannot be shown. Its values are the color meanings `success`, `warning`, `error`, and `info`, matched exactly; any other value, or null, leaves the row uncolored. Each meaning takes the ui-kit token of the same name, which adapts to the light and dark scopes, and a colored row also shows an icon of its meaning with an accessible name, so no meaning is conveyed by color alone. The layout fixes these settings, and they are not client-side operations on the rows. The Viewer host checks each `grid` widget's configuration together with the layout when it opens the dashboard; a failure makes the dashboard one that cannot be shown (section 3.6, Failure Handling). The settings and their checks are specified in FEATURE `widget-catalog` section 6.5. The backend supplies exactly what each widget shows, and no widget type hides or cuts off part of it. The single exception is the markdown safety rule: embedded HTML in a markdown card (`markdown_card`) is shown as plain text, not rendered; the card's markdown formatting still applies (FEATURE `widget-catalog` section 6.9). A markdown card shows its empty state when the result has no rows or when the `body` of the first row is null or empty. The larger-view button is part of the shared widget chrome, so the base declares no field for it.
+Each data widget type sets `data_shape` and `fill`, limits the form of its query on its `data` field, and adds its presentation fields. `markdown_card` derives from the widget base directly: it has no `data`, no traits and no query, and it never requests data. Every concrete widget type ends with `unevaluatedProperties: false`, so a misspelled presentation field fails validation across the whole derivation chain.
 
-**Widget data** `gts.frontx.v.widget_data.widget_data.v1~`. It is one concrete type with no identifier, and it mirrors the widget data result that section 3.3 describes: the ordered column names, the rows as positional value arrays aligned to the columns, and the names of the columns that hold percentages. It carries no column types. A result is computed per request, not stored. Every widget validates every result against this one type, whatever its widget type; the exact field names are specified in FEATURE `widget-data-catalog`.
+**Nine widget types.** The domain owner passes `data_shape` and `fill` to the widget in `set_widget_context`, and the widget puts them unchanged into each `request_data`.
 
-**Layout and cell** `gts.frontx.m.layout.layout.v1~` and `gts.frontx.m.layout.cell.v1~`. Both are embedded object types: their objects live inside the dashboard and have no identifier of their own, and no layout is stored or referenced separately. A layout has `columns` (always 60) and ordered `cells`. A cell has integer coordinates `x`, `y`, `w`, `h` and one `widget` that embeds the cell's widget instance. Schema validation checks the bounds of each coordinate, the Viewer host checks that `x + w` is not greater than 60 and reports bounds and `x + w` failures together, and it checks overlap only when every cell passes both; a failing check makes the dashboard one that cannot be shown, with a diagnostic that names the failing cells. The coordinate ranges, the checks, and their diagnostics are specified in FEATURE `layout-types` sections 6.2 and 6.3.
+| Widget type | Query limits | Fill mode → data shape | Presentation notes |
+|-------------|--------------|------------------------|--------------------|
+| `summary_card` | 1 or more measures, no dimensions | `row_per_measure` → `rows: [{key, value}]` | Titles and formats from the member metadata. |
+| `metric_card` | 1 measure, no dimensions; optional `time` with `granularity` for the sparkline; optional `time.compare` for the trend | `scalar_with_series` → `{value, previous_value?, sparkline?}` | The widget computes the trend from `value` and `previous_value`; optional `value_label`, by default the measure's title. |
+| `ranked_list_card` | 1 dimension, 1 to 2 measures; `order`, `limit` | `rows_by_member` (label, value, secondary) → `rows: [{label, value, secondary?}]` | The second measure is the secondary value. |
+| `progress_list_card` | 1 dimension, 2 measures; `order`, `limit` | `rows_by_member` (label, current, target) → `rows: [{label, current, target}]` | The first measure is the current value, the second the target. |
+| `pie_chart` | 1 dimension, 1 measure, no `granularity` | `rows_by_member` (label, value) → `rows: [{label, value}]` | |
+| `cartesian_chart` | 1 measure: `time` with `granularity` and at most 1 dimension, or no `granularity` and 1 to 2 dimensions. Several measures: `time` with `granularity` and no dimension, or no `granularity` and 1 dimension | `x_series_value` → `rows: [{x, series?, value}]` | `series` is a list of `{member, type, y_axis, stack_group}`, one entry per measure. |
+| `heatmap` | 2 dimensions, 1 measure, no `granularity` | `rows_by_member` (x, y, value) → `rows: [{x, y, value}]` | |
+| `grid` | 1 or more members; `order`; paging by `limit` and `offset`; `limit` one of the `page_sizes` values | `positional_table` → `rows: [[…]]`, `total` | `columns`, `page_sizes`, `frozen_columns`, `column_groups`, `row_color` (below). |
+| `markdown_card` | not a data widget: no `data`, no traits | none | The body is a presentation field rendered as typical markdown (CommonMark, including links and images); embedded HTML is shown as plain text, never rendered. Renders right after `set_widget_context`. |
 
-**Dashboard root** `gts.frontx.m.dashboard.dashboard.v1~`. It has `id`, a combined anonymous instance identifier constrained with `x-gts-instance-ref: "/$id"` and generated by the consuming product backend, `name`, an optional `description`, and the embedded `layout`, and no other field. It references no theme. A consuming product may derive a dashboard subtype that adds dashboard-level fields; the Viewer host ignores them, and widget settings cannot be added in this version.
+**Five fill modes.** A fill mode is a template-defined rule that fills a data shape from a query result. The set is closed: `rows_by_member`, `x_series_value`, `row_per_measure`, `positional_table` and `scalar_with_series`. The data adapter implements all five, and a widget type that needs a new mode is a template change that every data adapter then implements. The rule of each mode is in [ADR-0009](ADR/0009-subject-agnostic-widget-catalog-v1.md) and is specified in the widget data catalog FEATURE.
 
-**Widget realization** `gts.frontx.v.mfe.widget_realization.v1~`. It binds a widget type to the MFE parts that show it:
+**Data shapes** `gts.frontx.dashboard_m.widget_data.widget_data.v1~`. The base is abstract and carries `id`, constrained with `x-gts-instance-ref` to the literal base `gts.frontx.dashboard_m.widget_data.widget_data.v1~`. Each of the 8 data widget types has its own derived shape, even where two shapes are equal, so they can differ. A data instance carries a combined id, the data shape type followed by a UUID that the data adapter generates. FrontX validates every `set_data` action against its schema, and polymorphic validation applies the exact shape that the data instance's id names. The owner compares that shape with the `data_shape` of the request before it sends `set_data` and drops an instance whose shape differs. A widget never checks a shape itself. Measure values in a data shape may be null. Grid rows are positional arrays in the canonical member order, because GTS ids are not used as object keys.
+
+**Query vocabulary** `gts.frontx.dashboard_m.data.query.v1~`. The base query type is abstract and closed, so a misspelled field fails validation. A query holds its combined `id` (its dataset type chain followed by a UUID), lists of measures and dimensions, an optional `time`, `filters`, `order`, and `limit` with `offset` for paging and top-N. The fields, the filter operators, the `range` forms, `compare` and the canonical member order are decided in [ADR-0012](ADR/0012-query-vocabulary-and-datasets-v1.md) and are specified in the query vocabulary FEATURE. Positional rows and the cross-checks use the canonical member order.
+
+A **dataset** is a product query type that derives from a product **query family**, which derives from the base query (base query, query family, dataset). Datasets are delivered with the dashboard, and the data adapter reads the binding they carry; the template gives it no meaning. ADR-0012 owns the closed base, the narrowing rules, the traits and the measure and dimension fields.
+
+**Measures and dimensions** are GTS well-known instances of `gts.frontx.dashboard_m.data.measure.v1~` (`id`, `title`, `value_type` one of `number`, `percent` or `duration`, optional `unit`; `percent` is a ratio, where 1 means 100%, and `duration` requires `unit`) and `gts.frontx.dashboard_m.data.dimension.v1~` (`id`, `title`, `value_type` of `string`, `time` or `number`). Their metadata reaches each widget in `set_widget_context` and gives it default titles and formats; presentation fields only override them.
+
+**Grid presentation fields.** The grid's presentation fields (`columns`, `page_sizes`, `frozen_columns`, `column_groups`, `align`, `row_color`) and local column resizing are decided in ADR-0005 and specified in the widget catalog FEATURE.
+
+**Validation and cross-checks.** Validation is GTS validation only, through the gts-plugin. The domain owner attributes each failure by its instance path: a failure under a cell's `widget` or `larger_view` path belongs to that cell or larger view, and any other failure is dashboard-level. The failures of one pass are collected:
+
+| Question | Checked by |
+|---|---|
+| Does the widget match its type, does its query have the form the widget type needs, and does the dataset allow the chosen members? | One GTS validation of the dashboard: each embedded widget against the type its `id` names (base fields, closed presentation fields, the widget type's limits on `data`), and polymorphically its `data` against the dataset type that `data.id` names (enums, closed base, range patterns). |
+| Are references well-formed, of the right kind, not abstract, and existing? | `x-gts-instance-ref`, `x-gts-type-ref` and `x-gts-abstract` under GTS v0.17; existence by the GTS lookup mode (section 4, open questions). |
+| Are the chosen members of the right kind? | The time dimension by the dataset's enum; other kinds by the widget type's `member_kinds` trait, which the owner checks against the member instances' `value_type`. |
+| Cross-checks that JSON Schema cannot express | The owner: every `order[].member` is a query member, and the grid cross-checks of [ADR-0005](ADR/0005-data-grid-library-v1.md). |
+| Does the data adapter serve the query's family? | The owner, from the query family in the type chain of `data.id`. |
+| Does the delivered data match the shape? | FrontX's validation of each `set_data` action, polymorphic on `data.id`, validates the instance against the shape its own id names. The owner then drops an instance whose shape differs from the request's `data_shape`. |
+
+The cross-checks are specified in FEATURE `widget-catalog`.
+
+#### Layout, Dashboard, Realization, Actions, and Domains
+
+**Layout and cell** `gts.frontx.dashboard_m.layout.layout.v1~` and `gts.frontx.dashboard_m.layout.cell.v1~`. Both are embedded object types without an identifier; no layout is stored or referenced on its own. A layout has `columns` (always 60) and ordered `cells`. A cell has integer coordinates `x`, `y`, `w`, `h`, one `widget`, and an optional `larger_view` widget. GTS validation checks the bounds of each coordinate. The layout checks then reject overlapping cells, `x + w` above 60 and a repeated widget id, in that order, and the failures of one pass are collected. The coordinate ranges, the checks and their order are specified in FEATURE `layout-types`.
+
+**Dashboard** `gts.frontx.dashboard_m.dashboard.dashboard.v1~`. It has `id`, a combined anonymous instance identifier constrained with `x-gts-instance-ref` to its literal base, `name`, an optional `description`, and the embedded `layout`. It references no theme.
+
+**Widget realization** `gts.frontx.dashboard_v.mfe.widget_realization.v1~`. It is closed:
 
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `id` | yes | Instance identifier of the realization. |
 | `widget_type` | yes | The widget type it realizes, constrained with `x-gts-type-ref` to the widget base. |
-| `entry` | yes | The cell entry, constrained with `x-gts-instance-ref` to the FrontX Module Federation entry type `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~`. |
-| `modal_extension` | yes | The static extension of the host modal domain that shows this widget type's larger view, constrained with `x-gts-instance-ref`. Every realization, including a consumer replacement, brings its modal extension. |
+| `entry` | yes | The entry that shows the widget in a cell and in the larger view, constrained with `x-gts-instance-ref` to the FrontX MFE entry type `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~`. |
+| `larger_view_entry` | no | A separate entry for the larger view, named only when the widget type needs different code there; constrained like `entry`. |
 | `weight` | no, default 1 | Integer of at least 1. For each widget type the single highest-weight realization wins (section 3.3). |
 
-No other field is allowed.
+Widget entries are plain instances of the FrontX MFE entry type; the template adds no entry type and no field to entries.
 
-Widget entries are plain instances of the FrontX Module Federation entry type; the template adds no entry type and no field to entries.
+**Template actions** derive from the FrontX action base `gts.frontx.mfes.comm.action.v1~`: `set_widget_context`, `request_data`, `set_data` and `show_larger_view`. Section 3.3 gives their targets, senders and payloads.
 
-**Template action** `set_widget_context` derives from the FrontX action base `gts.frontx.mfes.comm.action.v1~`. Section 3.3 gives its target and payload.
+**Domains and extension types.** `layout_cells` and `larger_view` are instances of the FrontX domain base, so the template adds no domain type. Each has its own extension type, derived from the FrontX extension base without fields of its own. The larger-view modal's static extension is an extension of the shell's `popup` domain, which has no extension type constraint.
 
-**Extension type and domain.** `gts.frontx.mfes.ext.extension.v1~frontx.v.layout.layout_cells.v1~` derives from the FrontX extension base and adds no fields. The domain `layout_cells` is an instance of the FrontX domain base, so the template adds no domain type. The static modal extensions are instances of the FrontX extension base, because they carry no fields of their own.
+**Generated extensions.** A domain owner generates one extension per widget of its domain: an instance of the domain's extension type whose `entry` comes from the winning realization. Its id is the extension type chain followed by a UUIDv5, derived under a fixed template namespace from three inputs: the widget's full id, its role (cell or larger view), and the entry of the winning realization. The role keeps a cell extension and a larger-view extension of the same widget apart. The entry gives a new id when a different realization wins, so FrontX never reuses one id for different code. Everything that may differ while the widget id stays the same, such as presentation fields, the query or member metadata, reaches the widget in `set_widget_context`, never in the extension declaration.
 
 **Theme.** The template defines no theme type and no theme instance. Its theme input is the host's theme shared property, whose value is the host theme id (section 3.5). Every template MFE maps that id to the light or dark scope of `@gears-frontx/ui-kit`.
 
 #### Parts Summary and Ownership
 
-The domain model (`cpt-frontx-dashboard-interface-domain-model`) has six parts, each owned by one domain-model FEATURE. The requests and results that carry these types are specified by `cpt-frontx-dashboard-feature-backend-contract`, which declares no type of its own.
+The domain model (`cpt-frontx-dashboard-interface-domain-model`) has seven parts, each owned by one domain-model FEATURE. The data adapter contract FEATURE specifies the data adapter interface and declares no type of its own.
 
 | Package and namespace | Contents | Inline here | Owning FEATURE |
 |-----------------------|----------|-------------|----------------|
-| `frontx.m.dashboard` | Dashboard with embedded layout | base shape | [dashboard-root-types](./features/feature-dashboard-root-types/FEATURE.md) |
-| `frontx.m.layout` | Layout, Cell, both embedded object types | base shape | [layout-types](./features/feature-layout-types/FEATURE.md) |
-| `frontx.m.widget` | Abstract widget base and the 9 template widget types with their column bindings | Widget base | [widget-catalog](./features/feature-widget-catalog/FEATURE.md) |
-| `frontx.v.widget_data` | The single widget data type | base shape | [widget-data-catalog](./features/feature-widget-data-catalog/FEATURE.md) |
-| `frontx.v.mfe`, `frontx.v.layout` | 1 action type, 1 domain, 1 extension type, cell extension identifier rule | base shape | [extension-domain-catalog](./features/feature-extension-domain-catalog/FEATURE.md) |
-| `frontx.v.mfe` | Widget realization type and instances, cell and modal entries, static modal extensions, manifests | Widget realization | [mfe-entries](./features/feature-mfe-entries/FEATURE.md) |
+| `frontx.dashboard_m.dashboard` | Dashboard with embedded layout | base shape | [dashboard-root-types](./features/feature-dashboard-root-types/FEATURE.md) |
+| `frontx.dashboard_m.layout` | Layout and cell, both embedded object types | base shape | [layout-types](./features/feature-layout-types/FEATURE.md) |
+| `frontx.dashboard_m.data` | Query base, measure and dimension bases, the range grammar, `compare`, the canonical member order, the rules for deriving query families and datasets | base shape | query vocabulary FEATURE |
+| `frontx.dashboard_m.widget` | Widget base, data widget with its traits, the 9 widget types with their query limits, presentation fields and cross-checks | widget base and data widget | [widget-catalog](./features/feature-widget-catalog/FEATURE.md) |
+| `frontx.dashboard_m.widget_data` | Data shape base, the 8 data shapes, and the 5 fill modes | base shape and fill modes | [widget-data-catalog](./features/feature-widget-data-catalog/FEATURE.md) |
+| `frontx.dashboard_v.mfe`, `frontx.dashboard_v.layout` | 4 action types, 2 domains, 2 extension types, the id rule of generated extensions | base shape | [extension-domain-catalog](./features/feature-extension-domain-catalog/FEATURE.md) |
+| `frontx.dashboard_v.mfe` | Widget realization type and the 9 template realizations, widget entries, the larger-view modal's entry and static extension, the dashboards root's entry and routed extension, manifests | widget realization | [mfe-entries](./features/feature-mfe-entries/FEATURE.md) |
 
 ### 3.2 Component Model
 
 ```mermaid
 graph LR
     subgraph Shell["template-shell"]
-        SCR["Host screen domain"]
-        POP["Host modal domain"]
+        SCR["Shell screen domain (when used)"]
+        POP["Shell's popup domain and its modal container"]
         MAN["Manifest channel"]
     end
-    subgraph VH["Viewer host"]
+    subgraph DR["Dashboards root (package dashboard)"]
         ORC["Orchestrator"]
         LC["layout_cells"]
+        GL1["GTS file loader"]
+        TH1["Trait helper"]
+        DA1["Data adapter (product code)"]
     end
-    subgraph WL["Widget library (dashboard-widgets)"]
-        CE["Cell entries"]
-        ME["Modal entries"]
-        WC["Widget Data Request (inside Each Widget MFE)"]
+    subgraph LVM["Larger-view modal (package dashboard)"]
+        ORM["Orchestrator"]
+        LV["larger_view"]
+        GL2["GTS file loader"]
+        TH2["Trait helper"]
+        DA2["Data adapter (product code)"]
     end
-    API["FrontX API package"]
+    subgraph WL["Widget library (package widgets)"]
+        WE["9 widget entries with the shared widget chrome"]
+    end
+    GF["Template GTS file"]
     BE["Consuming product backend"]
 
-    SCR -- "routed screen" --> VH
-    MAN -- "types, entries, realizations" --> ORC
-    MAN -- "static modal extensions" --> POP
-    ORC -- "registerExtension, mount_ext, set_widget_context" --> LC
-    LC -- "container per cell extension" --> CE
-    CE -- "escalated chain: mount_ext, set_widget_context" --> POP
-    POP -- "container for the occupant" --> ME
-    ORC -- "dashboard request" --> API
-    WC -- "widget data request" --> API
-    API --> BE
+    SCR -- "routed screen" --> DR
+    MAN -- "static extension and entry of the larger-view modal" --> POP
+    POP -- "occupant" --> LVM
+    GF --> GL1
+    GF --> GL2
+    ORC -- "registerExtension, mount_ext, set_widget_context, set_data" --> LC
+    LC -- "container per cell extension" --> WE
+    WE -- "request_data" --> LC
+    WE -- "chain: mount_ext of the larger-view modal, show_larger_view" --> POP
+    ORM -- "registerExtension, mount_ext, set_widget_context, set_data" --> LV
+    LV -- "container for the shown larger view" --> WE
+    WE -- "request_data" --> LV
+    ORC --> DA1
+    ORM --> DA2
+    DA1 -. "product code only" .-> BE
+    DA2 -. "product code only" .-> BE
 ```
 
-#### Viewer Host
+#### Dashboards Root
 
-- [ ] `p1` - **ID**: `cpt-frontx-dashboard-component-viewer-host`
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-component-dashboards-root`
 
 ##### Why this component exists
 
-A dashboard needs one place that requests it, validates it, and mounts each widget with its configuration. The Viewer host is that place: a nested host inside the consuming product's shell, which shows what the backend delivers without computing anything.
+A dashboard needs one place that loads it, checks it, mounts each widget, and answers the widgets' data requests. The dashboards root is that place. It is whatever hosts the dashboards in the product: a screen extension, or code copied into the shell of a single-page application that has no screen domain. The product chooses the form and adapts its copy of the template to it.
 
 ##### Responsibility scope
 
-- Mounts as a routed extension (FrontX ADR-0036) in the host screen domain. It is an instance of the shell's screen extension type that uses that type's `route` field, and its route carries the dashboard's GTS identifier.
-- Builds its own registry synchronously inside its first `mount` call (FrontX ADR-0008). It registers the `layout_cells` extension domain there with the Concurrent mount strategy and the actions listed in section 3.3, so the registry adopts the inbound bridge and advertises the domain to the shell. It publishes theme and language as shared properties of `layout_cells`, with the values it reads from its own host bridge.
-- Fetches the aggregated manifests from the host's manifest channel and registers their schemas, manifests, entries, and widget realizations in its registry (section 3.5, manifest channel).
-- Reads `dashboard_endpoint` and `data_endpoint` from the consuming product's configuration. It uses the first for its dashboard request and passes the second to every widget in `set_widget_context`. `data_endpoint` travels only in `set_widget_context`; it is not a shared property. The exact configuration form is in the consumer guide.
-- Requests the dashboard that its route names once, by its identifier, through the FrontX API package under the host session, and again only when the user selects Retry after a failed request. Section 3.3 states the request, its failure classes, and the wait time.
-- Validates the dashboard through the FrontX gts-plugin, which resolves each embedded widget polymorphically against the type its `id` names. It then runs the layout checks, which repair nothing (FEATURE `layout-types`), and the grid configuration checks of every `grid` widget (FEATURE `widget-catalog`). When any of these fails, the dashboard cannot be shown: the Viewer host mounts no cells and shows a diagnostic naming the failing instances, cells, or grid columns and groups, with no Retry.
-- For every embedded widget, reads the widget type from the rightmost type of the widget's `id` chain and picks the single highest-weight registered widget realization for it (`cpt-frontx-dashboard-interface-widget-realization`). It generates the cell extension, with domain `layout_cells`, the identifier from the cell's zero-based index, and `entry` from the realization. It registers the extension with `registerExtension` in its own registry and runs `mount_ext`. The Concurrent strategy creates a container for the extension, and the domain's mounter places that container in the cell. The Viewer host then sends `set_widget_context` (section 3.3).
-- Shows its cell skeleton in every cell until that cell's widget is mounted. A cell whose widget type has no realization, or a tie at the highest weight, or whose registration, `mount_ext`, or `set_widget_context` fails, shows its cannot-show state with a diagnostic and no Retry; the other cells are unaffected.
-- Keeps the loaded definition for the lifetime of the dashboard. Each open dashboard keeps its own definition, and the definition is discarded when the dashboard closes.
-- Places the cells on the 60-column grid with CSS Grid, at the positions the layout gives. FEATURE `layout-types` specifies the placement rule.
-- Offers no responsive re-layout in v1: the 60-column grid scales with the available width. Device and screen-size support is inherited from the host application, and the consuming product owns small-screen use (PRD section 6.2). Offline use is not applicable, because the dashboard needs its backend.
-- Shows skeletons in place of the dashboard while it loads, the dashboard-level error banner with Retry when the dashboard request fails, and the cannot-show diagnostic in place of the cells when the dashboard or its own startup cannot be shown. Its own chrome uses `@gears-frontx/ui-kit` in the scope that the host theme id maps to, and localizes its own text for the host language.
-- On unmount, ends its own in-flight dashboard request, unmounts every cell, unregisters the cell extensions, and discards the definition (section 3.6, teardown). It aborts the request through the FrontX API package when the package accepts an abort signal, and in any case ignores a late response (section 4, open question 4).
+- As a screen extension, mounts as a routed extension of the shell screen domain (FrontX ADR-0036), an instance of the shell's screen extension type whose route carries the dashboard's GTS identifier. It builds its own registry synchronously inside its first `mount` (FrontX ADR-0008). As code in the shell, it uses the shell's registry and takes the dashboard identifier from the host's address.
+- Registers the `layout_cells` domain with the Concurrent strategy and the declarations of section 3.3, and registers its `request_data` handler while the domain is built, before any cell mounts. Publishes theme and language as shared properties of `layout_cells`, with the values it reads from its bridge or, as shell code, from the shell; on every mount it reads them again and republishes them before any cell mounts.
+- At start, loads the template's GTS file through the GTS file loader and registers the family type schemas that the data adapter's served-families declaration returns, before any dashboard loads.
+- When it is a screen extension, fetches the manifest channel and registers the `widgets` manifest and every manifest whose entries a registered realization names, consumer packages included, with their entries in its own registry, as the `template-mfe` nested-host reference does. As shell code, it relies on the entries that the shell's bootstrap registered.
+- Shows a loader in place of the dashboard and calls "get a dashboard" on the data adapter with the dashboard identifier. Registers the dataset types and the measure and dimension instances delivered with it, and skips a dataset type of a query family the data adapter does not serve.
+- Validates the dashboard by GTS validation alone and attributes each failure by its instance path: under a cell's `widget` path it belongs to that cell, under a `larger_view` path to that larger view, and any other failure is dashboard-level. Runs the layout checks. Then runs the cross-checks and member-kind checks of each cell widget that passed, using the trait helper for effective traits (section 3.1).
+- For each cell widget, checks that the data adapter serves the query family of a data widget, reads the widget type from the rightmost type of the widget's `id`, and picks the single highest-weight realization (`cpt-frontx-dashboard-interface-widget-realization`).
+- Registers one generated cell extension per cell widget that passed, with its deterministic id and `entry` from the winning realization, before it mounts any cell. When it loads another dashboard, it first unregisters the generated extensions of the one it had loaded.
+- For each cell, runs one chain: `mount_ext` of the cell extension, then `set_widget_context` with the widget, and for a data widget its `data_shape`, `fill` and member metadata, and for a cell with a larger view the `larger_view` field with the dashboard id and the larger-view widget id. The Concurrent strategy creates a container, and the domain's mounter places it in the cell.
+- Accepts each `request_data` from `layout_cells` and resolves its handler at once. It then hands the request unchanged to "run a query", checks the answered data against the request's `data_shape` and drops a mismatched answer (the widget then keeps its loader), and otherwise sends `set_data` with the returned data instance and the copied timestamp to `reply_to`, as its own actions chain.
+- Places the cells on the 60-column grid with CSS Grid, at the positions the layout gives. FEATURE `layout-types` specifies the placement rule. The 60-column grid scales with the available width; device and screen-size support comes from the host application.
+- Shows the static "cannot be shown" placeholder in place of the dashboard, or in one cell, for the triggers of section 3.6 (Cannot-Show States), and writes the diagnostic to the developer log. Its own chrome uses `@gears-frontx/ui-kit` in the scope the host theme id maps to, and localizes its own text for the host language.
+- On leaving the dashboard, unmounts every cell extension; on loading another dashboard and when it goes away, unregisters its generated extensions. A mount of the dashboards root whose dashboard is already loaded mounts its cells again without loading (section 3.6, teardown).
 
 ##### Responsibility boundaries
 
-- Does not request, hold, or deliver widget data; each widget requests its own.
-- Does not cancel requests on behalf of widgets; each extension ends its own.
-- Does not compute, aggregate, or narrow widget data; the backend does.
-- Makes no request after the dashboard is shown, on a theme change, or when a widget's larger view opens.
-- Registers nothing outside its own registry, and nothing after dashboard resolve; it does not touch the host modal domain.
-- Does not present widget content or per-widget loading and error states; widgets do.
+- Makes no backend call; only the data adapter it calls does.
+- Keeps no widget data between requests, and does not compute, aggregate, narrow or reorder data.
+- Never renders a larger view and never closes the larger-view modal.
+- Registers nothing outside its own registry, and nothing on a click.
+- Does not present widget content or the loader, busy and empty states of a widget; widgets do.
 - Does not import ECharts or register ECharts themes; chart widgets do.
-- Does not write host identifiers as literals in code.
-- Handles no credential (section 3.5, Auth session).
-- Does not persist anything; all state ends with the dashboard session.
+- Does not write shell identifiers as literals in code.
+- Does not persist anything; all state ends with the page.
 
 ##### Related components (by ID)
 
-- `cpt-frontx-dashboard-component-widget-library` — generates cell extensions from its realizations and cell entries, mounts them into `layout_cells`, and sends them `set_widget_context`.
+- `cpt-frontx-dashboard-component-widget-library` — generates cell extensions from widget realizations, mounts them in `layout_cells`, sends them `set_widget_context` and `set_data`, and receives their `request_data`.
+- `cpt-frontx-dashboard-component-data-adapter` — calls it to get the dashboard and to run every query from `layout_cells`.
+- `cpt-frontx-dashboard-component-trait-helper` — resolves effective traits of widget types and datasets.
+- `cpt-frontx-dashboard-component-gts-file-loader` — loads the template's GTS file at start.
+- `cpt-frontx-dashboard-component-larger-view-modal` — receives `show_larger_view` from the cell widgets' chains; the dashboards root sends it nothing.
 
-#### Widget Data Request (inside Each Widget MFE)
+#### Larger-View Modal
 
-- [ ] `p1` - **ID**: `cpt-frontx-dashboard-component-widget-data-request`
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-component-larger-view-modal`
 
-##### Why this component exists: Widget Data Request
+##### Why this component exists: Larger-View Modal
 
-Each widget gets its own data from the backend, so that it loads, fails, and retries on its own (`cpt-frontx-dashboard-adr-backend-delivered-dashboard`). This component is the data-request logic inside every cell and modal entry of `dashboard-widgets`, shared through the widget chrome. It sends one widget data request and reports either a validated result or one failure class. It is not a separate client module or service.
+A larger view must appear in the shell's modal area, and its widget extension must be registered in the registry that holds its domain. A child cannot register into an ancestor's registry (FrontX ADR-0008), so neither the dashboards root nor a widget can register anything into the shell's `popup` domain. The larger-view modal solves this: it is itself a static extension of the `popup` domain, and it owns a nested `larger_view` domain in its own registry, where it registers the larger-view extensions.
 
-##### Responsibility scope: Widget Data Request
+##### Responsibility scope: Larger-View Modal
 
-- Is part of every widget entry, cell and modal, used by the shared widget chrome of every widget type. It is not an MFE of its own and is not mounted as an extension; every widget extension runs it for itself.
-- In a cell, sends the widget data request once, after the widget has received `set_widget_context`, and again only when the user selects Retry after a failed request. In the larger view, sends the same request each time the modal widget receives `set_widget_context`.
-- Builds the request from the widget instance's `source` and sends it to the `data_endpoint` from `set_widget_context` (section 3.3). It does not send the widget type, a tenant, or any user field.
-- Sends every request through the FrontX API package, under the host session (section 3.5, Auth session).
-- Validates the result through the FrontX gts-plugin against the single widget data type and checks that every column the widget's configuration binds is present. It maps every outcome to one failure class or to the widget's data, as section 3.3 states.
-- When its extension unmounts, aborts its in-flight requests through the FrontX API package if the package accepts an abort signal, and in any case ignores any late response (section 4, open question 4).
+- Is one static, routed extension of the shell's `popup` domain with a fixed identifier and a static route, declared in the `dashboard` package manifest and registered by the shell's bootstrap. FrontX routing restores it after a page refresh.
+- Builds its own registry synchronously inside its first `mount`, registers the `larger_view` domain with the Optional strategy and its `request_data` handler, and publishes theme and language, received from the `popup` domain, on `larger_view`; on every mount it reads them again and republishes them before any extension mounts. Shows the occupant of `larger_view` in its own window, together with its own close button.
+- At start, loads the template's GTS file through the GTS file loader, registers the family type schemas that the data adapter's served-families declaration returns, and registers the `widgets` manifest and every manifest whose entries a registered realization names, consumer packages included, with their entries in its own registry.
+- Handles `show_larger_view { dashboard, widget }`: keeps both ids as parameters of its own private subroute, which no other runtime reads or writes, and resolves the handler at once. After a refresh it reads the same parameters from its subroute.
+- When it has not loaded that dashboard, unregisters the generated extensions of the dashboard it had loaded, if any, shows a loader, and calls "get a dashboard" on the data adapter. It registers the delivered types, skipping a dataset type of an unserved query family, validates the dashboard by GTS validation alone and attributes each failure by its instance path, runs the layout checks, cross-checks each larger-view widget that passed, checks served query families, picks realizations, and registers one generated extension per larger-view widget in `larger_view`.
+- Shows the requested larger-view widget with one chain: `unmount_ext` of the shown larger-view extension, which does nothing when none is shown, then `mount_ext` of the requested one, then `set_widget_context`. The extension's `entry` is the realization's `larger_view_entry` when it is named, and its `entry` otherwise.
+- Answers each `request_data` from `larger_view` the same way as the dashboards root: it resolves the handler on acceptance, calls "run a query", checks the answer against the request's `data_shape` and drops a mismatched answer, and otherwise sends `set_data` to `reply_to` as its own chain.
+- Shows the static "cannot be shown" placeholder in the modal for the dashboard-level and widget-level triggers of section 3.6, including a requested larger-view widget id that is not in the dashboard.
+- Its close button sends `unmount_ext` of the larger-view modal to the `popup` domain with `history: "none"`. While closed, it keeps the loaded dashboard and its generated extensions, because its nested registry and registrations survive an unmount (FrontX ADR-0008).
 
-##### Responsibility boundaries: Widget Data Request
+##### Responsibility boundaries: Larger-View Modal
 
-- Makes no request on its own: it requests only after `set_widget_context` or on Retry.
-- Requests only its own widget's data; it never requests the dashboard, data of another widget, a different metric, or paged, sorted, or filtered rows.
-- Does not interpret `source` or transform the result.
-- Handles no credential (section 3.5, Auth session).
-- Fixes no request or result shape of its own; the interface is `cpt-frontx-dashboard-interface-dashboard-payload`, specified in `cpt-frontx-dashboard-feature-backend-contract`.
+- Registers nothing into the shell's registry or any ancestor's registry.
+- Makes no backend call; only the data adapter it calls does.
+- Is not connected to the cell widget whose button opened it: the larger-view widget has its own settings and its own query.
+- Does not render cells and does not touch `layout_cells`.
+- Does not implement the modal frame, the focus rule or the click outside; the shell's modal container does (section 3.5).
 
-##### Related components (by ID): Widget Data Request
+##### Related components (by ID): Larger-View Modal
 
-- `cpt-frontx-dashboard-component-widget-library` — the widget entries that contain it, through the shared widget chrome.
+- `cpt-frontx-dashboard-component-widget-library` — generates larger-view extensions from widget realizations, mounts them in `larger_view`, sends them `set_widget_context` and `set_data`, and receives their `request_data`.
+- `cpt-frontx-dashboard-component-data-adapter` — calls it to get the dashboard and to run every query from `larger_view`.
+- `cpt-frontx-dashboard-component-trait-helper` — resolves effective traits.
+- `cpt-frontx-dashboard-component-gts-file-loader` — loads the template's GTS file at start.
+
+#### Data Adapter
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-component-data-adapter`
+
+##### Why this component exists: Data Adapter
+
+The template must work with any backend and depend on none. The data adapter is the single place where a consuming product connects its backend: product code in the product's copy of the template, behind an interface that the template defines (`cpt-frontx-dashboard-adr-data-adapter`). The template ships the interface only; it holds no implementation.
+
+##### Responsibility scope: Data Adapter
+
+- Implements "get a dashboard": given a dashboard id, returns the dashboard instance together with the dataset types and the measure and dimension instances it uses.
+- Implements "run a query": given a widget's request, its query, the data shape id and the fill mode with its fields, returns one instance of that data shape, filled by that fill mode, whose measure values may be null, with a combined id that ends in a UUID it generates.
+- Declares the query families it serves and returns their family type schemas, which the owners register at start.
+- Implements all five fill modes, so it produces any data shape for any query family it serves.
+- Reads each dataset's backend binding from its type traits, for example with the trait helper.
+- Owns everything about the backend: requests, errors, access checks such as not found and not permitted, and the session.
+- Lives as long as the dashboards root and the larger-view modal; a copy runs in each of their runtimes. It may group several requests into one backend call, and may cache identical requests.
+
+##### Responsibility boundaries: Data Adapter
+
+- Is not a FrontX extension: it has no MFE entry, no extension and no extension domain.
+- Is never part of `template-dashboard`; the template is complete without it and is tested with a test data adapter that names no backend.
+- Does not validate dashboards, select realizations or mount widgets; the domain owners do.
+- Never sees presentation fields of a widget; it receives only the request.
+- Shows nothing to the user; data it never returns keeps the waiting loader (section 3.6).
+
+##### Related components (by ID): Data Adapter
+
+- `cpt-frontx-dashboard-component-dashboards-root` — calls it for the dashboard and for every query from `layout_cells`.
+- `cpt-frontx-dashboard-component-larger-view-modal` — calls it for the dashboard and for every query from `larger_view`.
+- `cpt-frontx-dashboard-component-trait-helper` — may use it on dataset types.
 
 #### Widget Library
 
@@ -495,121 +642,186 @@ Each widget gets its own data from the backend, so that it loads, fails, and ret
 
 ##### Why this component exists: Widget Library
 
-Dashboards need a fixed, domain-neutral set of widgets that consuming products can use without writing chart or grid code or their own data loading. The template ships the 9 template widget types as MFE entries that FrontX mounts in a layout cell and in the host modal domain, and that each get their own data from the backend.
+Dashboards need a fixed, subject-agnostic set of widgets that consuming products use without writing chart or grid code or any data loading. The template ships the 9 widget types as passive MFE entries that FrontX mounts in a layout cell and in the larger view.
 
 ##### Responsibility scope: Widget Library
 
-- Ships one package, `dashboard-widgets`, with one manifest `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.v.widgets.manifest.v1`. Per widget type it declares one cell entry, one modal entry, one static extension of the host modal domain whose `entry` is the modal entry, and one widget realization of weight 1 that names the cell entry and the static modal extension.
-- Every cell and modal entry requires the theme and language shared properties and supports the action `set_widget_context`.
-- On `set_widget_context` in a cell, stores the widget instance as its configuration, keeps `data_endpoint` and `modal`, shows its own skeleton, and sends its widget data request once. It then presents the result unchanged, or shows its error, cannot-show, or empty state.
-- Shows per-widget states in the shared chrome: a skeleton while its data loads; an error with Retry when the request fails, where Retry sends the request again; a cannot-show state with a diagnostic when the result cannot be shown, with no Retry; and the widget type's empty state when the result has no rows, or, for `markdown_card`, when the `body` of the first row is null or empty. A widget in one of these states affects no other widget.
-- Shares one widget chrome across all widget types. The chrome carries the widget title and, in every cell widget, one larger-view button. Every cell widget's context carries `modal`, so the button is always shown in a cell, in every state of the widget: skeleton, data, error, cannot-show, and empty. The button runs the chain `mount_ext` with target `modal.target` and subject `modal.subject`, with `next` set to `set_widget_context` for `modal.subject` with the same widget and `data_endpoint` (section 3.6, Widget Modal Open). The modal entry receives no `modal` in its context, so the chrome shows no larger-view button in the larger view.
-- In the larger view, the modal entry sends the same widget data request as the cell, with the same validation, column binding, and failure mapping. It may present the result differently, with more room. It adds no paging, sorting, filtering, or other metric.
-- Formats values for the host language, including the values of the result's percentage columns as percentages, and localizes its own wording. Titles and labels from the dashboard are shown as delivered.
+- Ships one package, `widgets`, with one manifest `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard_v.widgets.manifest.v1` that declares one entry per widget type, 9 in all, and the shared widget chrome.
+- Every entry requires the theme and language shared properties, lists `set_widget_context` and `set_data` in its `actions` and `request_data` in its `domainActions`. `markdown_card` lists them too, although it never sends or receives data actions. The same entry is admitted into `layout_cells` and `larger_view`.
+- Registers its action handlers before its `mount` resolves, so its `set_data` handler exists before its first `request_data`.
+- On `set_widget_context`, a data widget keeps its query as a local copy, shows its loader, and sends `request_data { data, data_shape, fill, reply_to, timestamp }` to the domain it sits in, read from its bridge's `extDomainId`. `reply_to` is its own extension id, and `timestamp` comes from a monotonic clock, so it is unique per widget. `markdown_card` renders at once.
+- On `set_data`, applies the answer only when its timestamp equals that of the latest request, and drops older answers. Valid data with no rows shows the widget type's empty state.
+- On an interaction that changes the query, such as a grid sort, page or page size, updates the local copy, which is never saved, sends a new `request_data`, and shows a busy indicator over the current content. An interaction that changes only presentation, such as resizing a grid column, redraws locally and sends nothing.
+- Shares one widget chrome across all widget types: the title, the loader, the busy indicator and the empty state. In a cell widget whose context carries `larger_view`, the chrome shows the larger-view button; in a cell without it, and in every larger-view widget, the button is hidden. The button runs the chain of section 3.6 (Larger View Open). It takes the `popup` domain id from the shell constants by role and the larger-view modal's fixed id from the template's identifiers.
+- Formats values for the host language from the member metadata and the presentation fields, and localizes its own wording. Titles and labels from the dashboard are shown as delivered.
 - Maps the host theme id to the light or dark scope of `@gears-frontx/ui-kit`, the same approach as `kitThemeScopeFor` in `template-mfe`, and styles everything with kit tokens.
-- Chart widget types (`cartesian_chart`, `pie_chart`, `heatmap`) use ECharts through `echarts/core` imports. They build their ECharts theme `frontx-dashboard` from the kit tokens of the active scope and register it per instance, again on every theme change.
-- The `grid` widget type uses one grid shell on TanStack Table v8 for rendering only: columns with each value as text, the first `frozen_columns` columns kept visible during horizontal scrolling, grouped column headers from `column_groups`, row coloring from `row_color_column` with kit tokens and an icon of each row's meaning, ARIA grid semantics, and keyboard operation. It renders rows virtualized, so only the rows in view are in the DOM, and grids of up to 5,000 rows stay responsive without paging (`cpt-frontx-dashboard-adr-data-grid-library`, `cpt-frontx-dashboard-nfr-large-table`). It shows the delivered rows in the delivered order, without search, filtering, sorting, grouping, pagination, or user-driven column resizing in the browser. FEATURE `widget-catalog` section 6.5 specifies these rules.
-- The `markdown_card` widget type shows the markdown of its bound `body` column from the first row, with its markdown formatting. Embedded HTML in a markdown card is shown as plain text, not rendered; the card's markdown formatting still applies. This is the single exception to showing delivered content in full. A link whose target is not among the link schemes that FEATURE `widget-catalog` section 6.9 allows shows its link text as plain text, and an image is not loaded and shows its alt text.
+- Chart widget types (`cartesian_chart`, `pie_chart`, `heatmap`) use ECharts through `echarts/core` imports. They build their ECharts theme `frontx-dashboard` from the kit tokens of the active scope and register it per instance, again on every theme change. `cartesian_chart` draws each measure as its `series` entry sets.
+- The `grid` widget type uses one grid shell on TanStack Table v8 for rendering and column resizing only. It reads each column's value by position in the canonical member order, shows values as text, and keeps the delivered row order. It renders the rows of a page virtualized, shows frozen columns, grouped headings, alignment and row colours, and offers sort headers, a pager and a page-size choice with ARIA grid semantics and keyboard operation (`cpt-frontx-dashboard-adr-data-grid-library`).
+- The `markdown_card` widget type renders its body as typical markdown (CommonMark, including links and images). Embedded HTML is shown as plain text, never rendered. Further rendering rules are specified in FEATURE `widget-catalog`.
 
 ##### Responsibility boundaries: Widget Library
 
-- Requests only its own data, never reads the meaning of `source`, and never narrows, recomputes, aggregates, re-orders, groups, pages, hides, or truncates the delivered result; the layout and the widget configuration fix the presentation. The one exception is the markdown safety rule: embedded HTML in a markdown card (`markdown_card`) is shown as plain text, not rendered; the card's markdown formatting still applies.
+- Has no data-request code beyond the `request_data` action, no backend knowledge, and no error chrome: no error message and no timeout.
+- Does not show the "cannot be shown" placeholder; the domain owner shows it in the widget's cell or in the modal.
+- Never aggregates, narrows, re-orders, groups, hides or truncates delivered data; the query and the presentation fields fix the presentation.
+- Never checks the shape of the data it receives; FrontX's validation of `set_data` does.
 - Keeps every widget type subject-agnostic.
-- Declares no shared singletons; each instance evaluates its own libraries (FrontX ADR-0011).
-- Registers no extension: its static modal extensions are registered by the host bootstrap, and its cell extensions by the Viewer host.
+- Relies on no template-owned state shared between instances (FrontX ADR-0011).
+- Registers no extension; the domain owners register the generated extensions.
 
 ##### Related components (by ID): Widget Library
 
-- `cpt-frontx-dashboard-component-viewer-host` — picks its realizations, generates and mounts the cell extensions in `layout_cells`, and sends `set_widget_context`.
-- `cpt-frontx-dashboard-component-widget-data-request` — the data-request logic inside each widget entry.
+- `cpt-frontx-dashboard-component-dashboards-root` — mounts its entries as cell extensions, sends `set_widget_context` and `set_data`, and answers its `request_data` from `layout_cells`.
+- `cpt-frontx-dashboard-component-larger-view-modal` — mounts its entries as larger-view extensions and answers its `request_data` from `larger_view`; receives `show_larger_view` from its cell widgets' chains.
+
+#### Trait Helper
+
+- [ ] `p2` - **ID**: `cpt-frontx-dashboard-component-trait-helper`
+
+##### Why this component exists: Trait Helper
+
+The FrontX type-system port offers register schema, get schema, register and validate instance, and type check, but no accessor for a type's effective traits (`cpt-frontx-dashboard-adr-shared-data-types-and-schemas`). The domain owners need the effective traits of widget types (`data_shape`, `fill`, `member_kinds`), and the data adapter needs those of datasets (the backend binding).
+
+##### Responsibility scope: Trait Helper
+
+- Resolves a type's effective traits: gets the schemas along the type's `$id` chain with `getSchema` and merges their `x-gts-traits` with RFC 7396.
+- Is template code in the `dashboard` package, carried by the dashboards root and the larger-view modal, and available to the data adapter.
+
+##### Responsibility boundaries: Trait Helper
+
+- Registers nothing, validates nothing, and keeps no state between calls.
+- Gives traits no meaning; its callers interpret them.
+
+##### Related components (by ID): Trait Helper
+
+- `cpt-frontx-dashboard-component-dashboards-root` — uses it for widget types and query families.
+- `cpt-frontx-dashboard-component-larger-view-modal` — uses it the same way.
+- `cpt-frontx-dashboard-component-data-adapter` — may use it to read a dataset's binding.
+
+#### Template GTS File Loader
+
+- [ ] `p2` - **ID**: `cpt-frontx-dashboard-component-gts-file-loader`
+
+##### Why this component exists: Template GTS File Loader
+
+The shell's manifest carries no GTS instances, and FrontX offers no registry listing, so the widget realizations must be delivered to the domain owners another way (`cpt-frontx-dashboard-adr-template-packages-and-host-contract`). The template serves its own JSON file of GTS types and instances that no MFE manifest carries, starting with the widget realizations.
+
+##### Responsibility scope: Template GTS File Loader
+
+- Fetches the template's GTS file at start, as if a backend returned it, and registers its types and instances before any dashboard loads. The dashboards root and the larger-view modal each run it in their own runtime.
+- Reads the file that the product's copy of the template serves; a product adds or changes realizations, including replacement realizations, by editing its copy.
+- Writes a diagnostic to the developer log when the file cannot be fetched or an entry is rejected. With no realization registered for a widget type, every widget of that type gets the widget-level cannot-show state.
+
+##### Responsibility boundaries: Template GTS File Loader
+
+- Loads no dashboard content and no product types; those come from the data adapter.
+- A backend that returns the same GTS types and instances can take the file's place without a change to the dashboards root or the larger-view modal.
+
+##### Related components (by ID): Template GTS File Loader
+
+- `cpt-frontx-dashboard-component-dashboards-root` — runs it at start.
+- `cpt-frontx-dashboard-component-larger-view-modal` — runs it at start.
 
 ### 3.3 API Contracts
 
-The template exposes one public contract to consumers, its domain model (`cpt-frontx-dashboard-interface-domain-model`), with the six parts listed in section 3.1. Two boundary interfaces connect it to its surroundings. The first is the backend interface that the consuming product backend implements (`cpt-frontx-dashboard-interface-dashboard-payload`, below), decided in `cpt-frontx-dashboard-adr-backend-delivered-dashboard` and required by the PRD contract `cpt-frontx-dashboard-contract-consuming-backend`. The second is the host domains (`cpt-frontx-dashboard-contract-host-areas`, section 3.5). The interfaces below give the architecture-level form of the backend interface, of widget realizations, and of the template's action and domain. Field-level schemas belong to the FEATURE documents.
+The template exposes one public contract to consumers, its domain model (`cpt-frontx-dashboard-interface-domain-model`), with the seven parts listed in section 3.1. Two boundary contracts connect it to its surroundings. The first is the data adapter interface that the consuming product implements (`cpt-frontx-dashboard-interface-data-adapter`, below), which realizes the PRD contract `cpt-frontx-dashboard-contract-consuming-backend`. The second is the host contract (`cpt-frontx-dashboard-contract-host-areas`, section 3.5). The interfaces below give the architecture-level form of the data adapter interface, of widget realizations, and of the template's actions and domains. Field-level schemas belong to the FEATURE documents.
 
-#### Dashboard Definition and Widget Data
+#### Data Adapter Interface
 
-- [ ] `p1` - **ID**: `cpt-frontx-dashboard-interface-dashboard-payload`
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-interface-data-adapter`
 
-- **Contracts**: `cpt-frontx-dashboard-fr-backend-source`, `cpt-frontx-dashboard-interface-domain-model`
-- **Technology**: JSON over requests sent through the FrontX API package under the host session (`cpt-frontx-dashboard-adr-backend-delivered-dashboard`)
-- **Location**: the dashboard endpoint and the widget data endpoint, both read from the consuming product's configuration (section 3.2); exact specification and conformance cases in `cpt-frontx-dashboard-feature-backend-contract`
+- **Contracts**: `cpt-frontx-dashboard-contract-consuming-backend`, `cpt-frontx-dashboard-fr-data-adapter`, `cpt-frontx-dashboard-interface-domain-model`
+- **Technology**: a TypeScript interface, called in the runtime of the dashboards root and of the larger-view modal; every value it takes and returns is GTS-typed (`cpt-frontx-dashboard-adr-data-adapter`)
+- **Location**: the interface in the `dashboard` package; the implementation in the product's copy of the template; exact specification and conformance cases in the data adapter contract FEATURE
 
-The consuming product backend implements this interface; the template only consumes it. The backend returns dashboard definitions and computes widget data from its own metrics on request; it keeps no pre-computed widget data for the template. This section is the single statement of both requests; other sections refer to it.
+The consuming product implements this interface; the template only calls it. This section is the single statement of the interface; other sections refer to it.
 
-**Dashboard request.** The Viewer host names one dashboard by its GTS instance identifier, the identifier that its route carries, for example `gts.frontx.m.dashboard.dashboard.v1~<uuid>`. The request goes to the dashboard endpoint. The result is that one dashboard instance: `id`, `name`, `description`, and the embedded `layout` with its `columns` and `cells`, each cell embedding one widget instance with its `id`, `title`, presentation configuration, and `source`. It carries no widget data and no theme. The Viewer host sends it once per open dashboard and again only on Retry after a failed request.
+| Operation | Input | Output | Called by |
+|-----------|-------|--------|-----------|
+| Get a dashboard | a dashboard id | the dashboard instance, the dataset types it uses, and the measure and dimension instances it uses | the dashboards root when it loads a dashboard; the larger-view modal when it has not loaded that dashboard |
+| Run a query | one `request_data` payload, unchanged: `data` (the query), `data_shape`, `fill`, `reply_to`, `timestamp` | one instance of the requested data shape, filled by the requested fill mode, with a combined id that ends in a UUID the data adapter generates | the owner of the domain that received the request |
+| Served query families | none | the family type schemas of the query families it serves | the dashboards root and the larger-view modal at start, which register the schemas |
 
-**Widget data request.** A widget names a backend metric by its name, from `source.metric`. It may add an optional time window from `source.range`, in the form the backend defines, and an optional bucketing flag from `source.bucket`. The backend computes the metric from its own data and returns one result. The request goes to the widget data endpoint that `set_widget_context` carries. It carries no widget type, no tenant, and no user field; the host session identifies the caller. A cell widget sends it once, after `set_widget_context`, and again only on Retry after a failed request. Widgets send it in parallel and independently. A modal widget sends the same request each time it receives `set_widget_context`.
+**Obligations of an implementation.**
 
-**Widget data result.** One result has the same shape for every metric:
+- It implements all five fill modes of section 3.1, so it can fill any data shape for any query family it serves.
+- It returns delivered types and instances that the owner can register. GTS keeps the first registration of an id, so a dataset, measure or dimension with new content gets a new version id. Template types are registered before any dashboard loads, so a delivered type cannot take their place.
+- It resolves calendar tokens in the user's time zone and week convention, and relative ranges against the current time. When it rounds the current time, for example to the minute, identical queries give identical backend requests, and a cache can absorb them.
+- It answers every call. Data that the owner never gets keeps the loader: the dashboard area for a missing dashboard, the widget for a missing answer. FrontX validates the instance against the shape its own id names, and the owner drops an instance whose shape differs from the request's `data_shape`; a dropped answer counts as an answer that never arrives.
+- It owns backend errors, access checks and the session. The template shows no error message, classifies no failure and has no timeout.
 
-- the ordered column names;
-- the rows, each a positional array of values aligned to the columns;
-- the names of the columns that hold percentages.
+**Asynchronous answers.** A call to "run a query" is asynchronous. The owner's `request_data` handler has already resolved, and while one widget waits, the owner keeps answering the others.
 
-A value in a percentage column is a fraction where 1 means 100%, so 0.385 is shown as 38.5%. Widgets format the values of the percentage columns as percentages, using the host language; they compute nothing, and nothing else in the result changes what is shown. The result carries no column types. The widget validates it against the single widget data type `gts.frontx.v.widget_data.widget_data.v1~`, then checks that the result is aligned: every row has as many values as there are column names, and every percentage column is among the column names. A misaligned result is widget data that cannot be shown, without Retry. The widget then checks that every column its presentation configuration binds is among the column names. A result with no rows shows the widget type's empty state, and so does a `markdown_card` result whose first-row `body` is null or empty; neither is a failure.
+**Consistency.** Each data instance is an independent snapshot of the moment the data adapter fills it. There is no consistency guarantee across widgets. The dashboards root and the larger-view modal call the data adapter separately, each in its own runtime.
 
-**API cache and conformance.** The FrontX API package shares its API cache across runtimes, so identical requests, such as those of a cell and of its larger view, may be served from the cache. Conformance therefore counts requests made through the FrontX API package, not network calls. A Retry must reach the backend.
+**Delivered types.** The owner registers the dataset types and vocabulary instances that come with a dashboard before it validates the dashboard. When they cannot be registered, the dashboard is in the dashboard-level cannot-show state (section 3.6). The exception is a delivered dataset type of a query family that the data adapter does not serve: the owner skips it and does not register it, and only the widgets whose data uses it are in the widget-level cannot-show state.
 
-**Consistency.** Each widget's data is an independent snapshot, taken when that widget requests it. There is no consistency guarantee across widgets. A cell and its larger view may show different values if the backend data changed between their requests, or the same values when the second request is served from the API cache.
-
-**Failure classes and what the user sees.** The classes are named by meaning. Every failure has one visible place:
-
-| Request | Failure class | Causes | What the user sees | Retry |
-|---------|---------------|--------|--------------------|-------|
-| Dashboard | Failed dashboard request | Backend error, backend timeout, network failure, or no answer within the wait time | An error banner in place of the dashboard | Sends the dashboard request again |
-| Dashboard | Dashboard that cannot be shown | Request rejected as invalid, dashboard not found, permission denied, or a result that does not parse or fails validation of the dashboard or an embedded widget; also a failing layout or grid configuration check | No cells and a diagnostic naming the failing instances, cells, or grid columns and groups | Not offered |
-| Widget data | Failed widget data request | Backend error, backend timeout, network failure, or no answer within the wait time | An error in that widget only | Sends that widget's request again |
-| Widget data | Widget data that cannot be shown | Request rejected as invalid. Metric not found. Permission denied, shown with a "no permission" diagnostic. A result that does not parse, fails the widget data type, is misaligned (a row whose length differs from the column names, or a percentage column not among them), or lacks a bound column. | A cannot-show state with a diagnostic in that widget only, showing nothing of the result | Not offered |
-| Either | Session expired | The host session is no longer valid | Handled by the host's session flow; the template shows nothing of its own | Not applicable |
-
-**Wait time.** The Viewer host and every widget wait 35 seconds for an answer to the dashboard request and to every widget data request. The wait time is a template setting, not a contract term (`cpt-frontx-dashboard-feature-backend-contract`). No answer within it is a failed request.
-
-**Prerequisite outside the template.** The consuming product's backend must let every dashboard viewer request the widget data of the dashboards they can open. Without that, a viewer sees permission-denied widgets on a dashboard they may open (section 4).
-
-Authorization of dashboards and data, the distribution of the types to the backend, limits, and versioning are outside this interface. Failures inside the Viewer host, such as a widget type without a single winning realization or a cell that fails to mount, are not failures of this interface (section 3.6, Failure Handling). The stability class is given in the API Stability Classification below.
+The stability class is given in the API Stability Classification below.
 
 #### Widget Realization
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-interface-widget-realization`
 
 - **Contracts**: `cpt-frontx-dashboard-interface-domain-model`
-- **Technology**: GTS instances of `gts.frontx.v.mfe.widget_realization.v1~` delivered through the manifest channel; static extensions of the host modal domain registered by the host bootstrap
-- **Location**: template realizations, entries, and static modal extensions in the `dashboard-widgets` manifest; field-level schema in FEATURE `mfe-entries`
+- **Technology**: GTS instances of `gts.frontx.dashboard_v.mfe.widget_realization.v1~` in the template's GTS file, registered by the GTS file loader of each domain owner
+- **Location**: the template's 9 realizations in the template's GTS file in the `dashboard` package; the 9 entries in the `widgets` manifest; field-level schema in FEATURE `mfe-entries`
 
-A widget realization tells the Viewer host which cell entry shows a widget type, and which static modal extension shows its larger view. Section 3.1 gives its fields.
+A widget realization tells a domain owner which entry shows a widget type in a cell, and which one in the larger view. Section 3.1 gives its fields.
 
-**Precedence.** For each widget type, the Viewer host considers the realizations registered in its registry whose `widget_type` names that type. The single realization with the highest `weight` wins. A tie at the highest weight, or no realization at all, leaves every cell of that widget type in its cannot-show state, with a diagnostic that names the widget type, and the tied realizations for a tie. The template's 9 realizations have weight 1.
+**Precedence.** For each widget, the owner of its domain reads the widget type from the rightmost type of the widget's `id` chain. It considers the realizations registered in its registry whose `widget_type` names that type. The single realization with the highest `weight` wins. A tie at the highest weight, or no realization at all, gives the cannot-show state to that widget's cell, or to the modal for a larger-view widget; the diagnostic that names the widget type and the tied realizations goes to the developer log only. The template's 9 realizations have weight 1 and name no `larger_view_entry`.
 
-**Consumer replacement.** In v1 a consuming product cannot add widget types, but it can replace how a template widget type is shown. It ships a replacement realization in its own package, with its own identifier, its own cell and modal entries, its own static modal extension, and a weight above 1. Every realization, including a consumer replacement, brings its modal extension, so the larger-view button is always shown. The replacement wins for that widget type, and the template's realization stays registered but unused. A realization is a GTS instance, not an admitted extension: registering it admits nothing, and the Viewer host still registers each cell extension itself.
-
-**Static modal extensions.** Each realization's `modal_extension` names one static extension of the host modal domain whose `entry` is that widget type's modal entry. The host bootstrap registers it from the manifest channel, together with the modal entry. FrontX admits an extension only through `registerExtension` on the registry that holds its domain, and the host modal domain lives in the shell's registry, which the Viewer host and the widgets cannot register into (FrontX ADR-0008). One static extension per widget type serves every widget of that type, because each open sends the widget's own context.
+**Consumer replacement.** A consuming product cannot add widget types, but it can replace how a template widget type is shown. It ships its own entry in its own package and adds a realization to its copy of the template's GTS file, with its own identifier, a `larger_view_entry` only if it needs one, and a weight above 1. The replacement wins for that widget type in both domains; the template's realization stays registered but unused. The replacement entry must list `set_widget_context` and `set_data` in `actions` and `request_data` in `domainActions`, so that both domains admit it, and it keeps the widget states, the theme mapping and the accessibility rules itself. A realization is a GTS instance, not an admitted extension, so registering it admits nothing; each owner registers the manifest that holds the replacement entry, because it registers every manifest whose entries a registered realization names, and registers the generated extensions itself.
 
 **Example: from widget instance to mounted extension.**
 
-1. The widget instance in `layout.cells[2]` has `id` `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~<uuid>`, the title "Orders by region", two grid columns with keys `region` and `orders`, and a `source` naming the metric `orders_by_region` with a time window.
-2. The widget type is the rightmost type of the `id` chain: `gts.frontx.m.widget.widget.v1~frontx.m.widget.grid.v1~`.
-3. The winning realization for that type, for example `gts.frontx.v.mfe.widget_realization.v1~frontx.v.mfe.grid.v1`, gives `entry` and `modal_extension`.
-4. The Viewer host generates the extension `gts.frontx.mfes.ext.extension.v1~frontx.v.layout.layout_cells.v1~frontx.v.layout.cell_2.v1` with `entry` from the realization, registers it in its own registry, and runs `mount_ext`. FrontX loads the module, the Concurrent strategy creates a container, and the domain's mounter places it in cell 2.
-5. The Viewer host sends `set_widget_context` with the widget instance, `data_endpoint`, and `modal`, whose `target` is the host modal domain and whose `subject` is the grid's static modal extension.
-6. The widget sends its widget data request for `orders_by_region` with that time window. It validates the result against `gts.frontx.v.widget_data.widget_data.v1~`, checks that `region` and `orders` are among the column names, and presents the rows.
-7. The larger-view button runs `mount_ext` of the grid's static modal extension in the host modal domain, then `set_widget_context` with the same widget and `data_endpoint`. The modal entry sends the same request, possibly served from the API cache, and presents the larger view.
+1. The cell `layout.cells[2]` embeds a `grid` widget with id `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.grid.v1~<uuid>`, the title "Activity by author", `columns` for an author dimension and a lines-of-code measure, `page_sizes` of 25, 50 and 100, and a query of a product dataset with `limit` 25. The cell also embeds a `larger_view` widget.
+2. The dashboards root validates the widget, which also validates its query against the dataset that `data.id` names. It runs the grid cross-checks and finds the query family in the type chain of `data.id` among the served ones.
+3. The widget type is the rightmost type of the `id` chain. The winning realization for it, for example `gts.frontx.dashboard_v.mfe.widget_realization.v1~frontx.dashboard_v.mfe.grid.v1`, gives `entry`.
+4. The dashboards root derives the UUIDv5 from the widget id, the role "cell" and that entry, and registers the extension `gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~<uuidv5>` in its own registry. It runs `mount_ext`; the Concurrent strategy creates a container, and the domain's mounter places it in cell 2.
+5. The dashboards root sends `set_widget_context` with the widget, the grid's `data_shape` and `fill` from the widget type's traits, the metadata of the two members, and `larger_view` with the dashboard id and the larger-view widget id.
+6. The widget sends `request_data` to `layout_cells`. The dashboards root accepts it, calls "run a query", and sends `set_data` with a `positional_table` instance of 25 rows and its `total`. The widget renders the page, with the larger-view button shown.
 
-#### Host Actions
+#### Template Actions
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-interface-host-actions`
 
 - **Contracts**: `cpt-frontx-dashboard-interface-domain-model`, `cpt-frontx-dashboard-contract-host-areas`
 - **Technology**: FrontX actions chains (mediator keyed by target and action type, FrontX ADR-0007)
-- **Location**: action type under `gts.frontx.mfes.comm.action.v1~frontx.v.mfe.*` in `dashboard-viewer`
+- **Location**: action types under `gts.frontx.mfes.comm.action.v1~frontx.dashboard_v.mfe.*` in the `dashboard` package
 
-Every action is a type derived from the FrontX action base. A chain carries an action, an optional `next`, and an optional `fallback`; nothing comes back to the sender. An action that the sender's registry cannot resolve escalates to its ancestors (FrontX ADR-0007). Each action's timeout is its own or the domain default of 30 000 ms. No action carries widget data; each widget requests its own.
+Every template action is a type derived from the FrontX action base. A chain carries an action, an optional `next` and an optional `fallback`; nothing comes back to the sender. FrontX validates every action instance against its schema, polymorphically on every embedded id.
 
 | Action | Target | Sender → receiver | Payload (summary) | Stability |
 |--------|--------|-------------------|-------------------|-----------|
-| `gts.frontx.mfes.comm.action.v1~frontx.v.mfe.set_widget_context.v1~` | a cell extension, or a static modal extension | Viewer host → cell widget; cell widget's modal chain → modal widget | `widget`: the widget instance; `data_endpoint`: the widget data endpoint, which travels only here and is not a shared property; `modal`, always present for a cell widget and absent for a modal widget: `target`, the host modal domain identifier, and `subject`, the realization's `modal_extension` | experimental |
+| `set_widget_context` | a generated extension in `layout_cells` or `larger_view` | dashboards root → cell widget; larger-view modal → larger-view widget | `widget`: the widget instance. For a data widget: `data_shape` and `fill` from the widget type's traits, and `members`: `{id, title, value_type, unit}` for every member of its query. For a cell widget with a larger view: `larger_view` with `dashboard`, the dashboard id, and `widget`, the larger-view widget id. | experimental |
+| `request_data` | the domain the widget sits in: `layout_cells` or `larger_view` | data widget → domain owner | `data`: the widget's current query, typed by the query base; `data_shape`; `fill`; `reply_to`: the widget's own extension id; `timestamp`: from a monotonic clock | experimental |
+| `set_data` | the requesting widget extension (`reply_to`) | domain owner → data widget | `data`: one data instance, typed by the data shape base and carrying its combined id; `timestamp`: copied from the request | experimental |
+| `show_larger_view` | the larger-view modal's extension | the cell widget's chain, after `mount_ext` of the larger-view modal | `dashboard`: the dashboard id; `widget`: the larger-view widget id | experimental |
 
-The payload is closed: it allows only `widget`, `data_endpoint`, and `modal`, and `modal` allows only `target`, a domain identifier, and `subject`, an extension identifier. The `modal` field keeps the field names of FrontX `mount_ext`, so the cell widget's chain can use `target` and `subject` as they arrive. The larger view opens through the FrontX lifecycle actions on the host modal domain, which the template does not define.
+The payloads are closed. `set_widget_context` carries no widget data and no backend detail: everything a widget needs to render and to ask for its data reaches it in this one action, in a cell and in the larger view alike. `request_data` and `set_data` are single actions for every data widget type, because GTS validates the embedded query and the embedded data instance against the derived types their own ids name.
+
+FrontX lifecycle actions on the template's domains and on the shell's `popup` domain:
+
+| Action | Target | Sent by | Subject |
+|--------|--------|---------|---------|
+| `mount_ext` / `unmount_ext` | `layout_cells` | the dashboards root | a generated cell extension |
+| `mount_ext` | the shell's `popup` domain | the cell widget's chain, to open, with `history: "none"` | the larger-view modal |
+| `unmount_ext` | the shell's `popup` domain | the larger-view modal's close button with `history: "none"`, or the shell's modal container on a click outside | the larger-view modal |
+| `mount_ext` / `unmount_ext` | `larger_view` | the larger-view modal | a generated larger-view extension |
+
+Code takes the lifecycle action identifiers from the FrontX constants.
+
+**Delivery.** Action delivery is FrontX's concern. FrontX delivers each action to the handler that its target registered, wherever the target sits in the tree (FrontX ADR-0007). This holds for `set_data` from a domain owner to a widget in its domain, and for `show_larger_view` from a cell widget in the dashboards root's registry to the larger-view modal in the shell's registry. No template part passes actions on.
+
+**Handlers resolve on acceptance.** FrontX ends a step of an actions chain when its handler's promise settles, and the action's timeout, or the domain default of 30 000 ms, covers only that time. The `request_data` handlers of both domains resolve as soon as they take the request. The owner then calls the data adapter outside the chain and sends `set_data` as its own actions chain. The `show_larger_view` handler takes the ids and resolves; loading and showing run after it. A slow data adapter never reaches an action timeout.
+
+**Declarations.** FrontX rejects an action whose target does not list it.
+
+- Every widget entry lists `set_widget_context` and `set_data` in `actions` and `request_data` in `domainActions`, `markdown_card` included.
+- The larger-view modal's entry lists `show_larger_view` in `actions` and nothing in `domainActions`. Lifecycle actions (`load_ext`, `mount_ext`, `unmount_ext`) are never listed in `domainActions`, because FrontX admission exempts them; this covers the cell widget's `mount_ext` and the modal's `unmount_ext` on the `popup` domain.
+- `layout_cells` and `larger_view` list `request_data` in their `actions`, next to their lifecycle actions, and require `set_widget_context` and `set_data` in their `extensionsActions`.
+
+**Handlers exist before they are needed.** A domain's `request_data` handler is registered when the domain is registered, before any extension in it mounts. Under the FrontX MFE entry contract, an entry's `mount` resolves only after the entry has registered its action handlers, and the next step of a chain runs only after the mount resolves. So a widget's `set_data` handler exists before its first `request_data`, and the larger-view modal's `show_larger_view` handler exists before the second step of the cell widget's chain.
 
 #### Template Extension Domains
 
@@ -617,142 +829,150 @@ The payload is closed: it allows only `widget`, `data_endpoint`, and `modal`, an
 
 - **Contracts**: `cpt-frontx-dashboard-interface-domain-model`
 - **Technology**: FrontX extension domains with named mount strategies (FrontX ADR-0009) and subset-rule admission (FrontX ADR-0010)
-- **Location**: domain instance in `dashboard-viewer`
+- **Location**: domain instances and extension types in the `dashboard` package
 
-The Viewer host implements one extension domain. The larger view uses the host modal domain, which the shell implements (section 3.5).
+The template defines two extension domains. The larger-view modal is an extension of the shell's `popup` domain, which the shell implements (section 3.5).
 
-| Property | `layout_cells` |
-|----------|----------------|
-| Identifier | `gts.frontx.mfes.ext.domain.v1~frontx.v.layout.layout_cells.v1` |
-| Implemented by | Viewer host, in its own registry |
-| Mount strategy | Concurrent |
-| Domain actions | `load_ext`, `mount_ext`, `unmount_ext` |
-| Extension actions | `set_widget_context` |
-| Shared properties | theme and language, forwarded unchanged from the host |
-| Extension type | `gts.frontx.mfes.ext.extension.v1~frontx.v.layout.layout_cells.v1~` |
-| Extensions registered | one per cell whose widget type has a single winning realization, at dashboard resolve, by the Viewer host |
-| Occupancy | one occupant per cell; `unmount_ext` only on dashboard teardown |
-| Domain lifecycle stages | `init` |
-| Extension lifecycle stages | `init`, `activated`, `deactivated`, `destroyed` |
-| Default action timeout | 30 000 ms |
+| Property | `layout_cells` | `larger_view` |
+|----------|----------------|---------------|
+| Identifier | `gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.layout_cells.v1` | `gts.frontx.mfes.ext.domain.v1~frontx.dashboard_v.layout.larger_view.v1` |
+| Implemented by | the dashboards root, in its own registry | the larger-view modal, in its own nested registry |
+| Mount strategy | Concurrent | Optional |
+| Routed | no | no |
+| Domain actions | `load_ext`, `mount_ext`, `unmount_ext`, `request_data` | `load_ext`, `mount_ext`, `unmount_ext`, `request_data` |
+| Extension actions | `set_widget_context`, `set_data` | `set_widget_context`, `set_data` |
+| Shared properties | theme and language, published unchanged | theme and language, published unchanged |
+| Extension type | `gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.layout_cells.v1~` | `gts.frontx.mfes.ext.extension.v1~frontx.dashboard_v.layout.larger_view.v1~` |
+| Extensions registered | one per cell widget that passes its checks, when the dashboards root loads a dashboard | one per larger-view widget that passes its checks, when the larger-view modal loads a dashboard |
+| Occupancy | one occupant per cell | at most one occupant, the shown larger-view widget |
+| Domain lifecycle stages | `init` | `init` |
+| Extension lifecycle stages | `init`, `activated`, `deactivated`, `destroyed` | `init`, `activated`, `deactivated`, `destroyed` |
+| Default action timeout | 30 000 ms | 30 000 ms |
 
-The lifecycle actions are `gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~`, `gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~`, and `gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~`. Code takes them from the FrontX constants. The domain declares only the `init` stage for itself, because it lives as long as its registry.
+Each domain declares only the `init` stage for itself, because it lives as long as its registry. A layout with no cells, or a dashboard without larger-view widgets, registers nothing in the domain. The generation and registration process is specified in FEATURE `extension-domain-catalog`.
 
-**Extension creation.** When the Viewer host resolves the dashboard, it takes each widget's type from the rightmost type of its `id` chain and picks the winning realization (Widget Realization, above). It generates one extension of the `layout_cells` extension type with that realization's `entry` and registers it with `registerExtension`. A widget whose type has no single winning realization, or whose registration the registry rejects, gets no extension, and its cell shows its cannot-show state. A layout with no cells registers nothing. The process is specified in FEATURE `extension-domain-catalog` section 3.
-
-**Cardinality matrix check (FrontX ADR-0009).** The Concurrent strategy requires both a mount and an unmount action in the domain declaration.
+**Cardinality matrix check (FrontX ADR-0009).**
 
 | Domain | Strategy | Requires | Declares | Result |
 |--------|----------|----------|----------|--------|
 | `layout_cells` | Concurrent | `mount_ext`, `unmount_ext` | `mount_ext`, `unmount_ext` | admitted |
+| `larger_view` | Optional | `mount_ext`, `unmount_ext` | `mount_ext`, `unmount_ext` | admitted |
 
-**Admission of entries (FrontX ADR-0010).** A cell entry requires theme and language, which `layout_cells` shares, and supports `set_widget_context`, which covers the domain's extension actions. A modal entry requires theme and language, which the host modal domain shares. The host modal domain declares no extension actions; under the subset rule, the extra action `set_widget_context` on the modal entry does not block its admission.
+FrontX also accepts a domain only when every action it lists has a handler and every handler is listed, so each domain registers its `request_data` handler while it is built.
 
-**Identifier uniqueness.** The Viewer host generates cell extension identifiers deterministically from the zero-based cell index, in the form `gts.frontx.mfes.ext.extension.v1~frontx.v.layout.layout_cells.v1~frontx.v.layout.cell_<c>.v1`. A cell without an extension leaves its index unused; the other cells keep their positions. The static modal extensions have fixed identifiers, one per widget type, registered once in the shell's registry. The two sets are disjoint, so no advertisement trips the tree-global collision guard (FrontX ADR-0007). The exact identifier forms are fixed in FEATURE `extension-domain-catalog` and FEATURE `mfe-entries`.
+**Admission of entries (FrontX ADR-0010).** A widget entry requires theme and language, which both domains share. It supports `set_widget_context` and `set_data`, which cover both domains' extension actions, and its `request_data` is among both domains' actions. One entry per widget type therefore fits both domains. The larger-view modal's entry requires theme and language, which the `popup` domain shares. The `popup` domain declares no extension actions, so under the subset rule the modal's `show_larger_view` does not block its admission, and the `popup` domain supports the `unmount_ext` that the modal sends.
+
+**Identifier uniqueness.** Target identifiers are unique in the whole tree (FrontX ADR-0007). The domain identifiers and the larger-view modal's identifier are fixed. Generated identifiers differ by widget id, by role and by entry, so a cell extension and a larger-view extension of the same widget never collide, and a repeated widget id is rejected by the layout checks before any extension is generated.
 
 #### API Stability Classification
 
-This design uses one stability vocabulary with three classes. `experimental` is the PRD label for the template's public contracts during alpha. These contracts become stable from the first non-alpha release, and from then on follow the PRD breaking change policy: breaking changes are controlled and announced. The `v1` identifier freeze of `cpt-frontx-dashboard-adr-shared-data-types-and-schemas` is how this design implements that step. `internal` means TS-internal and changeable in any release. `extension point` means a contract consumers implement or add to.
+This design uses one stability vocabulary with three classes. `experimental` is the PRD label for the template's public contracts during alpha; these contracts become stable from the first non-alpha release and then follow the PRD breaking change policy. The `v1` freeze of `cpt-frontx-dashboard-constraint-gts-id-convention` implements that step. `internal` means TypeScript-internal and changeable in any release. `extension point` means a contract that consumers implement or add to.
 
 | Classification | Contracts | Policy |
 |----------------|-----------|--------|
-| Experimental (stable from the first non-alpha release) | `gts.frontx.m.*` types, the widget data type, the `set_widget_context` action type, the `layout_cells` domain and its extension type, the widget realization type, the identifiers of the template's realizations, entries, and static modal extensions | `v1` from the start; changes during alpha are listed in the release notes; frozen from the first non-alpha release; incompatible changes then ship as a new version |
-| Internal | the endpoint configuration form, the data-request logic inside each widget entry, the cell extension identifier rule, the wait time | may change in any release; coordinated inside the owning package |
-| Extension points | the dashboards and widget data a consuming product backend serves (`cpt-frontx-dashboard-interface-dashboard-payload`), replacement widget realizations with a weight above 1 | added without changing the template's engine; during alpha changes to the backend interface are listed in the release notes, and from the first non-alpha release breaking changes are controlled and announced |
+| Experimental (stable from the first non-alpha release) | the `gts.frontx.dashboard_m.*` and `gts.frontx.dashboard_v.*` types, including the query vocabulary, the data shapes, the fill modes, the 4 action types, the 2 domains and their extension types, and the widget realization type; the identifiers of the template's realizations, entries and the larger-view modal's extension | `v1` from the start; changes during alpha are listed in the release notes; frozen from the first non-alpha release; incompatible changes then ship as a new version |
+| Internal | the id derivation of generated extensions, the trait helper, the GTS file loader, the timestamp clock, the cannot-show diagnostics | may change in any release; coordinated inside the owning package |
+| Extension points | the data adapter interface (`cpt-frontx-dashboard-interface-data-adapter`); the query families, datasets, measures and dimensions a product delivers; replacement widget realizations with a weight above 1 in the product's copy of the template's GTS file | added without changing the template's engine; during alpha, changes to the data adapter interface are listed in the release notes, and from the first non-alpha release breaking changes are controlled and announced |
 
 ### 3.4 Internal Dependencies
 
-| Dependency Module | Interface Used | Purpose |
+| Dependency | Interface Used | Purpose |
 |-------------------|----------------|----------|
-| `dashboard-viewer` → FrontX runtime (`@gears-frontx/react`, `@gears-frontx/mfes`) | registry, extension domain, mount strategies, bridge, actions chains | Nested host for cell widgets; routed screen; action escalation. |
-| `dashboard-viewer` → FrontX gts-plugin | type store and validation | Validate the dashboard and its embedded widgets. |
-| `dashboard-viewer` → `template-shell` framework constants | role constants listed in section 3.5 | Resolve host identifiers without literals. |
-| `dashboard-viewer` → host manifest channel | aggregated manifests fetched at run time | Learn the domain model types, the widget entries, and the widget realizations. |
-| `dashboard-viewer` → `dashboard-widgets` | widget realizations and cell entries resolved at run time | Generate cell extensions and mount widgets; no build-time import. |
-| `dashboard-viewer`, `dashboard-widgets` → FrontX API package | requests under the host session, abort on unmount when the package accepts an abort signal | The dashboard request and every widget data request. |
-| `dashboard-viewer`, `dashboard-widgets` → `@gears-frontx/ui-kit` | components and tokens in a light or dark scope | All template UI. |
-| `dashboard-widgets` → FrontX gts-plugin | validation against the widget data type | Each widget checks its own result before it presents it. |
-| `dashboard-widgets` → ECharts, echarts-for-react | `echarts/core` with selected charts | Chart widget types. |
-| `dashboard-widgets` → TanStack Table v8 | headless column and row model | `grid` widget type. |
-| `dashboard-widgets` → TanStack virtualizer | virtualized row rendering inside the grid shell (`cpt-frontx-dashboard-adr-data-grid-library`) | `grid` widget type with up to 5,000 rows. |
-| `dashboard-widgets` → `dashboard-viewer` GTS types | type and instance identifiers only | Check `set_widget_context` payloads and widget data results. |
+| `dashboard` → FrontX runtime (`@gears-frontx/react`, `@gears-frontx/mfes`) | registry, extension domains, mount strategies, bridges, actions chains, routing | Nested registries of the dashboards root and the larger-view modal, `layout_cells` and `larger_view`, routed extensions, action delivery. |
+| `dashboard` → FrontX gts-plugin | register schema, get schema, register and validate instance, type check | Register the template's GTS file, query families and delivered types; validate dashboards and widgets. |
+| `dashboard` → `template-shell` framework constants | role constants listed in section 3.5 | Resolve shell identifiers without literals. |
+| `dashboard` → host manifest channel | aggregated manifests fetched at run time | Register the `widgets` manifest and entries in the owners' own registries. |
+| `dashboard` → template GTS file | JSON file fetched at run time | Register the widget realizations before any dashboard loads. |
+| `dashboard` → `widgets` | widget realizations and entries resolved at run time | Generate and mount widget extensions; no build-time import. |
+| `dashboard` → data adapter | the data adapter interface, called in-process | Get dashboards and run queries; the implementation is product code. |
+| `dashboard`, `widgets` → `@gears-frontx/ui-kit` | components and tokens in a light or dark scope | All template UI. |
+| `widgets` → `dashboard` GTS identifiers | type and instance identifiers only | Action types, and the larger-view modal's fixed identifier for the open chain. |
+| `widgets` → `template-shell` framework constants | the `popup` domain constant | Target of the open chain. |
+| `widgets` → ECharts, echarts-for-react | `echarts/core` with selected charts | Chart widget types. |
+| `widgets` → TanStack Table v8, TanStack virtualizer | headless column and row model, column sizing, virtualized rows | `grid` widget type. |
 
 **Dependency Rules** (per project conventions):
 
-- No circular build-time dependencies: `dashboard-widgets` depends only on GTS identifiers of `dashboard-viewer` and on FrontX packages; `dashboard-viewer` reaches widgets only at run time.
-- Widgets communicate with the Viewer host and the shell only through FrontX actions and shared properties; they never import Viewer host modules.
-- Only two parts request dashboard content: the Viewer host requests the dashboard, and each widget's data-request logic requests that widget's data. The Viewer host's fetch of the manifest channel loads types, manifests, entries, and realizations, not dashboard content.
-- Every template MFE declares all its packages as shared (section 3.9).
+- No circular build-time dependencies: `widgets` depends only on identifiers of `dashboard`, on shell constants and on FrontX packages; `dashboard` reaches widgets only at run time.
+- Widgets communicate with the domain owners only through FrontX actions and shared properties; they never import code of the dashboards root or the larger-view modal.
+- No template package makes a backend call. Only the product's data adapter talks to a backend, and the template calls it only through its interface.
+- Every template MFE lists its packages in the `shared` array of its manifest (section 3.9).
 - No package depends on `template-mfe`.
-- No credential is passed between template parts (section 3.5, Auth session).
+- No credential is passed between template parts.
 
 ### 3.5 External Dependencies
 
 #### Host Application (`template-shell`) and Host Contract
 
-| Dependency Module | Interface Used | Purpose |
+| Dependency | Interface Used | Purpose |
 |-------------------|---------------|---------|
-| `template-shell` | host screen domain, host modal domain and its rendered slot, manifest channel, theme and language shared properties, auth session | Mount the Viewer host and the larger views; register the static modal extensions; read theme, language, and session. |
+| `template-shell` | shell screen domain when used, the `popup` domain with its modal container, manifest channel, theme and language shared properties | Host the dashboards root and the larger-view modal; register the larger-view modal's static extension; provide theme and language. |
 
-**Host contract.** The template refers to host elements by role. The table maps each role to its current `template-shell` identifier and to the shell constant that code uses.
+**Host contract.** The template refers to shell elements by role. The table maps each role to its current `template-shell` identifier and to the shell constant that code uses.
 
 | Role | Current `template-shell` identifier | Resolved through | Requirement on the host |
 |------|-------------------------------------|------------------|-------------------------|
-| Host screen domain | `gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1` | `FRONTX_SCREEN_DOMAIN`, `screenDomain` | Shares theme and language; accepts routed extensions of the screen extension type; mounts one screen at a time (Exclusive strategy); is rendered through an `ExtensionDomainSlot` (`MfeScreenContainer.tsx`). |
+| Shell screen domain | `gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1` | `FRONTX_SCREEN_DOMAIN`, `screenDomain` | Needed only when the dashboards root is a screen extension. Shares theme and language; accepts routed extensions of the screen extension type; mounts one screen at a time (Exclusive strategy). |
 | Screen extension type | `gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~` | `FRONTX_SCREEN_EXTENSION_TYPE` | Requires a `route` and a `presentation` label. |
-| Host modal domain | `gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.popup.v1` | `FRONTX_POPUP_DOMAIN`, `popupDomain` | Shares theme and language with its occupant; declares `load_ext`, `mount_ext`, `unmount_ext`; has no extension type constraint, so it accepts the template's static modal extensions as plain extensions; is registered with the Optional strategy, so it owns zero or one occupant. |
-| Host modal-domain slot | no identifier; a rendering obligation of the host | none | Renders the host modal domain through a domain slot with modal chrome, Close, a focus trap, and dismissal; Close and dismissal run `unmount_ext` of the occupant. **Not met by current `template-shell`** (see below). |
-| Manifest channel | the aggregated manifest file at the fixed location the shell bootstrap names | `MFE_MANIFESTS_URL`, module-local in the shell bootstrap; the nested-host reference uses the same location | Serves the aggregate built by `scripts/generate-mfe-manifests.ts` from every package's `mfe.json`; the shell bootstrap registers each package's schemas, manifest, domains, entries, and extensions in that order. |
+| Shell's `popup` domain | `gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.popup.v1` | `FRONTX_POPUP_DOMAIN`, `popupDomain` | Registered with the Optional strategy, so it owns zero or one occupant; routed, so FrontX routing restores the larger-view modal after a refresh; shares theme and language with its occupant; declares `mount_ext` and `unmount_ext`; has no extension type constraint, so it admits the larger-view modal's static extension. |
+| Modal container for the `popup` domain | no identifier; a rendering obligation of the host | none | Shows the occupant in the shell's modal area with the shell's modal chrome; keeps keyboard focus inside the modal while it is open; unmounts the occupant with `unmount_ext` on a click outside the modal. `template-shell` renders no such container; it is a prerequisite (section 4). |
+| Manifest channel | the aggregated manifest file at the fixed location the shell bootstrap names | `MFE_MANIFESTS_URL`, a constant local to the shell bootstrap; owners with their own registry fetch the same location | Serves the aggregate built by `scripts/generate-mfe-manifests.ts` from every package's `mfe.json`; the shell bootstrap registers each package's schemas, manifest, domains, entries and extensions in that order. |
 | Theme shared property | `gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~` | `FRONTX_SHARED_PROPERTY_THEME` | Is provided with the host theme id, a non-empty string, and updated on every theme change. The template uses this value unchanged as its only theme input. |
-| Language shared property | `gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~` | `FRONTX_SHARED_PROPERTY_LANGUAGE` | Is provided; the Viewer host forwards it on `layout_cells`, and the host modal domain gives it to modal entries. |
-| Module Federation entry type | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~` | `FRONTX_MFE_ENTRY_MF` | Type of every template entry. |
+| Language shared property | `gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~` | `FRONTX_SHARED_PROPERTY_LANGUAGE` | Is provided; the dashboards root publishes it on `layout_cells`, and the larger-view modal on `larger_view`. |
+| MFE entry type | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~` | `FRONTX_MFE_ENTRY_MF` | Type of every template entry. |
 | Lifecycle actions | `load_ext`, `mount_ext`, `unmount_ext` under `gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.*` | `FRONTX_ACTION_LOAD_EXT`, `FRONTX_ACTION_MOUNT_EXT`, `FRONTX_ACTION_UNMOUNT_EXT` | Supplied by the FrontX runtime. |
-| Auth session | shell auth provider | none; the template does not call it | Offers the session under which the FrontX API package sends the dashboard request and every widget data request; handles an expired session. |
 
-**Modal-domain slot prerequisite.** Current `template-shell` registers the host modal domain in its MFE bootstrap but renders no slot for it. The only rendered `ExtensionDomainSlot` is the screen domain's in `MfeScreenContainer.tsx`, and `Popup.tsx` renders a separate redux popup stack with no focus trap and no dismissal. Until `template-shell` renders the modal domain as required above, and the domain gives theme and language to its occupant, a mounted modal widget has no place on screen. On such a host, opening a larger view fails at the modal chain's `mount_ext`: no larger view appears, and the cell is unchanged (section 3.6, Widget Modal Open). This is a prerequisite `template-shell` change, tracked outside `template-dashboard` (section 4).
+**Modal container prerequisite.** `template-shell` registers the `popup` domain in its MFE bootstrap but renders no container for it. On such a host, a mounted larger-view modal has no place on screen: opening a larger view shows nothing, and the dashboard is unchanged (section 3.6, Larger View Open). The cell's larger-view button is hidden only when the cell defines no larger-view widget. Providing the container is a `template-shell` change, tracked outside `template-dashboard` (section 4).
 
-**Manifest channel.** The shell serves one aggregated manifest file, generated before each build from the `mfe.json` of every package. Each `mfe.json` carries GTS types, MFE entries, widget realizations, and static extensions; dashboard content never travels through it. The shell bootstrap registers the non-action schemas of all packages first, then per package its manifest, domains, entries, and extensions. This registers the Viewer host's routed extension, every modal entry, and every static modal extension in the shell's registry. The Viewer host's own registry fetches the same file, as the `template-mfe` nested-host reference does, and registers the schemas, manifests, cell entries, and widget realizations it needs. It registers its cell extensions only after `layout_cells` exists, the entries and realizations are registered, and the dashboard has been resolved.
+**Manifest channel.** The shell serves one aggregated manifest file, generated before each build from the `mfe.json` of every package. Each `mfe.json` carries GTS types, MFE entries and static extensions. The shell's manifest carries no GTS instances; the widget realizations travel in the template's GTS file, and dashboards never travel through manifests. The shell bootstrap registers the non-action schemas of all packages first, then per package its manifest, domains, entries and extensions. This registers the larger-view modal's static extension and entry from the `dashboard` manifest, the dashboards root's routed extension and entry when it is a screen extension, and the widget entries. The template's schemas are registered before any dashboard loads: through the `dashboard` package manifest when the dashboards root is a screen extension, and by the shell's own bootstrap otherwise. The template registers types, action types and extension types; each owner registers its own domain instance. Each owner registers the `widgets` manifest and every manifest whose entries a registered realization names, consumer packages included.
 
-**Identifier changes.** A change to a host identifier is absorbed by the constant lookup in TypeScript code. Manifest-declared extensions in `mfe.json` are data: they carry the current identifiers and are updated with the host, unless they are generated from the constants at build time. A host that stops exposing these constants, stops serving the manifest channel, or stops accepting plain extensions in its modal domain breaks the contract.
+**Template's GTS file.** The template serves its GTS file itself; the shell does not serve it. Its location is part of the product's copy of the template, and each domain owner fetches it at start.
+
+**Identifier changes.** A change to a shell identifier is absorbed by the constant lookup in TypeScript code. Manifest-declared extensions in `mfe.json` are data: they carry the current identifiers and follow the shell, unless they are generated from the constants at build time. A host that stops exposing these constants, stops serving the manifest channel, makes the `popup` domain unrouted or gives it another strategy breaks the contract.
 
 #### FrontX Ecosystem
 
-| Dependency Module | Interface Used | Purpose |
+| Dependency | Interface Used | Purpose |
 |-------------------|---------------|---------|
-| `@gears-frontx/*` packages | MFE runtime, gts-plugin, routing port, API package, ui-kit | Runtime: loading and isolation (FrontX ADR-0011), action routing and escalation (FrontX ADR-0007), and bridges and nested registries (FrontX ADR-0008). Domains: mount strategies and occupancy (FrontX ADR-0009), admission (FrontX ADR-0010), and routing (FrontX ADR-0036). Packages: shared-dependency source reuse (FrontX ADR-0034), validation through gts-plugin, requests with a shared API cache through the API package, and the template's look through ui-kit. |
+| `@gears-frontx/*` packages | MFE runtime, routing, gts-plugin, ui-kit | Runtime: loading and isolation (FrontX ADR-0011), action dispatch and chaining (FrontX ADR-0007), bridges and nested registries (FrontX ADR-0008). Domains: mount strategies and occupancy (FrontX ADR-0009), admission (FrontX ADR-0010), and extension routing (FrontX ADR-0036, status proposed). Packages: shared-dependency source reuse by content hash (FrontX ADR-0034) and its realm-wide reach (FrontX ADR-0035), validation and the type store through the gts-plugin, and the template's look through ui-kit. |
 
-**Pin rule.** The template works with the current stable FrontX release and pins every `@gears-frontx/*` package it uses to an exact published version. The pinned versions live in the package manifests, not in this design, so a FrontX release changes no design text.
+**GTS version.** The FrontX gts-plugin must run GTS v0.17 (section 4, prerequisites). The template uses no interim workaround for older GTS versions.
 
-#### Consuming Product Backend
+**Pin rule.** The template pins every `@gears-frontx/*` package it uses to an exact published version, on a FrontX release that runs GTS v0.17 and provides the realm-shared GTS type store (section 4, prerequisite (b)), with compatible provider copies in the shell, the dashboards root and the larger-view modal. The pinned versions live in the package manifests, not in this design, so a FrontX release changes no design text.
 
-| Dependency Module | Interface Used | Purpose |
+**FrontX behavior this design relies on.** A domain implementation registers a handler for every action its domain lists, including a template action such as `request_data`, while FrontX builds the domain. FrontX delivers an action targeted at a domain to that handler. A step of an actions chain ends when its handler's promise settles. A `set_data` that a domain owner sends as its own chain is independent of the request's chain. FrontX routing restores, after a page refresh, only the extensions that are registered when their domain takes its first resolution; the larger-view modal is one of them, and the generated larger-view extensions are not (FrontX ADR-0036).
+
+#### Consuming Product and Its Data Adapter
+
+| Dependency | Interface Used | Purpose |
 |-------------------|---------------|---------|
-| Dashboard endpoint | the dashboard request of `cpt-frontx-dashboard-interface-dashboard-payload` (section 3.3), sent by the Viewer host through the FrontX API package; location from the consuming product's configuration; decided in `cpt-frontx-dashboard-adr-backend-delivered-dashboard` and specified in `cpt-frontx-dashboard-feature-backend-contract` | One GTS dashboard per request, written or generated by the consuming product, with its embedded layout and widget instances. |
-| Widget data endpoint | the widget data request of the same interface (section 3.3), sent by each widget through the FrontX API package; location from the consuming product's configuration, passed in `set_widget_context` | One generic tabular result per request, computed by the backend from the named metric. |
+| The product's data adapter | `cpt-frontx-dashboard-interface-data-adapter` (section 3.3), called by the dashboards root and the larger-view modal; decided in `cpt-frontx-dashboard-adr-data-adapter` | One dashboard per "get a dashboard" call, with its dataset types and vocabulary instances; one data instance per "run a query" call. |
+| The product's query families, datasets and vocabulary | GTS types and instances derived from the template's query vocabulary; decided in `cpt-frontx-dashboard-adr-query-vocabulary-and-datasets` | Query families served by the data adapter, which returns their family type schemas; datasets, measures and dimensions delivered with each dashboard. |
+| The consuming product backend | reached only by the data adapter, never by template code | Holds the dashboards and computes the data. |
 
-**Consumer responsibilities.** The consuming product backend generates the UUIDs of dashboard and widget identifiers. It registers the template types in its own GTS registry and validates every dashboard it serves, written or generated, against them (GTS OP#6 for instances). Its check before showing a dashboard also covers the layout and grid configuration checks of `cpt-frontx-dashboard-feature-backend-contract` section 6.1. When it authors a dashboard, it checks that each `source.metric` exists and returns every column that the widget's configuration binds. It lets every dashboard viewer request the widget data of the dashboards they can open (section 4, prerequisites).
+**Consumer responsibilities.** The consuming product implements the data adapter and answers every call with valid data. It writes or generates dashboards, with the UUIDs of their dashboard, widget and query identifiers. It registers the template types in its own GTS registry and checks every dashboard before it serves it: the GTS validation (GTS OP#6 for instances), the layout checks and the cross-checks of section 3.1, and that its data adapter serves every query family. It gives a dataset, measure or dimension with new content a new version id. It lets every viewer who may see a dashboard get the data of its widgets (section 4, prerequisites). It owns backend errors, access and the session.
 
 #### Third-Party Libraries
 
-| Dependency Module | Interface Used | Purpose |
+| Dependency | Interface Used | Purpose |
 |-------------------|---------------|---------|
-| React with React DOM (MIT) | component model and rendering | UI of the Viewer host and of every cell and modal widget entry. |
+| React with React DOM (MIT) | component model and rendering | UI of the dashboards root, the larger-view modal and every widget entry. |
 | Apache ECharts (Apache-2.0), echarts-for-react (MIT) | chart rendering, theme registration | Chart widget types. |
-| TanStack Table v8 (MIT) | headless column and row model | Grid shell. |
+| TanStack Table v8 (MIT) | headless column and row model, column sizing | Grid shell. |
 | TanStack virtualizer (MIT), chosen with TanStack Table in `cpt-frontx-dashboard-adr-data-grid-library` | virtualized row rendering | Grid shell. |
-| gts-ts (Apache-2.0), the GTS community library under the FrontX gts-plugin | polymorphic resolution of embedded objects against their derived types | Validation of dashboards, embedded widgets, and widget data results, reached only through gts-plugin. |
+| gts-ts (Apache-2.0), the GTS community library under the FrontX gts-plugin | polymorphic resolution of embedded instances against their derived types | Validation of dashboards, widgets, queries and action payloads, reached only through the gts-plugin. |
 
-The React and gts-ts licenses are the ones recorded for these packages in the `template-shell` lockfile. The package-wide license check covers every library above, and every MFE that uses a library declares it as a shared package (section 3.9).
+The React and gts-ts licenses are the ones recorded for these packages in the `template-shell` lockfile. The package-wide license check covers every library above, and every MFE that uses a library lists it in its manifest's `shared` array (section 3.9).
 
 **Dependency Rules** (per project conventions):
 
-- Only the Viewer host and the widget entries talk to the consuming product backend: the Viewer host for the dashboard, each widget for its own data, both through the FrontX API package.
-- The template adds no runtime service and no endpoint of its own.
-- In TypeScript code, host identifiers come only from shell constants; manifest-declared extensions carry the current identifiers.
+- Only the product's data adapter talks to the consuming product backend; template code makes no backend call.
+- The template adds no runtime service, no server and no backend configuration of its own.
+- In TypeScript code, shell identifiers come only from shell constants; manifest-declared extensions carry the current identifiers.
 
 ### 3.6 Interactions & Sequences
 
-All sequences run inside one open dashboard. "Chain" means a FrontX actions chain whose steps run in order, with `next` on success and `fallback` on failure. The dashboard is requested once per open dashboard, and each cell widget requests its data once. After the initial load, no sequence requests anything except Retry after a failed request and the larger view's own request.
+All sequences run inside one application instance. "Chain" means a FrontX actions chain whose steps run in order, with `next` on success and `fallback` on failure. A handler for `request_data` or `show_larger_view` resolves when it accepts the action; the work it starts runs outside the chain, and `set_data` is always its own chain.
 
 #### Initial Load and Viewing
 
@@ -766,49 +986,92 @@ All sequences run inside one open dashboard. "Chain" means a FrontX actions chai
 sequenceDiagram
     actor U as Dashboard viewer
     participant SH as Host shell
-    participant VH as Viewer host
-    participant CW as Cell widget extensions
-    participant API as FrontX API package
-    participant BE as Consuming product backend
+    participant DR as Dashboards root
+    participant GF as Template GTS file
+    participant DA as Data adapter (product code)
+    participant BE as Product backend
+    participant CW as Cell widget
 
-    SH->>VH: mount in the host screen domain (route names the dashboard)
-    VH->>VH: build own registry, register layout_cells (Concurrent)
-    VH->>SH: fetch the manifest channel
-    VH->>VH: register schemas, manifests, cell entries, widget realizations
-    VH->>U: skeletons in place of the dashboard
-    VH->>API: dashboard request (dashboard identifier)
-    API->>BE: dashboard request
-    BE-->>API: one dashboard instance
-    API-->>VH: the dashboard (or a failure, see Failure Handling)
-    VH->>VH: validate through gts-plugin, run layout and grid configuration checks
-    VH->>U: cell skeleton in every cell
-    loop every embedded widget
-        VH->>VH: widget type from the id, pick the winning realization
-        VH->>VH: generate the cell extension, registerExtension
-        VH->>CW: mount_ext (container placed in the cell)
-        VH->>CW: set_widget_context (widget, data_endpoint, modal)
+    SH->>DR: show the dashboards root for the address that names the dashboard
+    DR->>DR: own registry, layout_cells (Concurrent) with its request_data handler
+    DR->>GF: fetch at start
+    GF-->>DR: GTS types and instances, including widget realizations
+    DR->>DR: register them, and the family type schemas the data adapter returns
+    DR->>U: loader in place of the dashboard
+    DR->>DA: get a dashboard (dashboard id)
+    DA->>BE: product-specific request
+    BE-->>DA: product-specific response
+    DA-->>DR: dashboard, dataset types, measure and dimension instances
+    DR->>DR: register delivered types, GTS validation by instance path, layout checks
+    DR->>DR: per cell widget: cross-check, served family, winning realization
+    DR->>DR: register generated cell extensions with deterministic ids
+    loop every cell widget that passed
+        DR->>CW: chain: mount_ext, then set_widget_context
     end
-    CW->>U: widget skeleton
-    CW->>API: widget data request (metric, optional time window and bucketing flag)
-    API->>BE: widget data request
-    BE-->>API: one result
-    API-->>CW: result (or a failure)
-    CW->>CW: validate the result, check the bound columns
-    CW->>U: widget presents its data
+    CW->>U: loader (a markdown card renders at once)
+    CW->>DR: request_data { data, data_shape, fill, reply_to, timestamp }
+    Note over DR: handler resolves on acceptance
+    DR->>DA: run a query (request unchanged)
+    DA->>BE: product-specific request
+    BE-->>DA: product-specific response
+    DA-->>DR: data instance with its combined id
+    DR->>CW: set_data { data, timestamp } as its own chain
+    CW->>U: widget renders, or its empty state
 ```
 
-**Description**: The dashboard opens, it is requested once, every cell mounts its widget extension with its context, and every widget requests its own data once and presents it.
+**Description**: The dashboard opens, the dashboards root loads it through the data adapter, every cell mounts its widget with its context, and every data widget asks for its data and renders it.
 
-1. The host bootstrap has registered the Viewer host's routed extension, every modal entry, and every static modal extension from the manifest channel. The host mounts the Viewer host in the host screen domain for the route that names the dashboard. In its first mount the Viewer host builds its own registry synchronously and registers `layout_cells` with the Concurrent strategy, sharing theme and language.
-2. The Viewer host fetches the manifest channel and registers the schemas, manifests, cell entries, and widget realizations it needs. A failure of this step is a startup failure (Failure Handling, below).
-3. It shows skeletons in place of the dashboard and sends the dashboard request once (section 3.3). A failure follows the failure-handling sequence.
-4. It validates the dashboard through the FrontX gts-plugin, which resolves each embedded widget against the type its `id` names. It then runs the layout checks and the grid configuration checks. When any of these fails, the dashboard cannot be shown: it shows a diagnostic in place of the cells and stops.
-5. It shows its cell skeleton in every cell. For each embedded widget, it reads the widget type from the rightmost type of the `id` chain and picks the winning widget realization. It generates the cell extension with `entry` from the realization, registers it in its own registry, and runs `mount_ext`. FrontX loads the module; the Concurrent strategy creates a container, and the domain's mounter places it in the cell. A cell without a single winning realization, or whose registration or mount fails, shows its cannot-show state; the other cells continue.
-6. It sends each mounted widget `set_widget_context` with the widget instance, `data_endpoint`, and `modal`, with the host modal domain as `target` and the realization's `modal_extension` as `subject`.
-7. Each widget shows its own skeleton and sends its widget data request once (section 3.3). The widgets request in parallel and independently. Each widget validates its result, checks that it is aligned, and checks its bound columns, then presents the rows unchanged, or shows its empty state when there are none. A failure stays in that cell (Failure Handling, below).
-8. After that nothing changes: neither the Viewer host nor any cell widget makes a further request except Retry after a failure, nothing is refreshed in the background, and the widgets neither compute nor narrow their data. The larger view's own request belongs to the widget-modal-open sequence.
+1. The host shows the dashboards root: as a routed screen extension for the route that names the dashboard, or as code in the shell with the dashboard identifier from the host's address. As a screen extension, the dashboards root builds its own registry in its first mount. It registers `layout_cells` with the Concurrent strategy, its `request_data` handler, and theme and language as shared properties.
+2. At start it fetches the template's GTS file and registers its types and instances, including the widget realizations. It registers the family type schemas that the data adapter's served-families declaration returns. As a screen extension, it also registers the `widgets` manifest and every manifest whose entries a registered realization names, with their entries, from the manifest channel in its own registry.
+3. It shows a loader in place of the dashboard and calls "get a dashboard". The data adapter returns the dashboard with its dataset types and measure and dimension instances. When the data adapter returns nothing, the loader stays.
+4. It registers the delivered types and instances. It validates the dashboard with GTS validation and attributes each failure by its instance path: a failure outside every cell's `widget` and `larger_view` path is dashboard-level. It then runs the layout checks, and the failures of one pass are collected. A dashboard-level failure is the dashboard-level cannot-show state (Cannot-Show States, below).
+5. For each cell widget: a GTS failure under its `widget` path, which includes the check of its query against its dataset, gives the cell-level cannot-show state; otherwise it runs the member-kind checks and the cross-checks. For a data widget, it checks that the query family is served. It picks the winning realization. A widget that fails any of these steps gets the cell-level cannot-show state; the other cells continue.
+6. It registers one generated cell extension per remaining cell widget, with its deterministic id and `entry` from the realization.
+7. For each cell, it runs one chain: `mount_ext`, then `set_widget_context` with the widget, its `data_shape`, `fill` and member metadata for a data widget, and `larger_view` for a cell that defines one. The Concurrent strategy creates a container, and the domain's mounter places it in the cell. A failed mount or context gives that cell the cannot-show state.
+8. A `markdown_card` renders at once. A data widget shows its loader and sends `request_data` to `layout_cells`. The dashboards root accepts it, calls "run a query" with the request unchanged, and sends `set_data` with the returned data instance and the copied timestamp to `reply_to`. FrontX validates the action against the data shape that the data instance's id names, and the owner drops an instance whose shape differs from the request's `data_shape`. The widget applies the answer when its timestamp equals that of its latest request, and renders its data or its empty state.
+9. After that, nothing changes without the viewer. Nothing is refreshed in the background, and the widgets neither compute nor narrow their data.
+10. When the dashboards root mounts and already holds that dashboard loaded, for example when the viewer returns to it, it runs only step 7 for its cells, without loading.
 
-#### Widget Modal Open
+#### Query Change
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-seq-query-change`
+
+**Use cases**: `cpt-frontx-dashboard-usecase-view-dashboard`
+
+**Actors**: `cpt-frontx-dashboard-actor-dashboard-viewer`, `cpt-frontx-dashboard-actor-consuming-backend`
+
+```mermaid
+sequenceDiagram
+    actor U as Dashboard viewer
+    participant W as Grid widget
+    participant O as Domain owner (dashboards root or larger-view modal)
+    participant DA as Data adapter (product code)
+
+    U->>W: sort by a column, go to a page, or pick a page size
+    W->>W: update the local copy of the query (order, limit, offset)
+    W->>U: busy indicator over the current rows
+    W->>O: request_data with a new timestamp
+    Note over O: handler resolves on acceptance
+    O->>DA: run a query (request unchanged)
+    DA-->>O: data instance
+    O->>W: set_data { data, timestamp } as its own chain
+    W->>W: apply only if the timestamp equals the latest request
+    W->>U: new page, without the busy indicator
+    U->>W: resize a column
+    W->>U: local redraw, no request
+```
+
+**Description**: An interaction that changes a widget's query asks for new data; an interaction that changes only presentation redraws locally.
+
+1. The viewer clicks the header of a column whose `sortable` is set, uses the pager, or picks a page size from `page_sizes`.
+2. The widget updates its local copy of the query, which is never saved: the change follows the paging rules of [ADR-0005](ADR/0005-data-grid-library-v1.md).
+3. It sends `request_data` with a new timestamp and shows a busy indicator over the current rows, which stay visible.
+4. The domain owner passes the request unchanged to the data adapter and answers `set_data` with the copied timestamp.
+5. The widget applies the answer only when its timestamp equals that of its latest request. An answer to an older request is dropped, so fast clicks show the result of the last one.
+6. Resizing a column changes only the column width. The grid redraws locally, sends no request, and never saves the width.
+7. The same rules hold for a grid in the larger view, with the larger-view modal as the domain owner.
+
+#### Larger View Open
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-seq-widget-modal-open`
 
@@ -819,86 +1082,154 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     actor U as Dashboard viewer
-    participant CW as Cell widget
-    participant VR as Viewer host registry
-    participant SR as Shell registry (host modal domain)
-    participant MW as Modal widget extension
-    participant API as FrontX API package
+    participant C as Cell widget
+    participant PD as Shell's popup domain
+    participant M as Larger-view modal
+    participant DA as Data adapter (product code)
+    participant LV as larger_view domain
+    participant W as Larger-view widget
 
-    Note over SR: the host bootstrap has registered one static modal extension per widget type
-    U->>CW: select the larger-view button
-    CW->>VR: chain: mount_ext (modal.target, modal.subject), next set_widget_context
-    VR->>SR: no handler in the Viewer host registry, the chain escalates (FrontX ADR-0007)
-    SR->>MW: mount_ext: the Optional strategy creates a container, the mounter places it in the modal slot
-    SR->>MW: set_widget_context (widget, data_endpoint)
-    MW->>U: widget skeleton in the larger view
-    MW->>API: the same widget data request as the cell
-    API-->>MW: result, possibly from the shared API cache, or a failure
-    MW->>U: larger view
-    U->>SR: Close or dismissal
-    SR->>MW: unmount_ext
-    MW->>API: abort in-flight requests (when supported), ignore late responses
+    U->>C: press the larger-view button
+    C->>PD: chain step 1: mount_ext (larger-view modal, history none)
+    Note over M: first mount: own registry, larger_view with its handler,<br/>GTS file, family type schemas, widget manifests and entries
+    Note over M: mount resolves after the show_larger_view handler is registered
+    C->>M: chain step 2: show_larger_view { dashboard, widget }
+    Note over M: keep both ids in its own private subroute,<br/>handler resolves
+    opt dashboard not loaded by the modal
+        M->>M: unregister the extensions of another dashboard
+        M->>U: loader in the modal
+        M->>DA: get a dashboard (dashboard id)
+        DA-->>M: dashboard, dataset types, vocabulary
+        M->>M: register types, validate by instance path, layout checks, cross-check, served families,<br/>realizations, register generated larger-view extensions
+    end
+    M->>LV: chain: unmount_ext (shown extension, if any)
+    M->>LV: next: mount_ext (requested extension)
+    M->>W: next: set_widget_context
+    W->>M: request_data to larger_view
+    M->>DA: run a query
+    DA-->>M: data instance
+    M->>W: set_data as its own chain
+    W->>U: larger view
 ```
 
-**Description**: The larger-view button of a widget opens that widget's larger view in the host modal domain. Nothing is registered on the way.
+**Description**: The button of a cell widget opens that cell's larger-view widget in the larger-view modal. Nothing is registered into the shell's registry on the way.
 
-1. The user selects the larger-view button in a cell widget's chrome. Every cell widget's context carries `modal`, so the button is always shown in a cell, in every state of the widget.
-2. The widget runs one chain through its bridge: `mount_ext` with `target` set to `modal.target` and `subject` set to `modal.subject`, with `next` set to `set_widget_context` for `modal.subject` with the same widget instance and `data_endpoint`. The `set_widget_context` step carries the fallback `unmount_ext` of the same extension, so a failed context closes the modal.
-3. The Viewer host's registry has no handler for the host modal domain, so the chain escalates to the shell (FrontX ADR-0007). The static modal extension was registered by the host bootstrap, so `mount_ext` finds an admitted extension.
-4. The host modal domain's Optional strategy keeps at most one occupant. It creates a container for the static modal extension, and the domain's mounter places it in the host's modal slot. When that extension is already mounted, the mount completes at once without change (FrontX ADR-0009), and the new context replaces the widget it shows.
-5. The shell delivers `set_widget_context` to the modal widget. The modal widget shows its own skeleton and sends the same widget data request as the cell, with the same validation, column binding, and failure mapping (section 3.3). The FrontX API package may serve it from its shared cache. The modal widget presents the result in its larger view, and may present it differently from the cell; it adds no paging, sorting, filtering, or other metric. A failure is shown in the larger view by the same classes as in a cell.
-6. Close and host dismissal are the shell's `unmount_ext` of the occupant. The modal widget unmounts and aborts its in-flight requests when the FrontX API package accepts an abort signal; in any case it ignores late responses (section 4, open question 4). The dashboard is unchanged.
-7. Failure: if `mount_ext` fails, no larger view appears, and the cell and the rest of the dashboard are unchanged. This is also the outcome on a host whose modal domain is not rendered (section 3.5, modal-domain slot prerequisite): the larger view cannot be opened there. If `set_widget_context` fails, its fallback unmounts the modal widget. A chain reports nothing to its sender (FrontX ADR-0007), so the cell widget and the Viewer host are not notified; the next button selection starts a new open.
+1. The cell widget shows the button only when its `set_widget_context` carries `larger_view`. The viewer presses it.
+2. The cell widget runs one chain: `mount_ext` of the larger-view modal in the shell's `popup` domain with `history: "none"`, then `show_larger_view` with the dashboard id and the larger-view widget id from its context. It takes the `popup` domain id from the shell constants by role, and the larger-view modal's fixed id from the template's identifiers. FrontX delivers both steps to their targets.
+3. On its first mount, the larger-view modal builds its own registry, registers `larger_view` with the Optional strategy and its `request_data` handler, publishes theme and language on it, loads the template's GTS file, and registers the family type schemas and the manifests with the `widgets` entries. Its `mount` resolves only after its `show_larger_view` handler is registered. The shell's modal container shows it in the shell's modal area.
+4. The `show_larger_view` handler keeps `dashboard` and `widget` as parameters of the modal's own private subroute and resolves.
+5. When the modal has not loaded that dashboard, it unregisters the generated extensions of the dashboard it had loaded, if any, shows a loader, and calls "get a dashboard". It registers the delivered types, validates the dashboard with GTS validation by instance path, runs the layout checks, cross-checks each larger-view widget that passed, checks the served query families, picks realizations, and registers one generated extension per larger-view widget in `larger_view`. When it has loaded that dashboard, it registers nothing.
+6. It runs one chain: `unmount_ext` of the shown larger-view extension, which does nothing when none is shown, then `mount_ext` of the requested one, then `set_widget_context`. Every larger-view widget therefore starts from a fresh mount followed by its context. A requested id that is not in the dashboard, or a widget that failed its checks, shows the cannot-show state in the modal instead.
+7. A data widget sends `request_data` to `larger_view`, and the larger-view modal answers with `set_data` through the data adapter. A `markdown_card` renders at once. A grid in the larger view sorts and pages by the Query Change sequence.
+8. Failure: if `mount_ext` of the larger-view modal fails, for example on a host without the modal container, no larger view appears and the dashboard is unchanged. A chain reports nothing to its sender (FrontX ADR-0007), so the cell widget is not notified; the next press starts a new opening.
 
-#### Failure Handling
+#### Larger View Refresh
 
-- [ ] `p1` - **ID**: `cpt-frontx-dashboard-seq-failure-handling`
+- [ ] `p2` - **ID**: `cpt-frontx-dashboard-seq-larger-view-refresh`
 
 **Use cases**: `cpt-frontx-dashboard-usecase-view-dashboard`
+
+**Actors**: `cpt-frontx-dashboard-actor-dashboard-viewer`, `cpt-frontx-dashboard-actor-host-application`
+
+```mermaid
+sequenceDiagram
+    actor U as Dashboard viewer
+    participant R as FrontX routing
+    participant DR as Dashboards root
+    participant M as Larger-view modal
+    participant DA as Data adapter (product code)
+
+    U->>R: refresh the page with a larger view open
+    R->>DR: restore the dashboards root in its domain
+    R->>M: restore the larger-view modal in the shell's popup domain
+    M->>M: read dashboard and widget from its own private subroute
+    M->>DA: get a dashboard (dashboard id)
+    DA-->>M: dashboard, dataset types, vocabulary
+    M->>M: load steps of Larger View Open, from step 5
+    M->>U: the same larger-view widget
+```
+
+**Description**: An open larger view is open again after a page refresh, through the larger-view modal's static route and its own private subroute.
+
+1. FrontX routing restores each routed extension that is registered when its domain takes its first resolution. The larger-view modal is registered statically with its route by the shell's bootstrap, so the shell's `popup` domain restores it. The dashboards root is restored by FrontX routing when it is a routed screen extension, and is shown by the shell as on every load when it is shell code; it runs Initial Load.
+2. When FrontX routing gives the larger-view modal its entry back, with the parameters of the address the page was loaded with, the modal reads `dashboard` and `widget` from its own private subroute. No other runtime reads or writes that subroute.
+3. These ids are untrusted input from the page address. The modal gets the dashboard only through the data adapter, which owns access. A dashboard that the data adapter does not return leaves the modal's loader; a widget id that is not in the dashboard shows the modal's cannot-show state.
+4. The modal continues from step 5 of Larger View Open. `larger_view` has no route, so nothing in it depends on what was registered when the page loaded.
+
+#### Larger View Close
+
+- [ ] `p2` - **ID**: `cpt-frontx-dashboard-seq-larger-view-close`
+
+**Use cases**: `cpt-frontx-dashboard-usecase-view-dashboard`
+
+**Actors**: `cpt-frontx-dashboard-actor-dashboard-viewer`, `cpt-frontx-dashboard-actor-host-application`
+
+```mermaid
+sequenceDiagram
+    actor U as Dashboard viewer
+    participant M as Larger-view modal
+    participant MC as Shell's modal container
+    participant PD as Shell's popup domain
+
+    alt close button
+        U->>M: press the close button
+        M->>PD: unmount_ext (the larger-view modal, history none)
+    else click outside
+        U->>MC: click outside the modal
+        MC->>PD: unmount_ext (the occupant)
+    end
+    PD->>M: unmount
+    Note over M: subroute leaves the address with it;<br/>keeps the loaded dashboard and its generated extensions
+    U->>U: back on the unchanged dashboard
+```
+
+**Description**: The larger view closes by its own close button or by a click outside it, and the viewer returns to the unchanged dashboard.
+
+1. The larger-view modal's close button sends `unmount_ext` of the larger-view modal to the shell's `popup` domain with `history: "none"`. A click outside the modal is handled by the shell's modal container, which unmounts the occupant with `unmount_ext`.
+2. The larger-view modal's subroute leaves the address with it.
+3. The larger-view modal keeps the loaded dashboard and its generated extensions, because its nested registry and its registrations survive an unmount (FrontX ADR-0008). The next opening of a larger view of the same dashboard registers nothing and goes straight to step 6 of Larger View Open.
+4. While the larger view is open, the shell's modal container keeps keyboard focus inside it, so the viewer reaches no other part of the page, and the dashboards root never closes it.
+
+#### Cannot-Show States
+
+- [ ] `p1` - **ID**: `cpt-frontx-dashboard-seq-cannot-show`
+
+**Use cases**: `cpt-frontx-dashboard-usecase-view-dashboard`, `cpt-frontx-dashboard-usecase-provide-dashboard`
 
 **Actors**: `cpt-frontx-dashboard-actor-dashboard-viewer`, `cpt-frontx-dashboard-actor-consuming-backend`
 
 ```mermaid
 sequenceDiagram
     actor U as Dashboard viewer
-    participant VH as Viewer host
-    participant W as One cell widget
-    participant BE as Consuming product backend
+    participant O as Domain owner (dashboards root or larger-view modal)
+    participant DA as Data adapter (product code)
+    participant W as One widget
 
-    VH->>VH: manifest fetch fails or a required registration is rejected
-    VH->>U: dashboard area cannot be shown, diagnostic, no Retry, no dashboard request
-    VH->>BE: dashboard request
-    BE-->>VH: backend error, timeout, network failure, or no answer in time
-    VH->>U: error banner with Retry in place of the dashboard
-    U->>VH: Retry
-    VH->>BE: dashboard request again
-    BE-->>VH: not found, permission denied, or a dashboard that fails the checks
-    VH->>U: no cells, a diagnostic, no Retry
-    VH->>W: registerExtension, mount_ext, set_widget_context
-    W-->>VH: a step fails, or the widget type has no single winning realization
-    VH->>U: cannot-show state in that cell only
-    W->>BE: widget data request
-    BE-->>W: backend error, timeout, network failure, or no answer in time
-    W->>U: error with Retry in that cell only
-    U->>W: Retry
-    W->>BE: widget data request again
-    BE-->>W: metric not found, permission denied, or a result that fails its checks
-    W->>U: cannot-show state in that cell only, no Retry
+    O->>DA: get a dashboard
+    DA-->>O: dashboard with delivered types
+    alt owner start fails, delivered types rejected, dashboard-level validation fails, or layout check fails
+        O->>U: one static "cannot be shown" placeholder in place of the dashboard (in the modal: the modal)
+    else per widget: validation under its path, cross-check, unserved family, no single winning realization, or unknown larger-view widget id
+        O->>U: placeholder in that cell, or in the modal
+    else registration, mount_ext, or set_widget_context fails
+        O->>U: placeholder in that cell, or in the modal
+    end
+    W->>O: request_data
+    alt the data adapter never answers, or the answer is rejected or dropped
+        W->>U: the loader stays, with no error message
+    end
 ```
 
-**Description**: A startup failure, a failed dashboard request, and a dashboard that cannot be shown affect the whole dashboard area. A cell without a single winning realization, a cell whose widget fails to mount, and every widget data failure stay in their own cell. Every failure has one visible place. The diagram shows the failure paths one after another; each can occur on its own.
+**Description**: Failures that the template detects show one static "cannot be shown" placeholder, at dashboard level or at widget level. The domain owner shows it, and writes a diagnostic to the developer log. There is no failure class and no error message. The diagram shows the paths one after another; each can occur on its own.
 
-1. **The Viewer host cannot start.** The manifest fetch fails, or the registry rejects a required registration: the schemas, the manifests, the cell entries, or the `layout_cells` domain. The dashboard area shows that it cannot be shown, with a diagnostic and no Retry, and the Viewer host sends no dashboard request. A widget realization that the registry rejects is not a startup failure: it is left out with a diagnostic, and only the cells of its widget type can be affected.
-2. **The dashboard request fails.** A backend error, a backend timeout, a network failure, or no answer within the wait time is one failed dashboard request (section 3.3). The Viewer host shows a dashboard-level error banner with Retry in place of the dashboard. Retry sends the dashboard request again; a retry is classified like the first request: success removes the banner and continues the initial load, a further temporary failure shows the banner with Retry again, and a permanent outcome shows that the dashboard cannot be shown, without Retry (item 3).
-3. **The dashboard cannot be shown.** The request is rejected as invalid, the dashboard is not found, permission is denied, or the result does not parse or fails validation. Or the layout fails a layout check, or a `grid` widget fails a grid configuration check. The Viewer host mounts no cells and shows a diagnostic naming the failing instances, the failing cells by their zero-based index, or the failing grid columns and groups (`cpt-frontx-dashboard-adr-backend-delivered-dashboard`). Retry is not offered, because the same dashboard would fail again.
-4. **A widget type has no single winning realization.** No realization names the widget type, or two or more share the highest weight. Every cell of that widget type shows its cannot-show state with a diagnostic that names the widget type, and the tied realizations for a tie, and no Retry; the other cells are unaffected.
-5. **A cell's widget fails to register, load, or mount.** The registry rejects the cell extension, or its `mount_ext` or `set_widget_context` fails, for example because the widget bundle does not load. The cell shows its cannot-show state with a diagnostic and no Retry; `mount_ext` is never retried. The other cells are unaffected. Before the mount, the cell shows the Viewer host's cell skeleton; after it, the widget's own skeleton until its widget data request settles.
-6. **A widget's data request fails.** A backend error, a backend timeout, a network failure, or no answer within the wait time is one failed widget data request. The widget shows an error with Retry in its own cell. Retry sends that widget's request again through the FrontX API package and must reach the backend; a retry is classified like the first request: success presents the data, a further temporary failure shows the error with Retry again, and a permanent outcome shows the cannot-show state without Retry (item 7).
-7. **A widget's data cannot be shown.** The request is rejected as invalid, the metric is not found, permission is denied, or the result does not parse, fails the widget data type, is misaligned (a row whose length differs from the column names, or a percentage column not among them), or lacks a bound column. The widget shows a cannot-show state with a diagnostic in its own cell and presents nothing of the result. Permission denied carries a "no permission" diagnostic. Retry is not offered, because the same request would fail again. A result with no rows, or a `markdown_card` result whose first-row `body` is null or empty, is not a failure: the widget shows its widget type's empty state.
-8. **The session expires.** The host's session flow handles it; the template shows no state of its own.
-9. **Opening a larger view fails.** The widget-modal-open sequence describes it; the dashboard stays unchanged.
+1. **Dashboard level.** The owner's domain registration fails at start, GTS rejects a delivered type (a dataset type whose query family is not served is skipped and is a widget-level case, item 2), a GTS validation failure lies outside every cell's `widget` and `larger_view` path, or the layout fails its checks (bounds through GTS validation, then overlap, `x + w` above 60, a repeated widget id; the failures of one pass are collected). The dashboards root shows the placeholder in place of the dashboard and mounts no cells. In the larger-view modal, the modal shows it.
+2. **Widget level.** The triggers are: a GTS validation failure lies under a cell's `widget` or `larger_view` path, or a cell widget or a larger-view widget fails its cross-checks, including the member-kind check and the grid checks; a query member names no registered instance; its query family is not served, including a query that names a dataset type the owner skipped; a leading `unmount_ext` fails before a larger view is shown; no widget realization wins, because there is none or the highest weights tie; its extension fails to register or to mount; or `set_widget_context` fails. That cell, or the modal for a larger-view widget, shows the placeholder; the other cells are unaffected. Each widget is validated on its own, so a failure belongs to its own cell or larger view. Known limit: a FrontX mount timeout, or a queued action that FrontX replaces outside the owner's wrapper, leaves a cell empty without a placeholder.
+3. **Unknown larger-view widget id.** In the larger-view modal, a requested larger-view widget id that is not in the loaded dashboard shows the placeholder in the modal.
+4. **No template GTS file.** When the file cannot be fetched, no realization is registered, so every widget gets the widget-level placeholder because no realization wins. The diagnostic names the file.
+5. **Data that never arrives is not a cannot-show state.** When the data adapter returns no dashboard, the dashboard area keeps its loader. When it never answers a `request_data`, that widget keeps its loader. The owner drops an answer whose shape differs from the request's `data_shape` before it sends `set_data`; FrontX validates the `set_data` against the shape that the instance's own `id` names and rejects a violation. Either counts as an answer that never arrives. The template shows no error message and has no timeout; the PRD states this limitation and its risk.
+6. **Backend errors, access and the session** belong to the data adapter. What it does with them, for example returning no dashboard, decides what the viewer sees under item 5.
 
-Every loading, error, empty, and cannot-show state has a default English wording, specified in `cpt-frontx-dashboard-feature-backend-contract` section 6.3. The Viewer host and every widget localize their own wording and value formatting for the host language.
+Every loader, busy, empty and cannot-show state has a default English wording, specified in FEATURE `widget-catalog`. The domain owners and every widget localize their own wording and value formatting for the host language.
 
 #### Theme Switch
 
@@ -911,25 +1242,28 @@ Every loading, error, empty, and cannot-show state has a default English wording
 ```mermaid
 sequenceDiagram
     participant H as Host application
-    participant VH as Viewer host
+    participant DR as Dashboards root
     participant CW as Cell widgets
-    participant MW as Modal widget (when open)
+    participant M as Larger-view modal (when open)
+    participant LW as Larger-view widget
 
-    H->>VH: theme shared property changes (host theme id)
-    VH->>VH: map the id to the ui-kit scope of its own chrome
-    VH->>CW: the same value as the theme shared property of layout_cells
-    H->>MW: theme shared property of the host modal domain changes
+    H->>DR: theme shared property changes (host theme id)
+    DR->>DR: map the id to the ui-kit scope of its own chrome
+    DR->>CW: the same value as the theme shared property of layout_cells
+    H->>M: theme shared property of the shell's popup domain changes
+    M->>M: map the id to the ui-kit scope of its own chrome
+    M->>LW: the same value as the theme shared property of larger_view
     CW->>CW: map the id to the ui-kit light or dark scope
-    MW->>MW: map the id to the ui-kit light or dark scope
+    LW->>LW: map the id to the ui-kit light or dark scope
     CW->>CW: chart widgets rebuild and re-register their ECharts theme
 ```
 
-**Description**: A host theme change reaches the Viewer host, every mounted widget, and the open larger view as a shared-property change only, without a request.
+**Description**: A host theme change reaches the dashboards root, every mounted widget, and an open larger view as a shared-property change only, without a request.
 
 1. The host updates its theme shared property with the new host theme id.
-2. The Viewer host maps the id to the light or dark scope of `@gears-frontx/ui-kit` for its own chrome, and publishes the same value, unchanged, as the theme shared property of `layout_cells`.
-3. When a larger view is open, the host modal domain gives the new value to its occupant directly.
-4. Each widget maps the id to the kit's light or dark scope, the way `template-mfe` does; the mapping is specified in FEATURE `widget-catalog` and FEATURE `mfe-entries`. Chart widgets rebuild their `frontx-dashboard` ECharts theme from the kit tokens and re-register it; grid row coloring follows the kit tokens. Nothing is fetched, and no widget requests its data again.
+2. The dashboards root maps the id to the light or dark scope of `@gears-frontx/ui-kit` for its own chrome and publishes the same value, unchanged, as the theme shared property of `layout_cells`.
+3. When a larger view is open, the larger-view modal receives the new value from the shell's `popup` domain, maps it for its own chrome, and publishes it unchanged on `larger_view`.
+4. Each widget maps the id to the kit's light or dark scope, the way `template-mfe` does; the mapping is specified in FEATURE `widget-catalog` and FEATURE `mfe-entries`. Chart widgets rebuild their `frontx-dashboard` ECharts theme from the kit tokens and re-register it; grid row colours follow the kit tokens. Nothing is fetched, no widget sends `request_data`, no loader shows again, and nothing is remounted.
 
 #### Dashboard Teardown
 
@@ -942,24 +1276,23 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant H as Host application
-    participant VH as Viewer host
+    participant DR as Dashboards root
     participant CW as Cell widgets
-    participant API as FrontX API package
 
-    H->>VH: unmount (route change or host unmount)
-    VH->>API: abort its own dashboard request, if in flight and supported
-    VH->>CW: unmount_ext per cell
-    CW->>API: abort in-flight widget data requests, when supported
-    CW->>CW: ignore late responses
-    VH->>VH: unregister the layout_cells extensions, discard the definition
+    H->>DR: leave the dashboard, or open another one
+    DR->>CW: unmount_ext per cell extension
+    alt another dashboard loads, or the dashboards root goes away
+        DR->>DR: unregister the generated cell extensions of the loaded dashboard
+    end
 ```
 
-**Description**: Closing a dashboard, by route change or by unmount of the Viewer host, releases everything it holds. A route change to another dashboard tears the Viewer host down fully.
+**Description**: Leaving a dashboard or opening another one releases what the dashboards root mounted.
 
-1. Every request belongs to the extension that sent it. In its unmount, the Viewer host aborts its own in-flight dashboard request through the FrontX API package when the package accepts an abort signal, and in any case ignores a late response (section 4, open question 4). It does not cancel anything on the widgets' behalf.
-2. It runs `unmount_ext` of every cell; this is the only use of `unmount_ext` in `layout_cells`. In its `unmount()`, each widget aborts its in-flight requests in the same conditional way, ignores late responses, and releases the data it holds.
-3. It unregisters the `layout_cells` extensions and discards the loaded definition.
-4. The Viewer host sends nothing to the host modal domain, which owns its occupant. An open larger view stays until the shell's Close or dismissal unmounts it, and its modal widget then ends its own requests in the same way.
+1. When the viewer leaves the dashboard or opens another one, the dashboards root unmounts every cell extension with `unmount_ext`.
+2. When it loads another dashboard, and when it goes away itself, it unregisters the generated cell extensions of the dashboard it had loaded. Loading the same dashboard again registers the same ids.
+3. The dashboards root keeps no widget data between requests, so there is no data held by the owner to release. It sends `set_data` only to a widget extension that is still mounted; an answer for an unmounted widget is dropped, and the timestamp rule covers any answer that still arrives.
+4. When the dashboards root mounts again and already holds that dashboard loaded, its generated extensions are still registered, so it mounts the cells again without loading. It runs only the mount chain of each cell.
+5. The dashboards root sends nothing to the larger-view modal. The larger-view modal keeps its loaded dashboard and generated extensions while it is closed, and unregisters them only when it loads a different dashboard.
 
 #### Consumer-Side Dashboard Generation (Context)
 
@@ -967,119 +1300,130 @@ sequenceDiagram
 
 **Use cases**: `cpt-frontx-dashboard-usecase-provide-dashboard`, `cpt-frontx-dashboard-usecase-view-dashboard`
 
-**Actors**: `cpt-frontx-dashboard-actor-consuming-backend`, `cpt-frontx-dashboard-actor-dashboard-viewer`
+**Actors**: `cpt-frontx-dashboard-actor-template-consumer`, `cpt-frontx-dashboard-actor-consuming-backend`, `cpt-frontx-dashboard-actor-dashboard-viewer`
 
 ```mermaid
 sequenceDiagram
     actor U as User of the consuming product
     participant CP as Consuming product (chat)
-    participant BE as Consuming product backend
-    participant LLM as Language model on the backend
-    participant REG as Backend GTS registry
-    participant VH as Viewer host
+    participant LM as Language model on the product side
+    participant REG as Product GTS registry
+    participant BE as Product backend
+    participant DR as Dashboards root
+    participant DA as Data adapter (product code)
 
     U->>CP: describe the dashboard wanted
-    CP->>BE: generation request
-    BE->>LLM: generate a definition from the request
-    LLM-->>BE: dashboard definition with layout, widgets, presentation, source (no data)
-    BE->>REG: validate against the template types
-    REG-->>BE: valid, or rejected with errors
-    BE->>BE: check metrics and bound columns, assign UUIDs, store the definition
-    U->>VH: open the dashboard
-    VH->>BE: dashboard request (initial load)
+    CP->>LM: request, with the product's catalog of datasets and vocabulary
+    LM-->>CP: dashboard: layout, widgets, presentation fields, queries (no data)
+    CP->>REG: validate against the template types and the dataset types
+    REG-->>CP: valid, or rejected with errors
+    CP->>CP: layout checks, cross-checks, served query families
+    CP->>BE: store the dashboard
+    U->>DR: open the dashboard
+    DR->>DA: get a dashboard (initial load)
 ```
 
-**Description**: This sequence runs outside the template and is shown only as context for what the template's types must support. A consuming product may generate dashboards, for example when a user types a request in a chat and a language model on the consuming product backend produces the definition: the layout and the widgets with their presentation configuration and `source`. The model never produces data. Generation belongs to the consuming product backend, not to the template.
+**Description**: This sequence runs outside the template and is shown only as context for what the template's types must support. A consuming product may generate dashboards, for example when a user types a request in a chat and a language model on the product side writes the dashboard. The model writes queries against the product's datasets, from their JSON Schema enums and the product's catalog of datasets and vocabulary; it never writes data. Generation belongs to the consuming product, not to the template.
 
-1. The consuming product backend has registered the template's GTS types in its own GTS registry.
-2. The generator produces one definition: a dashboard with its embedded layout, whose cells embed widget instances of the 9 template widget types, each with its presentation configuration and `source`.
-3. The backend validates the definition against the registered types (GTS OP#6 for instances, with the abstract-type and reference rules) and rejects a definition that fails. Its check before showing a dashboard also covers the layout and grid configuration checks of `cpt-frontx-dashboard-feature-backend-contract` section 6.1. It also checks that each `source.metric` exists and returns every column the widget binds.
-4. The backend assigns the UUIDs of the dashboard and widget identifiers and stores the definition. It stores no data.
-5. When a user opens the dashboard, the initial load runs unchanged (`cpt-frontx-dashboard-seq-initial-load`): the Viewer host cannot tell a generated dashboard from a written one, and each widget requests its metric, which the backend computes from its own data.
+1. The product has registered the template's GTS types, its query families and datasets, and its measure and dimension instances in its own GTS registry.
+2. The generator writes one dashboard: an embedded layout whose cells embed widget instances of the 9 widget types, each with its presentation fields and, for a data widget, its query. It assigns the UUIDs of the dashboard, widget and query identifiers.
+3. The product validates the dashboard against the registered types (GTS OP#6 for instances, with the abstract-type and reference rules); the one validation also checks each widget's query against its dataset. It runs the layout checks and the cross-checks of section 3.1 and checks that its data adapter serves every query family. It rejects a dashboard that fails.
+4. The product stores the dashboard. It stores no data.
+5. When a user opens the dashboard, Initial Load runs unchanged: the dashboards root cannot tell a generated dashboard from a written one.
 
 ### 3.7 Database schemas & tables
 
-Not applicable. The template persists nothing: there is no database, no browser storage, and no server component. The Viewer host holds the loaded dashboard definition in memory for one dashboard session and releases it on teardown; each widget holds its own result while it is mounted. Their shapes are defined by the types of section 3.1.
+Not applicable. The template persists nothing: there is no database, no browser storage and no server component. State lives in browser memory only:
+
+- The dashboards root holds its loaded dashboard and the generated extensions it registered, while the dashboard is open.
+- The larger-view modal holds the dashboard it loaded and its generated extensions, also while it is closed, and releases them when it loads a different dashboard.
+- Each widget holds the data it was last sent and its local copy of its query; neither is saved. A resized column width lasts while the dashboard is open.
+- The FrontX GTS type store holds the registered types and instances: the template types, the template's GTS file, the query families, and the dataset types and vocabulary instances delivered with each dashboard. The store has no removal. Whether validating dashboards and actions also registers instances, so that the store grows with each load and each action, is an open question (section 4).
+
+Their shapes are defined by the types of section 3.1.
 
 ### 3.8 Deployment Topology
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-topology-overlay-packages`
 
-The template ships as source, not as a service, into a consuming product's FrontX application built on `template-shell`. Its code lives in two package subtrees:
+The template ships as source, not as a service. A consuming product copies it into its FrontX application built on `template-shell` and adapts its copy, including where the dashboards root runs. Its code lives in two package subtrees:
 
 | Subtree | Content |
 |---------|---------|
-| `src-app/mfe_packages/dashboard-viewer/` | engine `v` and `m` types, the template action, the `layout_cells` domain and its extension type, the widget realization type, Viewer host manifest, Viewer host entry and routed screen extension, reading of the endpoint configuration |
-| `src-app/mfe_packages/dashboard-widgets/` | one manifest, 9 cell entries, 9 modal entries, 9 static modal extensions, 9 widget realizations of weight 1, the shared widget chrome with the widget data request logic |
+| `src-app/mfe_packages/dashboard/` | The GTS types of `dashboard_m` and `dashboard_v`; the dashboards root code, with its entry and routed screen extension when it is a screen extension; the larger-view modal's entry and static extension; the code both owners carry: the data adapter interface, the trait helper, the GTS file loader and the "cannot be shown" placeholder; the template's GTS file with the 9 widget realizations; the package manifest. No data adapter implementation. |
+| `src-app/mfe_packages/widgets/` | One manifest, 9 widget entries, and the shared widget chrome with the title, the larger-view button, the loader, the busy indicator and the empty state. No data-request code beyond the `request_data` action, and no error chrome. |
 
-A consuming product that replaces a widget type's presentation adds its own package with a replacement realization, its entries, and its static modal extension (section 3.3). The template's consumer guide ships with its source (`cpt-frontx-dashboard-nfr-consumer-docs`). At run time the host bootstrap fetches the manifest channel and registers the Viewer host's routed extension, the modal entries, and the static modal extensions. The Viewer host fetches the same channel for the cell entries, the widget realizations, and the domain model types, and requests each open dashboard once; each mounted widget requests its own data. All requests go through the FrontX API package to the consuming product backend. The host must render its modal domain through a modal slot (section 3.5). Every template MFE declares all its packages as shared (section 3.9). The documents under `template-dashboard/architecture/` are not shipped.
+The product adds its data adapter implementation to its copy of the template, where the dashboards root and the larger-view modal call it. A product that replaces how a widget type is shown adds its own package with its entry and a replacement realization in its copy of the template's GTS file (section 3.3). The template's consumer guide ships with its source (`cpt-frontx-dashboard-nfr-consumer-docs`). At run time, the shell bootstrap registers the larger-view modal's static extension, the entries, and, when it is a screen extension, the dashboards root's routed extension. Each domain owner fetches the template's GTS file at start and loads dashboards through the data adapter. The shell must render a modal container for its `popup` domain (section 3.5). Every template MFE lists its packages in its manifest's `shared` array (section 3.9). The documents under `template-dashboard/architecture/` are not shipped.
 
 **Operations dispositions.** The template is source code with no service of its own, so the following are not applicable (PRD section 6.2):
 
-- **Observability, SLOs, and alerting**: not applicable because the template runs no service and has no availability target. It writes development diagnostics to the browser console; the consuming product owns monitoring, telemetry, and alerting.
-- **Secret management**: not applicable because the template holds no secret. The Viewer host and the widgets send their requests under the host session, and no credential appears in a configuration, an action, a widget configuration, or a document.
-- **Cost estimation**: not applicable because the template provisions no infrastructure. Its only costs are client-side download, memory, and rendering, which the budgets in section 3.9 bound; computing and serving the dashboards and the widget data is a cost of the consuming product backend.
+- **Observability, SLOs and alerting**: not applicable because the template runs no service and has no availability target. It writes development diagnostics, including every cannot-show cause, to the browser console; the consuming product owns monitoring, telemetry and alerting.
+- **Secret management**: not applicable because the template holds no secret and no backend configuration. The data adapter owns the session and any credential, inside the product's code.
+- **Cost estimation**: not applicable because the template provisions no infrastructure. Its only costs are client-side download, memory and rendering, which the budgets in section 3.9 bound; serving dashboards and data is a cost of the consuming product.
 - **Recovery and rollback**: not applicable because the template holds no state to recover. A consuming product rolls back by shipping its previous build, and opening a dashboard again restores the view.
 - **Environment promotion and infrastructure as code**: not applicable because the template provisions no environment and no infrastructure. It ships as source inside the consuming product's build, which the consuming product promotes.
 
-**Performance, integration, and business dispositions.**
+**Performance, integration and business dispositions.**
 
-- **Scaling, latency allocation, and content delivery network**: not applicable because the template runs no service to scale and serves no files itself. The consuming product hosts the built bundles and the backend. The only latency budget is the end-to-end initial-render budget in the browser (section 3.9).
-- **Event architecture**: not applicable because the template neither publishes nor consumes events. It sends the dashboard request and the widget data requests, and otherwise uses only FrontX actions and shared properties.
-- **Backend interface versioning beyond section 3.3**: not applicable because the template defines none of its own. The backend interface is an extension point, and its changes follow the API Stability Classification in section 3.3.
+- **Scaling, latency allocation and content delivery network**: not applicable because the template runs no service and serves no files itself; it serves its GTS file as part of the product's build. The only latency budget is the end-to-end initial-render budget in the browser (section 3.9).
+- **Event architecture**: not applicable because the template neither publishes nor consumes events. It uses FrontX actions and shared properties, and calls the data adapter in-process.
+- **Interface versioning beyond section 3.3**: not applicable because the template defines no backend interface. The data adapter interface is an extension point, and its changes follow the API Stability Classification in section 3.3.
 - **Time to market**: not applicable because the template has no release date or market commitment of its own; its consuming products set those.
 
-**Security dispositions.** The template is browser code that presents what the consuming product backend returns. The template has no sign-in or session-expiry flow.
+**Security dispositions.** The template is browser code that presents what the product's data adapter returns. It has no sign-in or session flow.
 
-- **Trust boundaries**: the browser, where the Viewer host and the widget extensions run inside the host application; the host session, which the host application owns and under which every request runs (section 3.5, Auth session); and the consuming product backend, which answers the dashboard request and every widget data request. The template adds no boundary of its own.
-- **Untrusted inputs**: the dashboard identifier in the route, the dashboard definition, including a generated one, the `source` values it carries, and every widget data result. The Viewer host validates the definition against the GTS types before it mounts any widget, and each widget validates its result and its bound columns before it presents anything; whatever fails is shown as a cannot-show state (section 3.6, Failure Handling). The template never interprets `source`; it only passes its values to the backend.
-- **Authorization**: the consuming product backend authorizes every dashboard request and every widget data request. The template makes no access decision, and an identifier is not an authorization: holding a dashboard identifier or a metric name grants no access. Permission denied is shown as a dashboard or widget that cannot be shown.
-- **Output safety**: `markdown_card` shows delivered markdown under the rules of FEATURE `widget-catalog` section 6.9: embedded HTML in a markdown card is shown as plain text, not rendered, and no image is loaded.
+- **Trust boundaries**: the browser, where the dashboards root, the larger-view modal and the widget extensions run inside the host application; the product's data adapter, which runs in the runtime of the domain owners and is the only path to a backend; and the host application, which owns the session. The template adds no boundary of its own.
+- **Untrusted inputs**: the dashboard identifier in the address; the dashboard and larger-view widget ids in the larger-view modal's subroute; the dashboard, including a generated one; the dataset types and vocabulary instances delivered with it; and every data instance. The owner registers delivered types only after the template types, so a delivered type cannot take the place of a template type, and it validates the dashboard and each widget before anything mounts. FrontX validates every `set_data` against its data shape. Whatever fails is a cannot-show state or a kept loader (section 3.6).
+- **Authorization**: the product's data adapter and backend authorize every dashboard and every query. The template makes no access decision, and an identifier is not an authorization: holding a dashboard id or a widget id grants no access.
+- **Output safety**: `markdown_card` renders typical markdown (CommonMark, including links and images) and shows embedded HTML as plain text, never rendered, under the rules of FEATURE `widget-catalog`. Grid cells show values as text.
 - **Supply chain**: third-party runtime libraries are limited to those listed in section 3.5 under the licensing constraint and pass the package-wide license check, and FrontX packages are pinned to exact published versions (section 3.5, pin rule).
 - **Not applicable**, each for the reason given:
-  - Authentication and session management, including multi-factor authentication, federation, and session renewal: the template has no such flow; its requests run under the host session, and the host handles an expired session.
-  - Service-to-service authentication and credential storage: the template runs no service and holds no credential (secret management above).
+  - Authentication and session management, including multi-factor authentication, federated sign-in and session renewal: the template has no such flow; the host application and the data adapter own the session.
+  - Service-to-service authentication and credential storage: the template runs no service and holds no credential.
   - Roles and a permission matrix: the template makes no access decision.
-  - Encryption at rest, key management, and secure disposal: the template stores nothing (section 3.7); the definition and the widget data stay in browser memory and are released on teardown.
-  - Encryption in transit, network segmentation, firewall rules, and a CORS policy: the template sends its requests only to the endpoints the consuming product configures, whose transport and network the consuming product owns.
-  - Data classification, personal data handling, and masking: the template shows delivered data unchanged, and the consuming product backend decides what it delivers (`cpt-frontx-dashboard-constraint-licensing-compliance-resources`).
-  - Audit logging, log retention, security monitoring, and incident response: the template runs no service and writes only development diagnostics to the browser console.
+  - Encryption at rest, key management and secure disposal: the template stores nothing (section 3.7).
+  - Encryption in transit, network segmentation, firewall rules and a CORS policy: template code sends no request to a backend; the data adapter's transport belongs to the product.
+  - Data classification, personal data handling and masking: the template shows delivered data unchanged, and the data adapter decides what it delivers (`cpt-frontx-dashboard-constraint-licensing-compliance-resources`).
+  - Audit logging, log retention, security monitoring and incident response: the template runs no service and writes only development diagnostics to the browser console.
 
 ### 3.9 Budgets and NFR Realization
 
-**Reference dashboard.** One dashboard whose layout holds one widget of each of the 9 template widget types, with one widget data result per widget, sized to the largest expected grid and chart widgets, including a `grid` result of 5,000 rows. It is used for the initial-render measurement, the bundle measurement, the large-grid check, and the accessibility walkthrough. Provisional assumption, not sourced; fixed together with the first measurement.
+**Reference dashboard.** One dashboard whose layout holds one widget of each of the 9 widget types, and in which every cell defines a larger-view widget. The grid's dataset spans many pages, and the grid offers a page size of 500. The chart widgets are sized to the largest expected charts. It is used for the initial-render measurement, the bundle measurement, the large-grid check and the accessibility walkthrough. Provisional assumption, not sourced; fixed together with the first measurement.
 
-**Initial render (provisional).** The budget is p95 under 3 seconds from the moment the dashboard viewer opens the dashboard address to the moment every widget presents its widget data. The dashboard request, every widget data request, and the evaluation of every MFE and shared package are included. The reference conditions are:
+**Test data adapter.** All measurements use a test data adapter that names no backend. It returns the reference dashboard, its dataset types and its vocabulary instances, and fills every query from fixtures in memory by the requested fill mode.
+
+**Initial render (provisional).** The budget is p95 under 3 seconds from the moment the dashboard viewer opens the dashboard address to the moment every data widget presents its data. The template's GTS file, the dashboard load, every query, and the evaluation of every MFE and shared package are included. The reference conditions are:
 
 | Condition | Value |
 |-----------|-------|
 | Reference device | Business laptop with 4 physical CPU cores and 16 GB of memory, latest stable Chromium-based browser, no CPU throttling |
-| Network profile | Browser network emulation of 100 Mbit/s downstream, 20 Mbit/s upstream, and 20 ms round-trip time |
-| Reference responses | The reference dashboard and its widget data results, served by a local server. |
-| Wire format | JSON with gzip content encoding; the measured response sizes and compression ratios are recorded with the results. |
-| Backend response time | The local server answers the dashboard request and each widget data request with a server time to first byte of 250 ms. Provisional assumption, not sourced; re-measured together with the provisional initial-render budget. |
-| Load state | Template bundle files are already downloaded before the run; loading and evaluating each entry, the dashboard request, and every widget's data request are inside the measured window. |
+| Network profile | Browser network emulation of 100 Mbit/s downstream, 20 Mbit/s upstream and 20 ms round-trip time, applied to the template's files |
+| Data adapter response time | The test data adapter answers "get a dashboard" and every "run a query" after a fixed delay of 250 ms. Provisional assumption, not sourced; re-measured together with the provisional initial-render budget. |
+| Load state | Template bundle files are already downloaded before the run; loading and evaluating each entry, the GTS file, the dashboard load and every query are inside the measured window. |
 | Sample size | At least 30 runs per measurement; p95 is computed over those runs. Provisional assumption, not sourced; re-measured together with the provisional initial-render budget. |
 
-The budget is re-measured under these conditions and then confirmed or revised.
+The budget is re-measured under these conditions and then confirmed or revised. The product's data adapter and backend are outside it: in production, the product's answer time adds to the measured time.
 
-**Large grids.** The `grid` widget renders rows virtualized, so the DOM holds only the rows in view, whatever the delivered row count. Under the reference conditions, scrolling through all rows of the 5,000-row reference grid, shown in its cell, is checked against `cpt-frontx-dashboard-nfr-large-table`: the view never stops responding for longer than 100 ms (provisional). Keyboard operation of the grid is left to `cpt-frontx-dashboard-nfr-accessibility` (Accessibility, below). The measured figures are recorded with the initial-render results.
+**Large grids.** The `grid` widget always pages, with at most 500 rows per page, and renders the rows of a page virtualized, so the DOM holds only the rows in view. Under the reference conditions, scrolling through a 500-row page of the reference grid, shown in its cell, is checked against `cpt-frontx-dashboard-nfr-large-table`: the view never stops responding for longer than 100 ms (provisional). The measured figures are recorded with the initial-render results.
 
-**Bundle budget (provisional).** The budget measures transferred gzipped bytes on a cold load of the reference dashboard, with an empty browser cache. Every figure is re-measured on production builds and confirmed or revised.
+**Bundle budget (provisional).** The budget measures transferred gzipped bytes with an empty browser cache. Every figure is re-measured on production builds and confirmed or revised.
 
 | Unit | Provisional budget | Counting rule |
 |------|--------------------|---------------|
-| Viewer host | under 500 KB gzipped | Its own entry code plus every shared package that the Viewer host itself fetches on the cold load. |
-| Each widget entry, cell or modal | under 100 KB gzipped | Its own code only, including the shared widget chrome and the data-request logic it bundles; shared packages are excluded. |
-| Page total | no cap | Every byte transferred on the cold load; each shared package, such as ECharts, TanStack Table, the virtualizer, and the FrontX packages, is counted once. Recorded with the results. |
+| Dashboards root | under 500 KB gzipped | Its own code plus every shared dependency it fetches itself, on a cold load of the reference dashboard. |
+| Larger-view modal | under 500 KB gzipped | Its own code plus every shared dependency it fetches itself, on the first opening of a larger view after that load. |
+| Each widget entry | under 100 KB gzipped | Its own code only, including the shared widget chrome it bundles; shared dependencies are excluded. |
+| Page total | no cap | Every byte transferred on the cold load and the first opening; each shared dependency, such as ECharts, TanStack Table, the virtualizer, ui-kit and the FrontX packages, is counted once. Recorded with the results. |
 
-Evaluation cost is not part of the bundle budget. Each MFE instance evaluates its own copy of every package it uses, and that cost is covered by the initial-render budget above.
+The product's data adapter and its backend client are bundled with the domain owners but are product code, counted outside these figures. Evaluation cost is not part of the bundle budget. Each MFE instance evaluates its own copy of every package it uses, and that cost is covered by the initial-render budget.
 
-**Dependency sharing rules.** Every template MFE, the Viewer host screen extension and every cell and modal widget entry, declares all its packages as shared; FrontX allows this also for stateful packages. FrontX reuses the source text of a shared package across MFE loads by content hash (FrontX ADR-0034), so a shared package is fetched once per realm. FrontX still gives every MFE load its own module graph (FrontX ADR-0011), so each instance evaluates its own copy. Source reuse saves fetches, not evaluation, and is never counted as a reduction of per-instance cost. Every declared package passes the package-wide license check.
+**Dependency sharing rules.** Every template MFE, the dashboards root when it is a screen extension, the larger-view modal and every widget entry, lists its packages in the `shared` array of its manifest, so each is built as a shared dependency, one standalone chunk each. FrontX fetches the source text of a shared dependency once only when every template MFE publishes the same `contentHash` for it (FrontX ADR-0034), and that cache reaches the whole realm (FrontX ADR-0035). The template assumes equal content hashes, which holds when all its MFEs are built together from one pinned set of package versions. FrontX still gives every MFE instance its own evaluated copy (FrontX ADR-0011). Source reuse saves fetches, not evaluation, and is never counted as a reduction of per-instance cost. Every listed package passes the package-wide license check.
 
-**Visual quality.** All styling comes from `@gears-frontx/ui-kit` tokens in the light or dark scope that the host theme id maps to. Chart widgets build one ECharts theme from the same tokens, grid row coloring uses kit tokens, and no widget adds manual styling.
+**Per-instance memory.** FrontX holds per-instance memory per extension id for the life of the page (FrontX ADR-0011). The deterministic ids of generated extensions keep it bounded by the number of distinct widgets and roles that the page has shown: loading the same dashboard again, in the dashboards root or in the larger-view modal, reuses the same ids.
 
-**Accessibility.** Every control follows the host accessibility policy. The widget chrome with its larger-view button and its Retry, the grid shell with its virtualized rows, and the dashboard error banner with Retry are keyboard-operable. No widget conveys meaning by color alone: grid row colors and chart series are also labelled or differ in another visible way. The modal frame, Close, focus trap, and dismissal come from the host's modal-domain slot, a host requirement that current `template-shell` does not meet yet (section 3.5); the template does not supply them itself. The keyboard-only walkthrough uses the reference dashboard.
+**Visual quality.** All styling comes from `@gears-frontx/ui-kit` tokens in the light or dark scope that the host theme id maps to. Chart widgets build one ECharts theme from the same tokens, grid row colours use kit tokens, and no widget adds manual styling.
+
+**Accessibility.** Every control follows the host accessibility policy. The larger-view button, the larger-view modal's close button, the grid's sort headers, pager, page-size choice and column resize handles are keyboard-operable. The grid shell exposes ARIA grid semantics, including row counts, positions and sort state for virtualized rows. No widget conveys meaning by color alone: grid row colours carry an icon with an accessible name (ADR-0005), and chart series are labelled or differ in another visible way. The modal frame, the focus rule and the click outside come from the shell's modal container, a host requirement that `template-shell` does not meet (section 4, prerequisites); the template does not supply them itself. The keyboard-only walkthrough uses the reference dashboard.
 
 ## 4. Additional context
 
@@ -1087,49 +1431,52 @@ Evaluation cost is not part of the bundle budget. Each MFE instance evaluates it
 
 | Question | Resolution | Status |
 |----------|------------|--------|
-| Q1 bundle budget | Section 3.9 counting rule and provisional figures | open: measurement task (open question 1 below) |
-| Q2 host modal support | Section 3.5, modal-domain slot prerequisite; prerequisite (b) below | open: prerequisite `template-shell` change |
-
-The PRD tracks two questions (Q1 and Q2). Design-level questions are owned by this design and its FEATURE documents; the open ones are listed under "Open questions" below.
-
-**Handoffs to the FEATURE documents.**
-
-- `extension-domain-catalog`: the one template domain `layout_cells` with the Concurrent strategy, theme and language as shared properties forwarded unchanged, and per-domain lifecycle stages; the action type `set_widget_context` with its payload `widget`, `data_endpoint`, and `modal` with `target` and `subject`, present for every cell widget and absent for a modal widget; the cell extension identifier rule; the generation and registration at dashboard resolve of one cell extension per cell whose widget type has a single winning realization, with the cases of no realization, a tie, a rejected registration, and a failed mount; per-widget data load and failure in the action-chain summary.
-- `widget-catalog`: the abstract widget base with `id` (`x-gts-instance-ref: "/$id"`), `title`, and the typed `source` with `metric`, optional `range`, and optional `bucket`, and no traits; the 9 template widget types as presentation types; the column binding of each widget type and the run-time check that every bound column is present; the empty state of each widget type; the `grid` widget type's presentation settings, with columns that show values as text, frozen columns, column groups, row coloring from `row_color_column` with ui-kit tokens, up to 5,000 rows without paging (`cpt-frontx-dashboard-nfr-large-table`), and the grid configuration checks; the rendering safety of `markdown_card`, where embedded HTML is shown as plain text, links show their text, and an image is not loaded and shows its alt text; no field that hides or cuts off delivered content; no widget type that conveys meaning by color alone; the shared chrome with its larger-view button shown in every cell widget in every state, and the per-widget loading, error, empty, and cannot-show states.
-- `widget-data-catalog`: the single concrete widget data type `gts.frontx.v.widget_data.widget_data.v1~` with its exact field names, mirroring the widget data result of section 3.3, without an identifier and without column types; percentage values as fractions where 1 means 100%; and the alignment rules whose breach makes a result misaligned.
-- `dashboard-root-types`: the dashboard root with `id` (`x-gts-instance-ref: "/$id"`), `name`, `description`, and the embedded `layout`, without `theme`; no theme type.
-- `mfe-entries`: the widget realization type with its required `modal_extension`, and the 9 template realizations of weight 1; the widget manifest with 9 cell entries and 9 modal entries as plain FrontX Module Federation entries, each requiring theme and language and supporting `set_widget_context`; the 9 static extensions of the host modal domain; the Viewer host manifest and entry; the routed extension.
-- `layout-types`: the shapes summarized in section 3.1 as embedded object types without an own identifier, with the cell's widget instance embedded in the dashboard and no layout reference, validation of embedded widgets through gts-plugin, and the layout checks with their diagnostics by cell index.
-- All domain-model FEATURE documents: every identifier-valued field uses `x-gts-type-ref`, `x-gts-instance-ref`, or `x-gts-pattern-ref` (GTS v0.17); no `x-gts-ref` and no separate `type` field; "widget type" as the only term for the 9 template widget types.
-- `backend-contract`: the exact specification of `cpt-frontx-dashboard-interface-dashboard-payload`: the dashboard request and its result, the widget data request and its result, the failure classes with what the user sees, the wait time, the API cache and Retry rule, the viewer-access prerequisite, and the conformance cases, counted as requests made through the FrontX API package.
+| Q1 download-size budget | Section 3.9 counting rule and provisional figures | open: measurement task (open question 1 below) |
 
 **Prerequisites outside the template.** The owner of each is the template architect.
 
-- **(a) Viewer access to widget data.** The consuming product's backend must let every dashboard viewer request the widget data of the dashboards they can open (section 3.3). The template has no workaround.
-- **(b) Modal support in `template-shell`.** `template-shell` must render the host modal domain through a slot with modal chrome, Close, focus trap, and dismissal, and the host modal domain must provide theme and language to the modal entries (section 3.5). Current `template-shell` registers the domain but renders no slot for it, and `Popup.tsx` renders a separate redux stack. Until this lands, no widget's larger view can be shown, while the rest of the dashboard works.
+- **(a) FrontX on GTS v0.17.** The FrontX gts-plugin, and the `template-shell` build that uses it, must run GTS v0.17, so that `x-gts-instance-ref`, `x-gts-type-ref`, `x-gts-abstract` and traits apply as v0.17 defines them. On an older GTS version a dashboard cannot be validated end to end. The template uses no interim workaround.
+- **(b) A realm-shared GTS type store.** The FrontX release must provide the GTS type store that every runtime of a realm sees (FrontX gts-plugin ADR-0001). Nested owners validate chains that reference the shell's `popup` domain and the larger-view modal's static extension, which are registered in the shell's registry, so the type store must be shared. The store is shared among provider copies that agree on store format, GTS library line and built-in set, so the shell, the dashboards root and the larger-view modal must run such compatible copies, and none uses the isolation option. The template adds no shared state of its own.
+- **(c) A modal container for the shell's `popup` domain.** `template-shell` must render a container for its `popup` domain that shows the occupant in the shell's modal area, keeps keyboard focus inside the modal while it is open, and unmounts the occupant with `unmount_ext` on a click outside it (section 3.5). Without it, no larger view can be shown, while the rest of the dashboard works.
+- **(d) Data access for every viewer.** The consuming product's data adapter and backend must let every viewer who may see a dashboard get the data of its widgets. Without it, a viewer sees widgets that keep their loader, depending on what the data adapter does.
 
-**Test approach.** The template adds no test infrastructure of its own; it uses the test tooling the repository already has.
+**Handoffs to the FEATURE documents.**
 
-- **Unit tests per widget type**: the column binding check, the empty state, and the mapping of outcomes to failure classes.
-- **Integration tests of the Viewer host with FrontX**: realization precedence, the generation of cell extensions, and the registry order of open question 2.
-- **Contract tests**: the request and result shapes of section 3.3, checked against the conformance cases in FEATURE `backend-contract`.
+- `dashboard-root-types`: the dashboard root with `id` (literal base operand), `name`, `description` and the embedded `layout`, without a theme; delivery of the dashboard together with its dataset types and vocabulary instances, and their registration before validation; the dashboard-level cannot-show triggers.
+- `layout-types`: the layout and the cell as embedded object types without an identifier, with the cell's `widget` and optional `larger_view`; the coordinate bounds, the layout checks including a repeated widget id, and their order; the placement rule on the 60-column grid.
+- `widget-catalog`: the widget base and the abstract data widget with `data` and the traits `data_shape`, `fill` and `member_kinds`; the 9 widget types with their query limits, presentation fields and `unevaluatedProperties: false`; the multi-measure types and the metric trend; the grid's `columns`, `page_sizes`, `frozen_columns`, `column_groups`, `align`, `row_color` and local resizing; the cross-checks and the member-kind check; the loader, busy, empty and cannot-show wordings; the shared chrome with its larger-view button shown only with `larger_view`; the markdown rendering rules, with embedded HTML as plain text.
+- `widget-data-catalog`: the data shape base with its literal base operand, the 8 data shapes with their combined instance ids, and the 5 fill modes with their exact rules, including omitted fields in `rows_by_member` and several measures in `x_series_value`.
+- `extension-domain-catalog`: `layout_cells` (Concurrent) and `larger_view` (Optional) with their declarations and handlers; the 4 action types with their payloads; the larger-view modal and its nested domain; the UUIDv5 id rule of generated extensions; the algorithms that register generated extensions, answer a data request and tear down.
+- `mfe-entries`: the widget realization type with `entry`, optional `larger_view_entry` and `weight`, and the 9 template realizations in the template's GTS file; the `widgets` manifest with 9 entries and their `actions` and `domainActions`; the larger-view modal's entry and static, routed extension; the dashboards root's entry and routed extension; the package contents of `dashboard`, with the data adapter interface, the trait helper and the GTS file loader; the shared dependencies and the budget basis.
+- The query vocabulary FEATURE: the closed base query type with its fields, the range grammar and `compare`; the measure and dimension bases; the canonical member order; the rules for deriving query families and datasets with enums and traits; literal operands; no id-keyed maps; the trait helper contract.
+- The data adapter contract FEATURE: the exact specification of `cpt-frontx-dashboard-interface-data-adapter`: its operations, the served query families, the fill-mode obligations, delivery with the dashboard, the two-level cannot-show, data that never arrives, and the conformance cases.
+- All domain-model FEATURE documents: every identifier-valued field uses `x-gts-type-ref`, `x-gts-instance-ref` or `x-gts-pattern-ref` (GTS v0.17) with a literal base operand where it names a base type; no separate `type` field; ids never as object keys; "widget type" as the only term for the 9 template widget types.
+
+**Test approach.** The template adds no test infrastructure of its own; it uses the test tooling the repository already has. Every test that needs data uses a test data adapter that names no backend.
+
+- **Schema tests**: for each data widget type, one accepted and one rejected query; misspelled presentation fields; `markdown_card` without `data`; queries outside the dataset's enums; invalid ranges; literal base operands.
+- **Unit tests per widget type**: rendering of each data shape, the loader, the busy indicator, the empty state, the timestamp rule, the metric trend, and markdown with embedded HTML.
+- **Fill-mode conformance tests**: each fill mode produces the fields of section 3.1 from fixture results; an answer of another widget type's shape is dropped by the owner.
+- **Integration tests of the domain owners with FrontX**: domain registration with `request_data` handlers; admission of widget entries into both domains; deterministic ids across repeated loads; unregistration on a different dashboard; handlers that resolve on acceptance with a slow data adapter; realization precedence; both cannot-show levels; opening, closing and refreshing the larger view; nothing registered into the shell's registry.
+- **Contract tests**: the data adapter interface against the conformance cases of the data adapter contract FEATURE.
 - **End-to-end test data**: the reference dashboard of section 3.9.
 
 **Open questions.** The owner of each is the template architect.
 
-1. **Budget figures.** PRD Q1 and the provisional figures of section 3.9, including the initial-render budget, the bundle figures, the reference dashboard, and the large-grid figure of `cpt-frontx-dashboard-nfr-large-table`: each is a measurement task under the conditions and counting rule of section 3.9.
-2. **Registry-order integration test.** A test must confirm the registration order for `layout_cells` and the static modal extensions. The Viewer host builds its registry and registers `layout_cells` synchronously in its first mount. The domain is advertised to the shell before the manifest fetch completes. Cell extensions are registered only after their entries and realizations. The host bootstrap registers the static modal extensions before the first modal open.
-3. **Routed extension details.** The route pattern and the presentation label of the Viewer host's routed extension, and the Viewer host entry's module name (`./viewer`).
-4. **Abort signal.** Whether the FrontX API package accepts an abort signal. If it does not, widgets and the Viewer host only ignore late responses after unmount.
-5. **Retry and the shared cache.** That a Retry is never served a cached failure by the FrontX API package's shared cache, to be confirmed against FrontX.
+1. **Budget figures.** PRD Q1 and the provisional figures of section 3.9, including the initial-render budget, the bundle figures, the reference dashboard and the large-grid figure of `cpt-frontx-dashboard-nfr-large-table`: each is a measurement task under the conditions and counting rule of section 3.9.
+2. **Reference existence (lookup mode).** GTS v0.17 leaves the check that a referenced instance exists to a lookup mode (`none`, `any-present`, `any-valid`). Which mode the FrontX v0.17 gts-plugin uses, and whether the domain owners can select `any-present`, is checked against that plugin (`cpt-frontx-dashboard-adr-shared-data-types-and-schemas`).
+3. **Store growth.** If validation of dashboards and of every action registers instances in the GTS store, which has no removal, the store grows with each dashboard load and each action. This is checked with the v0.17 gts-plugin API.
+4. **Layout details.** The row track size of the grid, which is the unit of `h`, and the reading and keyboard order of cells (`cpt-frontx-dashboard-adr-dashboard-layout-grid`).
+5. **Chart details.** How a mounted chart re-themes on a scope switch, by a registered theme name per scope or by re-creating the instance; which ECharts specifiers are shared dependencies and which wrapper entry is used; and how charts meet the accessibility requirement through renderer choice, labelling and decals (`cpt-frontx-dashboard-adr-charting-library`).
+6. **Routed extension details.** The route pattern and presentation label of the dashboards root's routed extension, the static route of the larger-view modal, and the form of the modal's private subroute parameters.
 
-**Later stages.**
+**Not covered by this design.**
 
-- A larger view with paged and sorted rows, or with a separate detail metric.
-- Consumer widget types: they need a backend endpoint for registering widget types, and traits that the backend uses to generate instances.
-- Dynamic per-instance modal extensions: they need a FrontX change that lets a child register an extension in its host's registry.
-- Behavior FEATURE documents for the Viewer host and the host integration.
-- Several Viewer hosts in one application tree.
+- Consumer widget types and widget settings added by a consumer.
+- Dashboard-wide filters that the viewer changes.
+- Declarative dataset specs that a language model writes alongside a dashboard; a product may use them to define its own datasets without a template change.
+- Running product code isolated from the domain owners (`cpt-frontx-dashboard-adr-data-adapter`, review trigger).
+- Several dashboards roots in one application tree.
 - A preset that bundles `template-shell` with the dashboard.
 
 ## 5. Traceability
@@ -1137,30 +1484,34 @@ The PRD tracks two questions (Q1 and Q2). Design-level questions are owned by th
 - **PRD**: [PRD.md](./PRD.md)
 - **ADRs**: [ADR/](./ADR/)
 - **Decomposition**: [DECOMPOSITION.md](./DECOMPOSITION.md)
-- **Features**: the seven FEATURE documents under [features/](./features/): the six domain-model features `dashboard-root-types`, `layout-types`, `widget-catalog`, `widget-data-catalog`, `extension-domain-catalog`, and `mfe-entries`, and `backend-contract`.
+- **Features**: the FEATURE documents under [features/](./features/): the domain-model features `dashboard-root-types`, `layout-types`, `widget-catalog`, `widget-data-catalog`, `extension-domain-catalog` and `mfe-entries`, the query vocabulary FEATURE, and the data adapter contract FEATURE.
 
-**Allocation to features.** The DECOMPOSITION assigns the design elements to the seven features. `cpt-frontx-dashboard-nfr-large-table` is covered by the widget catalog. `cpt-frontx-dashboard-fr-viewer-host` and `cpt-frontx-dashboard-component-viewer-host` are shared by the extension domain catalog, for the generation of the cell extensions at dashboard resolve, and the MFE entries, for the Viewer host entry and manifest; the backend contract covers the Viewer host's contract side. `cpt-frontx-dashboard-interface-widget-realization` and `cpt-frontx-dashboard-principle-own-registry-registration` are shared by the MFE entries, for the realization type, the entries, and the static modal extensions, and the extension domain catalog, for the registration of cell extensions. `cpt-frontx-dashboard-component-widget-data-request` is assigned to no feature: its runtime request logic inside each widget entry is later behavior that relies on the backend contract.
+**Allocation to features.** The DECOMPOSITION assigns the design elements of this document to the FEATURE documents. The dashboards root and the larger-view modal are shared by `extension-domain-catalog`, for the registration of generated extensions and the answers to data requests, and `mfe-entries`, for their entries, manifests and package contents. The data adapter interface is specified by the data adapter contract FEATURE, and the data adapter implementation belongs to no feature, because it is product code.
 
 | Source ID | Realized in |
 |-----------|-------------|
-| `cpt-frontx-dashboard-nfr-compatibility` | `cpt-frontx-dashboard-constraint-shell-only-dependency`, `cpt-frontx-dashboard-constraint-role-based-host-ids`, `cpt-frontx-dashboard-topology-overlay-packages`, section 3.5 (pin rule) |
-| `cpt-frontx-dashboard-fr-viewer-host` | `cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-interface-template-domains`, `cpt-frontx-dashboard-interface-widget-realization`, `cpt-frontx-dashboard-principle-own-registry-registration`, `cpt-frontx-dashboard-principle-render-only-viewer`, `cpt-frontx-dashboard-seq-initial-load`, `cpt-frontx-dashboard-seq-teardown` |
-| `cpt-frontx-dashboard-fr-backend-source` | `cpt-frontx-dashboard-interface-dashboard-payload`, `cpt-frontx-dashboard-feature-backend-contract`, `cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-component-widget-data-request`, `cpt-frontx-dashboard-seq-initial-load`, `cpt-frontx-dashboard-seq-consumer-generation`, section 3.5 |
-| `cpt-frontx-dashboard-fr-loading-error-states` | `cpt-frontx-dashboard-seq-failure-handling`, `cpt-frontx-dashboard-seq-initial-load`, `cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-component-widget-library`, `cpt-frontx-dashboard-interface-dashboard-payload` |
-| `cpt-frontx-dashboard-fr-widget-catalog` | `cpt-frontx-dashboard-component-widget-library`, `cpt-frontx-dashboard-component-widget-data-request`, `cpt-frontx-dashboard-interface-widget-realization` |
+| `cpt-frontx-dashboard-fr-dashboards-root` | `cpt-frontx-dashboard-component-dashboards-root`, `cpt-frontx-dashboard-interface-template-domains`, `cpt-frontx-dashboard-interface-widget-realization`, `cpt-frontx-dashboard-principle-own-registry-registration`, `cpt-frontx-dashboard-principle-render-only-dashboards-root`, `cpt-frontx-dashboard-constraint-one-dashboards-root-per-tree`, `cpt-frontx-dashboard-seq-initial-load`, `cpt-frontx-dashboard-seq-teardown` |
+| `cpt-frontx-dashboard-fr-data-adapter` | `cpt-frontx-dashboard-interface-data-adapter`, `cpt-frontx-dashboard-component-data-adapter`, `cpt-frontx-dashboard-principle-dashboards-root-orchestration`, `cpt-frontx-dashboard-seq-initial-load` |
+| `cpt-frontx-dashboard-fr-backend-source` | `cpt-frontx-dashboard-interface-data-adapter`, `cpt-frontx-dashboard-component-dashboards-root`, `cpt-frontx-dashboard-component-larger-view-modal`, `cpt-frontx-dashboard-principle-render-only-dashboards-root`, `cpt-frontx-dashboard-seq-initial-load`, `cpt-frontx-dashboard-seq-consumer-generation`, section 3.5 |
+| `cpt-frontx-dashboard-fr-loading-error-states` | `cpt-frontx-dashboard-seq-cannot-show`, `cpt-frontx-dashboard-seq-initial-load`, `cpt-frontx-dashboard-seq-query-change`, `cpt-frontx-dashboard-component-dashboards-root`, `cpt-frontx-dashboard-component-larger-view-modal`, `cpt-frontx-dashboard-component-widget-library` |
+| `cpt-frontx-dashboard-fr-widget-catalog` | `cpt-frontx-dashboard-component-widget-library`, `cpt-frontx-dashboard-interface-widget-realization`, section 3.1 |
+| `cpt-frontx-dashboard-fr-grid-sort-page` | `cpt-frontx-dashboard-seq-query-change`, `cpt-frontx-dashboard-component-widget-library`, section 3.1 (grid presentation fields) |
 | `cpt-frontx-dashboard-nfr-large-table` | `cpt-frontx-dashboard-component-widget-library`, section 3.9 (Large grids) |
-| `cpt-frontx-dashboard-fr-widget-modal` | `cpt-frontx-dashboard-component-widget-library`, `cpt-frontx-dashboard-seq-widget-modal-open`, `cpt-frontx-dashboard-interface-host-actions`, `cpt-frontx-dashboard-interface-widget-realization`, `cpt-frontx-dashboard-principle-own-registry-registration`, `cpt-frontx-dashboard-interface-dashboard-payload` (the larger view's request) |
-| `cpt-frontx-dashboard-fr-theme`, `cpt-frontx-dashboard-nfr-visual-quality` | `cpt-frontx-dashboard-seq-theme-switch`, `cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-component-widget-library`, section 3.9 (Visual quality) |
-| `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-interface-domain-model` | Section 3.1, `cpt-frontx-dashboard-constraint-gts-id-convention`, `cpt-frontx-dashboard-interface-widget-realization`, `cpt-frontx-dashboard-seq-consumer-generation` |
-| `cpt-frontx-dashboard-fr-replacement-widget` | `cpt-frontx-dashboard-interface-widget-realization` (precedence and consumer replacement), `cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-topology-overlay-packages` |
-| `cpt-frontx-dashboard-contract-host-areas` | Host contract in section 3.5, `cpt-frontx-dashboard-constraint-role-based-host-ids` |
-| `cpt-frontx-dashboard-contract-consuming-backend` | `cpt-frontx-dashboard-interface-dashboard-payload`, `cpt-frontx-dashboard-feature-backend-contract`, section 3.3 |
+| `cpt-frontx-dashboard-fr-widget-modal` | `cpt-frontx-dashboard-component-larger-view-modal`, `cpt-frontx-dashboard-component-widget-library`, `cpt-frontx-dashboard-seq-widget-modal-open`, `cpt-frontx-dashboard-seq-larger-view-refresh`, `cpt-frontx-dashboard-seq-larger-view-close`, `cpt-frontx-dashboard-interface-host-actions`, `cpt-frontx-dashboard-interface-template-domains`, `cpt-frontx-dashboard-principle-own-registry-registration` |
+| `cpt-frontx-dashboard-fr-theme`, `cpt-frontx-dashboard-nfr-visual-quality` | `cpt-frontx-dashboard-seq-theme-switch`, `cpt-frontx-dashboard-component-dashboards-root`, `cpt-frontx-dashboard-component-larger-view-modal`, `cpt-frontx-dashboard-component-widget-library`, section 3.9 (Visual quality) |
+| `cpt-frontx-dashboard-fr-domain-model`, `cpt-frontx-dashboard-interface-domain-model` | Section 3.1, `cpt-frontx-dashboard-constraint-gts-id-convention`, `cpt-frontx-dashboard-principle-gts-contracts`, `cpt-frontx-dashboard-interface-widget-realization`, `cpt-frontx-dashboard-seq-consumer-generation` |
+| `cpt-frontx-dashboard-fr-replacement-widget` | `cpt-frontx-dashboard-interface-widget-realization` (precedence and consumer replacement), `cpt-frontx-dashboard-component-gts-file-loader`, `cpt-frontx-dashboard-topology-overlay-packages` |
+| `cpt-frontx-dashboard-contract-host-areas` | Host contract in section 3.5, `cpt-frontx-dashboard-constraint-role-based-host-ids`, `cpt-frontx-dashboard-constraint-shell-only-dependency` |
+| `cpt-frontx-dashboard-contract-consuming-backend` | `cpt-frontx-dashboard-interface-data-adapter`, `cpt-frontx-dashboard-component-data-adapter`, section 3.5 (Consuming Product and Its Data Adapter) |
+| `cpt-frontx-dashboard-nfr-compatibility` | `cpt-frontx-dashboard-constraint-shell-only-dependency`, `cpt-frontx-dashboard-constraint-role-based-host-ids`, `cpt-frontx-dashboard-topology-overlay-packages`, section 3.5 (pin rule), section 4 (prerequisites) |
 | `cpt-frontx-dashboard-nfr-initial-render`, `cpt-frontx-dashboard-nfr-bundle-budget`, `cpt-frontx-dashboard-nfr-accessibility` | Section 3.9 |
-| `cpt-frontx-dashboard-nfr-consumer-docs` | `cpt-frontx-dashboard-topology-overlay-packages` (consumer guide) |
-| `cpt-frontx-dashboard-adr-frontend-framework`, `cpt-frontx-dashboard-adr-template-packages-and-host-contract` | `cpt-frontx-dashboard-principle-per-instance-isolation`, `cpt-frontx-dashboard-principle-own-registry-registration`, `cpt-frontx-dashboard-constraint-shell-only-dependency`, `cpt-frontx-dashboard-topology-overlay-packages`, `cpt-frontx-dashboard-constraint-licensing-compliance-resources`, section 3.5 |
-| `cpt-frontx-dashboard-adr-dashboard-layout-grid` | `cpt-frontx-dashboard-constraint-sixty-column-grid`, `cpt-frontx-dashboard-component-viewer-host` |
-| `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`, `cpt-frontx-dashboard-adr-widget-type-and-mfe-realization`, `cpt-frontx-dashboard-adr-subject-agnostic-widget-catalog` | Section 3.1, `cpt-frontx-dashboard-interface-widget-realization`, `cpt-frontx-dashboard-component-widget-library` |
-| `cpt-frontx-dashboard-adr-charting-library`, `cpt-frontx-dashboard-adr-data-grid-library` | `cpt-frontx-dashboard-component-widget-library`, section 3.9 |
-| `cpt-frontx-dashboard-adr-theme-distribution` | `cpt-frontx-dashboard-seq-theme-switch`, `cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-component-widget-library` |
-| `cpt-frontx-dashboard-adr-extension-domain-taxonomy` | `cpt-frontx-dashboard-interface-template-domains`, `cpt-frontx-dashboard-interface-host-actions`, `cpt-frontx-dashboard-principle-own-registry-registration`, `cpt-frontx-dashboard-seq-widget-modal-open` |
-| `cpt-frontx-dashboard-adr-backend-delivered-dashboard` | `cpt-frontx-dashboard-interface-dashboard-payload`, `cpt-frontx-dashboard-component-widget-data-request`, `cpt-frontx-dashboard-component-viewer-host`, `cpt-frontx-dashboard-component-widget-library`, `cpt-frontx-dashboard-principle-render-only-viewer`, `cpt-frontx-dashboard-seq-initial-load`, `cpt-frontx-dashboard-seq-failure-handling`, `cpt-frontx-dashboard-seq-consumer-generation` |
+| `cpt-frontx-dashboard-nfr-consumer-docs` | `cpt-frontx-dashboard-topology-overlay-packages` (consumer guide), `cpt-frontx-dashboard-interface-data-adapter` |
+| `cpt-frontx-dashboard-adr-frontend-framework`, `cpt-frontx-dashboard-adr-template-packages-and-host-contract` | `cpt-frontx-dashboard-principle-per-instance-isolation`, `cpt-frontx-dashboard-principle-own-registry-registration`, `cpt-frontx-dashboard-constraint-shell-only-dependency`, `cpt-frontx-dashboard-topology-overlay-packages`, `cpt-frontx-dashboard-component-gts-file-loader`, `cpt-frontx-dashboard-constraint-licensing-compliance-resources`, section 3.5 |
+| `cpt-frontx-dashboard-adr-dashboard-layout-grid` | `cpt-frontx-dashboard-constraint-sixty-column-grid`, `cpt-frontx-dashboard-component-dashboards-root`, `cpt-frontx-dashboard-seq-cannot-show` |
+| `cpt-frontx-dashboard-adr-shared-data-types-and-schemas` | Section 3.1, `cpt-frontx-dashboard-constraint-gts-id-convention`, `cpt-frontx-dashboard-principle-gts-contracts`, `cpt-frontx-dashboard-component-trait-helper`, `cpt-frontx-dashboard-component-gts-file-loader` |
+| `cpt-frontx-dashboard-adr-widget-type-and-mfe-realization`, `cpt-frontx-dashboard-adr-subject-agnostic-widget-catalog` | Section 3.1, `cpt-frontx-dashboard-interface-widget-realization`, `cpt-frontx-dashboard-component-widget-library` |
+| `cpt-frontx-dashboard-adr-charting-library`, `cpt-frontx-dashboard-adr-data-grid-library` | `cpt-frontx-dashboard-component-widget-library`, `cpt-frontx-dashboard-seq-query-change`, section 3.9 |
+| `cpt-frontx-dashboard-adr-theme-distribution` | `cpt-frontx-dashboard-seq-theme-switch`, `cpt-frontx-dashboard-component-dashboards-root`, `cpt-frontx-dashboard-component-larger-view-modal`, `cpt-frontx-dashboard-component-widget-library` |
+| `cpt-frontx-dashboard-adr-extension-domain-taxonomy` | `cpt-frontx-dashboard-interface-template-domains`, `cpt-frontx-dashboard-interface-host-actions`, `cpt-frontx-dashboard-principle-own-registry-registration`, `cpt-frontx-dashboard-component-larger-view-modal`, `cpt-frontx-dashboard-seq-widget-modal-open`, `cpt-frontx-dashboard-seq-larger-view-refresh`, `cpt-frontx-dashboard-seq-larger-view-close`, `cpt-frontx-dashboard-seq-teardown` |
+| `cpt-frontx-dashboard-adr-data-adapter` | `cpt-frontx-dashboard-interface-data-adapter`, `cpt-frontx-dashboard-component-data-adapter`, `cpt-frontx-dashboard-component-dashboards-root`, `cpt-frontx-dashboard-component-larger-view-modal`, `cpt-frontx-dashboard-component-widget-library`, `cpt-frontx-dashboard-principle-render-only-dashboards-root`, `cpt-frontx-dashboard-principle-dashboards-root-orchestration`, `cpt-frontx-dashboard-seq-initial-load`, `cpt-frontx-dashboard-seq-query-change`, `cpt-frontx-dashboard-seq-cannot-show` |
+| `cpt-frontx-dashboard-adr-query-vocabulary-and-datasets` | Section 3.1 (query vocabulary), `cpt-frontx-dashboard-principle-gts-contracts`, `cpt-frontx-dashboard-constraint-gts-id-convention`, `cpt-frontx-dashboard-interface-data-adapter`, `cpt-frontx-dashboard-seq-consumer-generation` |
