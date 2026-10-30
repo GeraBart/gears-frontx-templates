@@ -134,7 +134,7 @@ The dashboards root, the larger-view modal and the data adapter use the result a
 **Steps**:
 1. [ ] - `p1` - Read the dataset type chain from `data.id`: the base query, the query family and the dataset, followed by the UUID - `inst-read-chain`
 2. [ ] - `p1` - **IF** `data.id` names no registered dataset type, or its chain does not start with the base query type, **RETURN** failure - `inst-reject-unknown-dataset`
-3. [ ] - `p1` - Validate `data` against the dataset type that `data.id` names. This is the polymorphic validation of `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`, inside the one GTS validation of the widget - `inst-validate-polymorphic`
+3. [ ] - `p1` - Validate `data` against the dataset type that `data.id` names. This is the polymorphic validation of the FrontX GTS plugin, a required capability (DESIGN prerequisites, `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`), not a rule of the GTS specification, inside the one GTS validation of the widget - `inst-validate-polymorphic`
 4. [ ] - `p1` - **IF** the GTS validation reports a failure, **RETURN** failure; otherwise **RETURN** valid. The owner cross-checks of `cpt-frontx-dashboard-feature-widget-catalog` run after it - `inst-return-validate-result`
 
 The template adds no validation mode of its own. The single GTS validation of step 3 is what rejects a query. The table lists the GTS failures of a query.
@@ -192,7 +192,7 @@ A check that the template runs over its sample datasets verifies some rules auto
 
 | Rule | Verified by |
 |------|-------------|
-| The type is concrete or abstract as its kind requires (`x-gts-abstract`) | Automatic check over the sample datasets |
+| The query family is abstract and the dataset is concrete, as its kind requires (`x-gts-abstract`); the measure and dimension bases are plain types and are not checked for the flag | Automatic check over the sample datasets |
 | The `$id` chain starts at the base query and names the family and the dataset | Automatic check over the sample datasets |
 | No member of the time dimension enum is in the `dimensions` enum | Automatic check over the sample datasets |
 | Each enum only narrows the enum of its parent | Automatic check over the sample datasets |
@@ -213,7 +213,8 @@ A check that the template runs over its sample datasets verifies some rules auto
 2. [ ] - `p2` - **FOR EACH** type in the chain, in order - `inst-traits-each`
    1. [ ] - `p2` - Get its schema with `getSchema` of the bound registry access. **IF** `getSchema` cannot return a schema along the chain, **RETURN** failure and no partial result - `inst-traits-get`
    2. [ ] - `p2` - Merge its `x-gts-traits` into the result with RFC 7396, so a later type overrides an earlier one. A type without `x-gts-traits` contributes nothing - `inst-traits-merge`
-3. [ ] - `p2` - **RETURN** the result. The helper registers nothing, validates nothing and keeps no state between calls. The caller gives the traits their meaning - `inst-traits-return`
+3. [ ] - `p2` - Fill in the `default` values declared in the effective trait schema for every trait that the merged result does not set (GTS specification section 9.7.5) - `inst-traits-defaults`
+4. [ ] - `p2` - **RETURN** the result. The helper registers nothing, validates nothing and keeps no state between calls. The caller gives the traits their meaning - `inst-traits-return`
 
 ## 4. States (CDSL)
 
@@ -319,7 +320,7 @@ The operators are `equals`, `notEquals`, `gt`, `gte`, `lt`, `lte`, `set`, `notSe
 - **Member-kind fit.** Whether an operator fits its member's kind cannot be written in JSON Schema. The domain owner cross-checks it against the member instance at load (`cpt-frontx-dashboard-feature-widget-catalog`). The `contains`, `startsWith` and `endsWith` operators and their negations apply only to string dimensions. `gt`, `gte`, `lt` and `lte` apply only to measures and number dimensions. The six date operators apply only to time dimensions.
 - **Before and after aggregation.** A filter on a dimension applies to rows before aggregation. A filter on a measure applies to the aggregated values, after aggregation. Two filters on the same member both hold, so `gte` and `lte` together bound a range.
 - **Filter values.** The owner cross-checks the content of `values` at load (`cpt-frontx-dashboard-algo-widget-catalog-cross-check-widget`). The values of `gt`, `gte`, `lt` and `lte` must be numbers written as strings. The values of the six date operators must be dates or date-times in the `dateRange` form (a date-time has seconds), or one of the allowed relative strings. `inDateRange` and `notInDateRange` with one value mean either exactly that timestamp or one relative string; with two values they mean a range, both ends included. The values and `timezone` are data that the data adapter receives, and are never interpreted as query text.
-- **Order.** Each `order` item is a pair, checked with `prefixItems`. The first item of each pair must be a result column: a member named in `measures` or `dimensions`, or the time dimension with a `granularity`. The domain owner cross-checks this at load (`cpt-frontx-dashboard-feature-widget-catalog`). Whether GTS checks the instance reference inside `prefixItems` is an open question of `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`. The dataset enum on the first item and the owner cross-check enforce membership either way.
+- **Order.** Each `order` item is a pair, checked with `prefixItems`. The first item of each pair must be a result column: a member named in `measures` or `dimensions`, or the time dimension with a `granularity`. The domain owner cross-checks this at load (`cpt-frontx-dashboard-feature-widget-catalog`). The GTS specification (section 9.6.3) requires reference keywords to apply inside `prefixItems`, and the FrontX GTS plugin is expected to conform, which a conformance test checks. The dataset enum on the first item and the owner cross-check stay as further layers of membership enforcement.
 - **Default order.** When `order` is absent, the default order applies: the time dimension ascending when it has a `granularity`, else the first measure descending, else the first dimension ascending. An empty `order` asks for no order.
 - **Complete result.** `limit` and `offset` slice the result. A query without `limit` asks for the complete result. The data adapter applies no cap of its own and reads past any row limit of its backend (`cpt-frontx-dashboard-feature-data-adapter-contract`). Which widget types require `limit` or `total`, or forbid `total`, is set by `cpt-frontx-dashboard-feature-widget-catalog`.
 - **Time zone.** An authored query has no `timezone`, because the widget's `data` forbids it (`cpt-frontx-dashboard-feature-widget-catalog`). The data widget sets `timezone` to the viewer's time zone in the query it sends with `request_data`. Dates in `dateRange`, relative strings and granularity buckets resolve in that time zone. The data adapter passes the field through to a backend that understands it.
@@ -517,7 +518,7 @@ The **canonical member order** is a separate notion. It orders the result column
 | Measure | `gts.frontx.dashboard_m.data.measure.v1~` | `id` (required), `title` (required), `value_type` (required: `number`, `percent` or `duration`), `unit` (optional, required when `value_type` is `duration`) |
 | Dimension | `gts.frontx.dashboard_m.data.dimension.v1~` | `id` (required), `title` (required), `value_type` (required: `string`, `time` or `number`) |
 
-Each base is a type whose `id` field uses its own literal base operand. The `value_type` sets are closed as a template decision: the template renders only these value types, and a new one is a change of the template. A `percent` measure is a ratio in which 1 means 100%. A `duration` measure names its `unit`. A product delivers its measures and dimensions as GTS well-known instances, for example `gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1`. Ids are unique across products, and a dimension can be shared by several datasets. The metadata gives a widget default titles and formats. A measure states no aggregation. The product's binding declares, per measure, whether it can be re-aggregated from grouped values (section 6.5).
+Each base is a plain base type (not abstract), whose `id` field uses its own literal base operand. A base is not abstract because the product delivers well-known instances directly of it, and an abstract type cannot have direct instances (GTS specification v0.17, section 9.11). The `value_type` sets are closed as a template decision: the template renders only these value types, and a new one is a change of the template. A `percent` measure is a ratio in which 1 means 100%. A `duration` measure names its `unit`. A product delivers its measures and dimensions as GTS well-known instances, for example `gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1`. Ids are unique across products, and a dimension can be shared by several datasets. The metadata gives a widget default titles and formats. A measure states no aggregation. The product's binding declares, per measure, whether it can be re-aggregated from grouped values (section 6.5).
 
 **Measure schema**:
 
@@ -527,7 +528,6 @@ Each base is a type whose `id` field uses its own literal base operand. The `val
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Measure",
   "type": "object",
-  "x-gts-abstract": true,
   "required": [
     "id",
     "title",
@@ -585,7 +585,6 @@ Each base is a type whose `id` field uses its own literal base operand. The `val
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Dimension",
   "type": "object",
-  "x-gts-abstract": true,
   "required": [
     "id",
     "title",
@@ -617,7 +616,7 @@ Each base is a type whose `id` field uses its own literal base operand. The `val
 - **Query family.** A product type derived from the base, for example `gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~`. It is abstract. Its `x-gts-traits-schema` declares the shape of the backend binding. The template gives the binding no meaning. The data adapter declares the query families it serves. Its served-families declaration returns the family type schemas, and the owners register them at start (`cpt-frontx-dashboard-feature-data-adapter-contract`).
 - **Dataset.** A product type derived from a query family, for example `gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~`. It narrows the members with enums at five narrowing positions: `measures.items`, `dimensions.items`, `timeDimensions.items.properties.dimension`, `filters.items.properties.member` and `order.items.prefixItems[0]`. It carries the binding values in `x-gts-traits`. The binding maps each member to its backend name and declares, per measure, whether it can be re-aggregated from grouped values, so the data adapter knows which measures it may combine when it executes a query locally. The meaning and vocabulary of that declaration are the product's, and the template gives the binding no other meaning. The declaration belongs to the binding, not to the measure base. One dataset serves every combination of its members. Datasets only narrow, never widen. The time dimension is in the enum at `timeDimensions.items.properties.dimension` and never in the enum at `dimensions.items`.
 - **Query instance.** The query in a widget is an embedded anonymous GTS instance. Its `id` is the dataset type chain followed by a UUID that the author or the generator creates. The query's type is never stored apart from its id. Identical queries, ignoring their UUIDs and with the same `timezone`, give identical backend requests.
-- **Versioning.** The registration rule (first registration of an id stays, template types cannot be replaced) is owned by `cpt-frontx-dashboard-algo-dashboard-root-types-register-delivery` (`inst-template-types-first`, `inst-new-version-id`). For the consumer: a dataset, measure or dimension with different content gets a different version id.
+- **Versioning.** The registration rule (a delivered type id equal to a template type id is rejected; first registration of any other id stays, as the FrontX type store behaves) is owned by `cpt-frontx-dashboard-algo-dashboard-root-types-register-delivery` (`inst-template-types-first`, `inst-new-version-id`). For the consumer: a dataset, measure or dimension with different content gets a different version id.
 
 **Example** (the `acme.example` vendor is illustrative). The query family declares a binding with a source name and a list of columns. Each column maps a member to a backend column, and a measure column carries the product's re-aggregation declaration. The trait schema below is illustrative:
 
@@ -735,7 +734,7 @@ This section is the exact contract of `cpt-frontx-dashboard-interface-trait-help
 
 | Input | Output | Failure |
 |-------|--------|---------|
-| A type id, without a UUID | The effective traits of the type: the `x-gts-traits` of the schemas along its `$id` chain, merged with RFC 7396 from the base to the type, so a later type overrides an earlier one | A schema along the chain cannot be found: a failure, never a partial result |
+| A type id, without a UUID | The effective traits of the type: the `x-gts-traits` of the schemas along its `$id` chain, merged with RFC 7396 from the base to the type, so a later type overrides an earlier one, then completed with the `default` values of the effective trait schema for traits no type sets (specification section 9.7.5) | A schema along the chain cannot be found: a failure, never a partial result |
 
 - **Registry access.** The helper gets the schemas with `getSchema` of the registry access it is bound to. That is the registry access of one owner runtime: the dashboards root's or the larger-view modal's. Each owner runtime has its own trait helper. There is no global singleton, because FrontX isolates each MFE instance. The data adapter interface hands the data adapter that registry access, or a trait helper bound to it (`cpt-frontx-dashboard-interface-data-adapter`).
 - **No side effects.** The helper registers nothing, validates nothing and keeps no state between calls. The same input gives the same result. It gives traits no meaning; its callers interpret them.
@@ -764,19 +763,20 @@ This section is the exact contract of `cpt-frontx-dashboard-interface-trait-help
 - [ ] Filter `values` and `timezone` reach the data adapter as data and are never interpreted as query text. `timezone` is an IANA time zone name.
 - [ ] A filter on a dimension removes rows before aggregation. A filter on a measure removes groups by their aggregated value, after aggregation.
 - [ ] An `order` of one pair, the `loc` measure of the section 6.5 example with `desc`, passes. An `order` item of 3 elements, a direction other than `asc` or `desc`, or `order` as an object keyed by member fails validation. An `order` pair whose first item is in the dataset enum but is not a result column passes GTS validation and fails the owner cross-check.
-- [ ] The membership of the first item of each `order` pair holds through the dataset enum at `order.items.prefixItems[0]` and the owner's cross-check, whether or not GTS checks instance references inside `prefixItems`.
+- [ ] An instance reference at `order.items.prefixItems[0]` that names no registered measure or dimension fails validation (plugin conformance test of specification section 9.6.3). The membership of the first item of each `order` pair also holds through the dataset enum at that position and the owner's cross-check.
 - [ ] A query without `order` gets the default order: the time dimension ascending when it has a `granularity`, else the first measure descending, else the first dimension ascending. A query with `order: []` passes and gets no order.
 - [ ] A query with `limit: 0` or `offset: -1` fails validation. A query without `limit` passes and asks for the complete result, with no cap set by the template or the data adapter.
 - [ ] A query with `total: "yes"` fails validation. `total: true` asks for the row count that ignores `limit` and `offset`.
 - [ ] The base query type accepts `timezone` in a sent query. A widget whose authored `data` carries `timezone` fails the validation of its widget type (`cpt-frontx-dashboard-feature-widget-catalog`). The sent query carries the viewer's time zone, and its dates resolve in that time zone.
 - [ ] For a query with dimensions `author`, `project`, time granularity `day` and measures `loc`, `pr_count`, the canonical member order is `author`, `project`, the time dimension, `loc`, `pr_count`. Without `granularity` the time dimension is absent from the list but is still a query member. A filter member that is not in `measures` or `dimensions` is a query member and gives no column.
 - [ ] A dataset that lists a measure outside its parent's allowed values is rejected as a derivation.
-- [ ] A dataset that is `x-gts-abstract`, or whose `id` chain does not name the base, the query family and the dataset, is rejected as a derivation.
+- [ ] A dataset that is `x-gts-abstract`, a query family that is not, or a type whose `id` chain does not name the base, the query family and the dataset, is rejected as a derivation.
 - [ ] A dataset that lists its time dimension in the enum at `dimensions.items` is rejected. The template-run check over the sample datasets verifies this rule, the abstract flag, the `$id` chain and that enums only narrow. Schema review covers the rest, and every rejection names the failed rule.
 - [ ] A dataset that widens a property of its parent or opens a closed one is rejected as a derivation. GTS registration rejects a widened enum and a traits mismatch, and schema review catches the other cases.
 - [ ] A dataset whose `x-gts-traits` do not satisfy the `x-gts-traits-schema` of its query family is rejected.
 - [ ] The product's binding declares, per measure, whether it can be re-aggregated from grouped values, and the template gives the binding no other meaning. The measure base has no aggregation field, and a measure instance with one fails validation.
 - [ ] A new dataset with new measures is added as data only, and the data adapter needs no change.
+- [ ] A trait that no type in the chain sets and whose effective trait schema declares a `default` gets that default in the effective traits; a trait without a default stays absent.
 - [ ] The consumer guide requires a different version id for different content of a dataset, measure or dimension; the first-registration rule is `cpt-frontx-dashboard-algo-dashboard-root-types-register-delivery`.
 - [ ] The `id` fields of the base query, the measure base and the dimension base use literal base operands, and none uses the self-reference operand.
 - [ ] No schema of this feature uses a GTS id as an object key.

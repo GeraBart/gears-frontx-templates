@@ -99,14 +99,15 @@ The delivery set is the set of product types and instances that the dashboard's 
 
 **Steps**:
 
-1. [ ] - `p1` - The domain owner has registered the template's types before any dashboard loads, so a delivered type cannot take the place of a template type - `inst-template-types-first`
-2. [ ] - `p1` - The domain owner registers the measure and dimension instances of the delivery set first, then the dataset types, before it validates the dashboard. This order works under any GTS lookup mode, because a dataset type that names a measure or a dimension registers after it - `inst-register-delivery`
-3. [ ] - `p1` - GTS keeps the first registration of an id. A delivered type or instance whose id is already registered, with the same content or with changed content, is not a failure: the content registered first stays. This covers the second owner that loads the same dashboard, and a dashboard loaded again. A dataset, measure or dimension with new content must therefore carry a new version id - `inst-new-version-id`
-4. [ ] - `p1` - Before it registers a dataset type, the domain owner checks the served families of the data adapter. **IF** the dataset type derives from a query family that the data adapter does not serve, so that the parent schema is not registered - `inst-if-unserved-dataset`
+1. [ ] - `p1` - The domain owner has registered the template's types before any dashboard loads - `inst-template-types-first`
+2. [ ] - `p1` - **IF** any delivered type id equals the id of a template type, **RETURN** the dashboard-level cannot-show trigger, naming that id, and register nothing of the delivery. A delivered type never takes the place of a template type - `inst-reject-template-id`
+3. [ ] - `p1` - The domain owner registers the measure and dimension instances of the delivery set first, then the dataset types, before it validates the dashboard. A dataset type that names a measure or a dimension registers after it. Dashboard validation runs with reference-existence lookup off, so member existence is not enforced by GTS; the widget catalog's load-time cross-check enforces it (`cpt-frontx-dashboard-feature-widget-catalog`) - `inst-register-delivery`
+4. [ ] - `p1` - The FrontX type store keeps the first registration of an id, a behaviour this feature relies on as a prerequisite and not as a GTS rule. A delivered type or instance whose id is already registered, with the same content or with changed content, is not a failure: the content registered first stays. This covers the second owner that loads the same dashboard, and a dashboard loaded again. A dataset, measure or dimension with new content must therefore carry a new version id - `inst-new-version-id`
+5. [ ] - `p1` - Before it registers a dataset type, the domain owner checks the served families of the data adapter. **IF** the dataset type derives from a query family that the data adapter does not serve, so that the parent schema is not registered - `inst-if-unserved-dataset`
    1. [ ] - `p1` - The domain owner skips that type and does not register it, writes a diagnostic that names it, and continues; this is not a registration failure. Every widget whose query names that dataset gets the widget-level cannot-show state (unserved family, `cpt-frontx-dashboard-algo-data-adapter-contract-check-served-family`) - `inst-skip-unserved-dataset`
-5. [ ] - `p1` - **IF** GTS rejects any other delivered type or instance, for example a schema that is not valid, or an instance that does not validate against its type - `inst-if-register-failed`
+6. [ ] - `p1` - **IF** GTS rejects any other delivered type or instance, for example a schema that is not valid, or an instance that does not validate against its type - `inst-if-register-failed`
    1. [ ] - `p1` - **RETURN** the dashboard-level cannot-show trigger, naming the rejected type or instance - `inst-return-delivery-trigger`
-6. [ ] - `p1` - **RETURN** the delivery set registered - `inst-return-registered`
+7. [ ] - `p1` - **RETURN** the delivery set registered - `inst-return-registered`
 
 ### Validate Dashboard
 
@@ -252,6 +253,7 @@ The dashboard carries no widget data and no theme: each data widget asks for its
 - [ ] A dashboard whose cell 1 widget fails its widget type and whose cell 2 larger-view widget fails its dataset passes at dashboard level, with one failure attributed to the cell widget of cell 1 and one to the larger-view widget of cell 2
 - [ ] The delivery set is registered after the template types and before validation, measure and dimension instances before dataset types, and a delivered entry with the id of a registered one keeps the first content
 - [ ] Given the dashboards root has loaded a dashboard, when the larger-view modal loads the same dashboard and registers the same delivery set again, then the registration is not a failure and the modal's load succeeds
-- [ ] A delivered dataset type that references a delivered measure or dimension registers after that measure or dimension, and its registration succeeds under any GTS lookup mode
+- [ ] A delivered dataset type that references a delivered measure or dimension registers after that measure or dimension. Dashboard validation runs with reference-existence lookup off, and member existence is enforced by the widget catalog's load-time cross-check, so a reference to a member that is not registered can remain in a valid dashboard until that cross-check
+- [ ] A delivery that contains a type id equal to a template type id is rejected before anything of the delivery is registered, and the dashboard is in the dashboard-level cannot-show state naming that id; the template type stays in effect
 - [ ] A delivered dataset type whose query family is not served is checked before registration, skipped with a diagnostic and is not a dashboard-level failure; every widget whose query names it shows the widget-level cannot-show state, and the other cells mount
 - [ ] A delivered measure instance that does not validate against the measure base type is rejected by GTS and gives the dashboard-level trigger, naming the instance

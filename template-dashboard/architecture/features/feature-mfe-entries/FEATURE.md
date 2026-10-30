@@ -322,7 +322,7 @@ The system **MUST** list, in the `shared` array of the manifest of every templat
   "description": "Binds one widget type to its entry, an optional larger-view entry, and a weight.",
   "type": "object",
   "required": ["id", "widget_type", "entry"],
-  "additionalProperties": false,
+  "unevaluatedProperties": false,
   "properties": {
     "id": {
       "type": "string",
@@ -594,7 +594,7 @@ The consuming product ships its own package under `src-app/mfe_packages/`, next 
 
 The product adds to its copy of the template's GTS file one replacement realization with its own identifier, whose `widget_type` names one of the 9 template widget types, whose `entry` names that entry, whose `larger_view_entry` is present only if the larger view needs different code, and whose `weight` is above 1.
 
-For example, a consuming product with the vendor `acme` that replaces the `grid` widget type could add the realization `gts.frontx.dashboard_v.mfe.widget_realization.v1~acme.dashboard.mfe.grid.v1` with `widget_type` `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.grid.v1~`, `entry` `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~acme.dashboard.mfe.grid.v1`, and `weight` 2.
+For example, a consuming product with the vendor `acme.example` that replaces the `grid` widget type could add the realization `gts.frontx.dashboard_v.mfe.widget_realization.v1~acme.example.mfe.grid.v1` with `widget_type` `gts.frontx.dashboard_m.widget.widget.v1~frontx.dashboard_m.widget.data_widget.v1~frontx.dashboard_m.widget.grid.v1~`, `entry` `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~acme.example.mfe.grid.v1`, and `weight` 2.
 
 **Effects**:
 - The consumer's manifest and entry reach the registries through the manifest channel like the template's entries, and the realization through the copy of the template's GTS file. The domain owners register every manifest that a registered realization names, so the replacement resolves in their nested registries.
@@ -691,7 +691,7 @@ The product's data adapter and its backend client are bundled with the domain ow
 - [ ] No package's `mfe.json` contains a template GTS instance (no widget realization) or any dashboard content, widget data included; the `widgets` package contains no data-request code beyond the `request_data` action and no error chrome; the `dashboard` package contains no data adapter implementation.
 - [ ] A dependency check finds that the packages depend on `template-shell` and the pinned FrontX packages only, and on nothing from `template-mfe`; the pinned versions are exact published versions.
 - [ ] Given an open dashboard and an open larger view, when the host theme id changes, then every cell widget and the larger-view widget switch to the matching ui-kit scope without a request and without showing a skeleton again.
-- [ ] Every identifier of this feature follows the template ID-form convention: types end with `~`, instances do not, every template segment is at `v1`, the GTS packages are `frontx.dashboard_m` and `frontx.dashboard_v`, and no field uses `x-gts-ref`.
+- [ ] Every identifier of this feature follows the template ID-form convention: types end with `~`, instances do not, every template segment is at `v1`, the GTS packages are `frontx.dashboard_m` and `frontx.dashboard_v`, and no field uses the retired `x-gts-ref` keyword; references use `x-gts-type-ref` and `x-gts-instance-ref`.
 - [ ] Build review confirms that every widget entry, the larger-view modal, and, when it is a screen extension, the dashboards root list all their packages in the `shared` array of their manifests, that all template MFEs publish the same `contentHash` for each shared dependency, that every listed package passes the package-wide license check, and that no MFE relies on template-owned state shared between instances.
 - [ ] Transferred gzipped bytes on a cold load of the reference dashboard and on the first opening of a larger view are measured and recorded per section 6.10: the dashboards root and the larger-view modal with the shared dependencies they fetch themselves, each widget entry with its own code only, and each shared dependency counted once in the page total; the measurement records one fetch per shared dependency.
 - [ ] The grid shell is checked against `cpt-frontx-dashboard-fr-grid-sort-page` and `cpt-frontx-dashboard-nfr-large-table` on the reference dashboard: sort, page, and page size work by keyboard, and scrolling a 500-row page never stops the view responding for longer than the provisional figure of DESIGN section 3.9.

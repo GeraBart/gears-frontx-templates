@@ -251,7 +251,7 @@ An example for the grid, where `7e3a9c51-0b2d-4f86-9a14-c5d8e2f60b39` is the gen
 
 **Steps**:
 1. [ ] - `p1` - FrontX reads the data shape type from the `id` of the data instance, which is the id without its UUID - `inst-vd-type`
-2. [ ] - `p1` - FrontX validates the instance against that derived shape, through GTS polymorphic validation of the action payload - `inst-vd-validate`
+2. [ ] - `p1` - FrontX validates the instance against that derived shape, through the polymorphic validation of the FrontX GTS plugin (a required capability, DESIGN prerequisites) on the action payload - `inst-vd-validate`
 3. [ ] - `p1` - **IF** the instance does not satisfy the shape that its own id names - `inst-vd-reject`
    1. [ ] - `p1` - **RETURN** rejected, so the widget never receives the data - `inst-vd-rejected`
 4. [ ] - `p1` - **RETURN** accepted - `inst-vd-accepted`

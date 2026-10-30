@@ -141,7 +141,7 @@ Each data widget type is a concrete type under the data widget, for example `gts
 
 ### Per-type data shapes with a closed set of fill modes
 
-An abstract data widget type holds `data` and the traits `data_shape` and `fill`. Eight concrete types and eight shapes. Five fill modes, defined by the template.
+An abstract data widget type holds `data` and the traits `data_shape`, `fill` and `member_kinds` (optional). Eight concrete types and eight shapes. Five fill modes, defined by the template.
 
 * Good, because each widget type gets exactly the data it needs, in a typed shape.
 * Good, because the data adapter implements a fixed, small set of modes, and a new widget type reuses one.

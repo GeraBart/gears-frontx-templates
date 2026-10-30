@@ -842,7 +842,7 @@ The dashboards root **MUST** unmount every cell extension when the viewer leaves
 
 ## 6. Domain Model
 
-The lifecycle actions are the FrontX actions `gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~`, `gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~` and `gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~`; code takes them from the FrontX constants. Every template action derives from the FrontX action base `gts.frontx.mfes.comm.action.v1~`, and FrontX validates every action instance against its schema, polymorphically on every embedded identifier. Action delivery is FrontX's concern: FrontX delivers each action to the handler that its target registered, wherever the target sits in the tree, and no template part passes actions on.
+The lifecycle actions are the FrontX actions `gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~`, `gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~` and `gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~`; code takes them from the FrontX constants. Every template action derives from the FrontX action base `gts.frontx.mfes.comm.action.v1~`, and FrontX validates every action instance against its schema, polymorphically on every embedded identifier; this is the polymorphic validation of the FrontX GTS plugin (a required capability, DESIGN prerequisites), not a rule of the GTS specification. Action delivery is FrontX's concern: FrontX delivers each action to the handler that its target registered, wherever the target sits in the tree, and no template part passes actions on.
 
 ### 6.1 Template Action: set_widget_context
 
@@ -965,7 +965,7 @@ The lifecycle actions are the FrontX actions `gts.frontx.mfes.comm.action.v1~fro
 
 **Notes**:
 
-- `widget` carries the widget instance itself, because the dashboard embeds its widgets. GTS validates it against the widget type that its `id` names.
+- `widget` carries the widget instance itself, because the dashboard embeds its widgets. The FrontX GTS plugin validates it against the widget type that its `id` names, through its polymorphic validation (a required capability, DESIGN prerequisites).
 - `data_shape`, `fill` and `members` come together or not at all: a data widget gets all three, and a `markdown_card` none.
 - `fill` has the form of the widget type's `fill` trait (`cpt-frontx-dashboard-feature-widget-catalog`); the owner copies it unchanged, and the widget puts it unchanged into each `request_data`.
 - Sync rule: the `fill` schema here, the `fill` schema of `request_data` (section 6.2) and the `fill` trait schema of the data widget in `cpt-frontx-dashboard-feature-widget-catalog` state the same modes, the same `fields` items and the same conditional rule: `fields` is required for `rows_by_member` and absent for every other mode. A change to one of them is made to all three, so every `fill` trait value of a template widget type validates in both actions.

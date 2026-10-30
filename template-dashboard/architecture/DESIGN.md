@@ -204,7 +204,7 @@ An owner registers generated extensions only when it loads a dashboard, never on
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-principle-gts-contracts`
 
-Dashboards with their embedded layouts and widgets, queries, the measure and dimension bases, data shapes, actions, domains, extension types and widget realizations are GTS v0.17 types chained from FrontX bases. The product's query families and datasets are GTS types derived from the template's base query type, and its measures and dimensions are GTS instances. One standard GTS validation per instance checks everything embedded in it, because GTS validates each embedded instance against the derived type named by its own id. The template writes no validation code of its own, except the cross-checks that JSON Schema cannot express (section 3.1). FrontX validates every action instance, so the data in `set_data` is checked against the exact data shape that its id names. The owner drops an answer whose shape differs from the request's `data_shape`; widgets never compare shapes.
+Dashboards with their embedded layouts and widgets, queries, the measure and dimension bases, data shapes, actions, domains, extension types and widget realizations are GTS v0.17 types chained from FrontX bases. The product's query families and datasets are GTS types derived from the template's base query type, and its measures and dimensions are GTS instances. One standard GTS validation per instance checks everything embedded in it, because the FrontX GTS plugin validates each embedded instance against the derived type named by its own id. The specification does not require this; the template requires it of the plugin (section 4, prerequisite (e)). The template writes no validation code of its own, except the cross-checks that JSON Schema cannot express (section 3.1). FrontX validates every action instance, so the data in `set_data` is checked against the exact data shape that its id names. The owner drops an answer whose shape differs from the request's `data_shape`; widgets never compare shapes.
 
 Because dashboards are GTS-typed, a product adds a dashboard or a dataset as data, written or generated, and checks it against the registered types before it serves it. The widget realizations travel as GTS instances in the template's GTS file. The data adapter interface stays a TypeScript interface, because it is called inside one runtime and carries GTS-typed values only.
 
@@ -232,7 +232,7 @@ A widget renders its presentation fields and the data it is sent. A data widget 
 
 The template depends on `template-shell` and on the FrontX packages it pins to exact published versions, and on nothing else. It takes nothing from `template-mfe` or from any other template. The prerequisites of section 4 lie outside the template. Those that bear on packaging are:
 
-- **FrontX on GTS v0.17.** The template relies on `x-gts-instance-ref`, `x-gts-type-ref`, `x-gts-abstract` and traits as GTS v0.17 defines them. A FrontX gts-plugin on an older GTS version does not apply these keywords, and a dashboard cannot be validated end to end. The template targets v0.17 without interim workarounds.
+- **FrontX on GTS v0.17.** The template relies on `x-gts-instance-ref`, `x-gts-type-ref`, `x-gts-abstract` and traits as GTS v0.17 defines them, and on FrontX's own base schemas using the v0.17 reference keywords. A FrontX gts-plugin on an older GTS version does not apply these keywords, and a dashboard cannot be validated end to end. The template targets v0.17 without interim workarounds.
 - **A realm-shared GTS type store.** The FrontX release must share registered type definitions across the realm (section 4, prerequisite (b)). Without it, nested owners cannot validate chains that reference the shell's definitions.
 - **A modal container for the shell's `popup` domain.** `template-shell` registers the `popup` domain with the Optional strategy, routing, the theme and language shared properties, and `mount_ext` and `unmount_ext`, but renders no container for it. The shell must render one that shows the occupant in the shell's modal area, keeps keyboard focus inside it while it is open, and unmounts the occupant on a click outside it. Without it, no larger view can be shown, while the rest of the dashboard works.
 
@@ -250,7 +250,7 @@ Documents name shell domains by role. The **shell screen domain** is the domain 
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-constraint-gts-id-convention`
 
-The template targets GTS specification v0.17. Type identifiers end with `~` and instance identifiers do not. An instance identifier always carries its type chain and is never split into parts. A well-known instance ends in a named segment, such as a measure or a widget realization. A combined anonymous instance ends in a UUID: a dashboard, a widget and a query take a UUID from whoever writes the dashboard, a data instance takes one from the data adapter, and a generated extension takes a UUIDv5 from its domain owner. No instance carries a separate `type` field.
+The template targets GTS specification v0.17. Type identifiers end with `~` and instance identifiers do not. An instance identifier always carries its type chain and is never split into parts. A well-known instance ends in a named segment, such as a measure or a widget realization. A combined anonymous instance ends in a UUID. Combined anonymous ids are an optional capability of a GTS service (GTS specification v0.17, section 3.7), which the template requires of the FrontX GTS plugin (section 4, prerequisite (h)). The UUIDs are random (version 4) by the template's choice and are valid under the identifier grammar. a dashboard, a widget and a query take a UUID from whoever writes the dashboard, a data instance takes one from the data adapter, and a generated extension takes a UUIDv5 from its domain owner. No instance carries a separate `type` field.
 
 The template's own types use vendor `frontx` and two GTS packages. `dashboard_m` is the model: the dashboard, the layout, the widgets, the query vocabulary and the data shapes. `dashboard_v` is the view: the actions, the domains, the extension types and the widget realizations. Identifiers look like `gts.frontx.dashboard_m.*` and `gts.frontx.dashboard_v.*`, with chained segments for derived types. `dashboard_v` refers to `dashboard_m` types only; `dashboard_m` never refers to `dashboard_v`.
 
@@ -415,14 +415,12 @@ classDiagram
             timezone
         }
         class Measure {
-            <<abstract>>
             id
             title
             value_type
             unit
         }
         class Dimension {
-            <<abstract>>
             id
             title
             value_type
@@ -558,7 +556,7 @@ Data widget types reference their data shapes through the `data_shape` trait ins
 | Query family | abstract product type | `gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~` |
 | Dataset | product type | `gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~` |
 | Queries | combined anonymous instance of a dataset, embedded in a widget's `data`; UUID from the author | `gts.frontx.dashboard_m.data.query.v1~acme.example.data.metric_query.v1~acme.example.data.activity.v1~<uuid>` |
-| Measure and dimension bases | types | `gts.frontx.dashboard_m.data.measure.v1~`, `gts.frontx.dashboard_m.data.dimension.v1~` |
+| Measure and dimension bases | plain types, not abstract; the product delivers their well-known instances | `gts.frontx.dashboard_m.data.measure.v1~`, `gts.frontx.dashboard_m.data.dimension.v1~` |
 | Measures and dimensions | well-known product instances | `gts.frontx.dashboard_m.data.measure.v1~acme.example.metrics.loc.v1` |
 | Data shape base and shapes (8) | abstract base and types | `gts.frontx.dashboard_m.widget_data.widget_data.v1~`, `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~` |
 | Data instances | combined anonymous instance of a data shape; UUID from the data adapter | `gts.frontx.dashboard_m.widget_data.widget_data.v1~frontx.dashboard_m.widget_data.grid.v1~<uuid>` |
@@ -635,7 +633,7 @@ Dates, relative ranges and granularity buckets resolve in the sent `timezone`. W
 
 A **dataset** is a product query type that derives from a product **query family**, which derives from the base query (base query, query family, dataset). It narrows members with enums at five positions. Datasets are delivered with the dashboard, and the data adapter reads the binding they carry as type traits. The binding maps each member to its backend name and states how each measure aggregates; the template gives it no meaning. ADR-0012 owns the closed base, the narrowing rules, the traits and the measure and dimension fields.
 
-**Measures and dimensions** are GTS well-known instances of `gts.frontx.dashboard_m.data.measure.v1~` (`id`, `title`, `value_type` one of `number`, `percent` or `duration`, optional `unit`; `percent` is a ratio, where 1 means 100%, and `duration` requires `unit`) and `gts.frontx.dashboard_m.data.dimension.v1~` (`id`, `title`, `value_type` of `string`, `time` or `number`). Their metadata reaches each widget in `set_widget_context` and gives it default titles and formats; presentation fields only override them.
+**Measures and dimensions** are GTS well-known instances, which the product delivers, of `gts.frontx.dashboard_m.data.measure.v1~` (`id`, `title`, `value_type` one of `number`, `percent` or `duration`, optional `unit`; `percent` is a ratio, where 1 means 100%, and `duration` requires `unit`) and `gts.frontx.dashboard_m.data.dimension.v1~` (`id`, `title`, `value_type` of `string`, `time` or `number`). Both bases are plain types, not abstract, so their instances are valid. Their metadata reaches each widget in `set_widget_context` and gives it default titles and formats; presentation fields only override them.
 
 **Grid presentation fields.** The grid's presentation fields (`columns`, `page_sizes`, `frozen_columns`, `column_groups`, `align`, `row_color`) and local column resizing are decided in ADR-0005 and specified in the widget catalog FEATURE.
 
@@ -643,12 +641,12 @@ A **dataset** is a product query type that derives from a product **query family
 
 | Question | Checked by |
 |---|---|
-| Does the widget match its type, does its query have the form the widget type needs, and does the dataset allow the chosen members? | One GTS validation of the dashboard: each embedded widget against the type its `id` names (base fields, closed presentation fields, the widget type's limits on `data`), and polymorphically its `data` against the dataset type that `data.id` names (enums, closed base, filter value counts, date patterns). |
-| Are references well-formed, of the right kind, not abstract, and existing? | `x-gts-instance-ref`, `x-gts-type-ref` and `x-gts-abstract` under GTS v0.17; existence by the GTS lookup mode. Whether GTS checks the reference in the first item of an `order` pair is unconfirmed (section 4, open questions). |
+| Does the widget match its type, does its query have the form the widget type needs, and does the dataset allow the chosen members? | One validation of the dashboard by the FrontX GTS plugin, which applies to each embedded instance the type its own id names (section 4, prerequisite (e)): each embedded widget against the type its `id` names (base fields, closed presentation fields, the widget type's limits on `data`), and its `data` against the dataset type that `data.id` names (enums, closed base, filter value counts, date patterns). |
+| Are references well-formed, of the right kind and not abstract, and do their targets exist? | `x-gts-instance-ref`, `x-gts-type-ref` and `x-gts-abstract` under GTS v0.17. Dashboard validation runs with reference-existence lookup off, so GTS checks the form and kind of a reference but not that its target exists. The owner's load-time cross-check enforces that every member exists (section 4, prerequisite (f)); a widget whose id names an unknown type fails polymorphic validation. Reference keywords apply inside array-item schemas, including `prefixItems` (GTS specification v0.17, section 9.6.3), so the first item of an `order` pair is covered; a plugin conformance test confirms it, and the owner cross-check is a second layer. |
 | Are the chosen members of the right kind? | The time dimension by the dataset's enum; other kinds by the owner: every query member names a registered instance, of the kind that the widget type's `member_kinds` trait asks for, checked against the member instance's `value_type`. |
 | Cross-checks that JSON Schema cannot express | The widget catalog's load-time cross-checks, run by the owner: the query members each name a registered instance; the first item of every `order` pair is also named in `measures` or `dimensions`, or is the time dimension with a `granularity`. This owner check is the guaranteed layer for `order` pairs. Each filter operator fits its member's kind (rules in `cpt-frontx-dashboard-adr-query-vocabulary-and-datasets`). Date pairs: start not after end, and real calendar values. Filter value content: numbers for `gt`, `gte`, `lt` and `lte`; dates or allowed relative strings for date operators. The time dimension is time-valued. The grid cross-checks of [ADR-0005](ADR/0005-data-grid-library-v1.md) include that `limit` is one of the `page_sizes` values. With the member-kind check above, the layout checks, the served-family check and the shape comparison below, these are the only checks besides GTS validation. |
 | Does the data adapter serve the query's family? | The owner, from the query family in the type chain of `data.id`. |
-| Does the delivered data match the shape? | FrontX's validation of each `set_data` action, polymorphic on `data.id`, validates the instance against the shape its own id names. The owner then drops an instance whose shape differs from the request's `data_shape`. |
+| Does the delivered data match the shape? | The FrontX GTS plugin's validation of each `set_data` action, polymorphic on `data.id`, validates the instance against the shape its own id names. The owner then drops an instance whose shape differs from the request's `data_shape`. |
 
 The cross-checks are specified in FEATURE `widget-catalog`.
 
@@ -906,7 +904,7 @@ The FrontX type-system port offers register schema, get schema, register and val
 
 ##### Responsibility scope: Trait Helper
 
-- Resolves a type's effective traits: gets the schemas along the type's `$id` chain with `getSchema` and merges their `x-gts-traits` with RFC 7396.
+- Resolves a type's effective traits: gets the schemas along the type's `$id` chain with `getSchema`, merges their `x-gts-traits` with RFC 7396, and fills in the `default` values of the effective trait schema (GTS specification v0.17, section 9.7.5).
 - Is template code in the `dashboard` package, carried by the dashboards root and the larger-view modal.
 - Is offered to the product's data adapter with a stable signature, because product data adapter code calls it (`cpt-frontx-dashboard-interface-trait-helper`, `cpt-frontx-dashboard-adr-template-packages-and-host-contract`).
 - Uses the registry access of the owner runtime it runs in. The data adapter interface hands the data adapter that access, or a trait helper bound to it: one per owner runtime, for the dashboards root and for the larger-view modal (section 3.3).
@@ -970,7 +968,7 @@ The consuming product implements this interface; the template only calls it. Thi
 **Obligations of an implementation.**
 
 - It implements all five fill modes of section 3.1, so it can fill any data shape for any query family it serves.
-- It returns delivered types and instances that the owner can register. GTS keeps the first registration of an id, so a dataset, measure or dimension with new content gets a new version id. Template types are registered before any dashboard loads, so a delivered type cannot take their place.
+- It returns delivered types and instances that the owner can register. The template expects the FrontX type store to keep the first registration of an id (the specification leaves mutability to the implementation, GTS specification v0.17, sections 4.2 and 6; section 4, prerequisite (g)), so a dataset, measure or dimension with new content gets a new version id. The safety does not depend on that behaviour: before it registers a delivery, the owner rejects any delivered type id that equals a template type id, as a dashboard-level failure. Template types are registered before any dashboard loads.
 - It reads each query as the query format of `cpt-frontx-dashboard-adr-query-vocabulary-and-datasets` defines it. It maps each member id to a backend member name through the dataset's binding traits and drops the template-only `id`.
 - It passes `timezone`, which the data widget set to the browser's resolved IANA time zone name, through to the backend, and dates resolve in that time zone. It may cache identical queries.
 - When `order` is absent, it applies the format's default order. For an empty `order` list, it applies no order.
@@ -1001,7 +999,7 @@ The stability class is given in the API Stability Classification below.
 
 | Input | Output | Failure |
 |-------|--------|---------|
-| a type id | the effective traits of the type: the `x-gts-traits` of the schemas along its `$id` chain, merged with RFC 7396 from the base to the type | a schema along the chain cannot be found: a failure, never a partial result |
+| a type id | the effective traits of the type: the `x-gts-traits` of the schemas along its `$id` chain, merged with RFC 7396 from the base to the type, with the `default` values of the effective trait schema filled in for traits not set | a schema along the chain cannot be found: a failure, never a partial result |
 
 The domain owners call it for widget types, and the data adapter may call it for datasets. Each owner runtime has its own, bound to that runtime's registry access; there is no global singleton. Its signature belongs to the data adapter row of the product-supplied implementations and has the same stability (API Stability Classification below).
 
@@ -1045,7 +1043,7 @@ Every template action is a type derived from the FrontX action base. A chain car
 | `set_data` | the requesting widget extension (`reply_to`) | domain owner → data widget | `data`: one data instance, typed by the data shape base and carrying its combined id; `timestamp`: copied from the request | experimental |
 | `show_larger_view` | the larger-view modal's extension | the cell widget's chain, after `mount_ext` of the larger-view modal | `dashboard`: the dashboard id; `widget`: the larger-view widget id | experimental |
 
-The payloads are closed. `set_widget_context` carries no widget data and no backend detail: everything a widget needs to render and to ask for its data reaches it in this one action, in a cell and in the larger view alike. `request_data` and `set_data` are single actions for every data widget type, because GTS validates the embedded query and the embedded data instance against the derived types their own ids name.
+The payloads are closed. `set_widget_context` carries no widget data and no backend detail: everything a widget needs to render and to ask for its data reaches it in this one action, in a cell and in the larger view alike. `request_data` and `set_data` are single actions for every data widget type, because the FrontX GTS plugin validates the embedded query and the embedded data instance against the derived types their own ids name (section 4, prerequisite (e)).
 
 FrontX lifecycle actions on the template's domains and on the shell's `popup` domain:
 
@@ -1687,10 +1685,14 @@ The product's data adapter and its backend client are bundled with the domain ow
 
 **Prerequisites outside the template.** The owner of each is the template architect.
 
-- **(a) FrontX on GTS v0.17.** The FrontX gts-plugin, and the `template-shell` build that uses it, must run GTS v0.17, so that `x-gts-instance-ref`, `x-gts-type-ref`, `x-gts-abstract` and traits apply as v0.17 defines them. On an older GTS version a dashboard cannot be validated end to end. The template uses no interim workaround.
+- **(a) FrontX on GTS v0.17.** The FrontX gts-plugin, and the `template-shell` build that uses it, must run GTS v0.17, so that `x-gts-instance-ref`, `x-gts-type-ref`, `x-gts-abstract` and traits apply as v0.17 defines them. FrontX's own base schemas (action, domain and extension bases) must use the v0.17 reference keywords (`x-gts-type-ref`, `x-gts-instance-ref`) before the template's derived types register. On an older GTS version a dashboard cannot be validated end to end. The template uses no interim workaround.
 - **(b) A realm-shared GTS type store.** The FrontX release must provide the GTS type store that every runtime of a realm sees (FrontX gts-plugin ADR-0001). Nested owners validate chains that reference the shell's `popup` domain and the larger-view modal's static extension, which are registered in the shell's registry, so the type store must be shared. The store is shared among provider copies that agree on store format, GTS library line and built-in set, so the shell, the dashboards root and the larger-view modal must run such compatible copies, and none uses the isolation option. The template adds no shared state of its own.
 - **(c) A modal container for the shell's `popup` domain.** `template-shell` must render a container for its `popup` domain that shows the occupant in the shell's modal area, keeps keyboard focus inside the modal while it is open, and unmounts the occupant with `unmount_ext` on a click outside it (section 3.5). Without it, no larger view can be shown, while the rest of the dashboard works.
 - **(d) Data access for every viewer.** The consuming product's data adapter and backend must let every viewer who may see a dashboard get the data of its widgets. Without it, a viewer sees widgets that keep their loader, depending on what the data adapter does.
+- **(e) Polymorphic validation of embedded instances.** The FrontX GTS plugin must validate each embedded instance against the type its own id names, even where the property's schema names a base type. The GTS specification does not state this as a rule; it is a capability the template requires of the plugin. Conformance test: an embedded widget whose id names a widget type is validated against that type's limits; an embedded query is validated against the enums of its dataset; an embedded id whose rightmost type is abstract is rejected (GTS specification v0.17, sections 3.7 and 9.11, where abstract types have no direct instances).
+- **(f) Reference lookup off.** Dashboard validation runs with reference-existence lookup off. The specification suggests lookup modes such as none, any-present and any-valid as a policy. Under a lookup mode the anonymous combined ids of the dashboard, widget, query and data instance would be looked up and fail, because they are never registered. The plugin must let the owners select lookup off. Member existence is enforced by the owner's load-time cross-check; a widget whose id names an unknown type fails polymorphic validation.
+- **(g) First registration of an id wins.** The template expects the FrontX type store to keep the first registration of an id, because the specification leaves mutability to the implementation (GTS specification v0.17, sections 4.2 and 6). Test: register a dataset type, register different content under the same id, and confirm that the first stays in effect. The template's safety does not depend on it: the owner rejects a delivered type id that equals a template type id before it registers a delivery.
+- **(h) Combined anonymous instance ids.** The FrontX GTS plugin must accept a combined anonymous instance id, a type chain followed by a UUID, which the specification offers as an optional capability (GTS specification v0.17, section 3.7). Test: validate an instance whose id is a type chain followed by a random UUID.
 
 **Handoffs to the FEATURE documents.**
 
@@ -1708,21 +1710,22 @@ The product's data adapter and its backend client are bundled with the domain ow
 
 - **Schema tests**: for each data widget type, one accepted and one rejected query; misspelled presentation fields; `markdown_card` without `data`; queries outside the dataset's enums; invalid date ranges, filter value counts and `order` pairs; an authored `timezone`; literal base operands.
 - **Unit tests per widget type**: rendering of each data shape, the loader, the busy indicator, the empty state, the timestamp rule, the metric trend, and markdown with embedded HTML; the sent query carries the viewer's `timezone` while the authored query has none; a null dimension value shows as an empty label.
-- **Trait helper tests**: the trait helper returns the RFC 7396 merge of the traits along the `$id` chain, and a failure with no partial result when a schema is missing.
+- **Plugin conformance tests**: the tests of prerequisites (e) to (h) of section 4, and a reference keyword inside an `order` pair that names a wrong kind of id.
+- **Trait helper tests**: the trait helper returns the RFC 7396 merge of the traits along the `$id` chain with the trait schema defaults filled in, and a failure with no partial result when a schema is missing.
 - **Fill-mode conformance tests**: each fill mode produces the fields of section 3.1 from fixture results; an answer of another widget type's shape is dropped by the owner.
-- **Integration tests of the domain owners with FrontX**: domain registration with `request_data` handlers; admission of widget entries into both domains; deterministic ids across repeated loads; unregistration on a different dashboard; handlers that resolve on acceptance with a slow data adapter; realization precedence; delivered measures and dimensions register before dataset types, and a changed dataset under the same id keeps the first registration; an `order` pair whose first item is not a registered instance is rejected; both cannot-show levels; opening, closing and refreshing the larger view; nothing registered into the shell's registry.
+- **Integration tests of the domain owners with FrontX**: domain registration with `request_data` handlers; admission of widget entries into both domains; deterministic ids across repeated loads; unregistration on a different dashboard; handlers that resolve on acceptance with a slow data adapter; realization precedence; delivered measures and dimensions register before dataset types, and a changed dataset under the same id keeps the first registration; a delivery that holds a type id equal to a template type id is rejected before anything registers; an `order` pair whose first item is not a registered instance is rejected; both cannot-show levels; opening, closing and refreshing the larger view; nothing registered into the shell's registry.
 - **Contract tests**: the data adapter interface against the conformance cases of the data adapter contract FEATURE.
 - **End-to-end test data**: the reference dashboard of section 3.9.
 
 **Open questions.** The owner of each is the template architect.
 
 1. **Budget figures.** PRD Q1 and the provisional figures of section 3.9, including the initial-render budget, the bundle figures, the reference dashboard and the large-grid figure of `cpt-frontx-dashboard-nfr-large-table`: each is a measurement task under the conditions and counting rule of section 3.9.
-2. **Reference existence (lookup mode).** GTS v0.17 leaves the check that a referenced instance exists to a lookup mode (`none`, `any-present`, `any-valid`). Which mode the FrontX v0.17 gts-plugin uses, and whether the domain owners can select `any-present`, is checked against that plugin (`cpt-frontx-dashboard-adr-shared-data-types-and-schemas`).
+2. **Reference existence (lookup mode).** The specification suggests a lookup mode (`none`, `any-present`, `any-valid`) as a policy for whether the target of a reference must exist. The template runs dashboard validation with lookup off, because the anonymous combined ids are never registered, and enforces member existence in the owner's cross-check. What remains open is whether the FrontX v0.17 gts-plugin lets the domain owners select lookup off (prerequisite (f); `cpt-frontx-dashboard-adr-shared-data-types-and-schemas`).
 3. **Store growth.** If validation of dashboards and of every action registers instances in the GTS store, which has no removal, the store grows with each dashboard load and each action. This is checked with the v0.17 gts-plugin API.
 4. **Layout details.** The row track size of the grid, which is the unit of `h`, and the reading and keyboard order of cells (`cpt-frontx-dashboard-adr-dashboard-layout-grid`).
 5. **Chart details.** How a mounted chart re-themes on a scope switch, by a registered theme name per scope or by re-creating the instance; which ECharts specifiers are shared dependencies and which wrapper entry is used; and how charts meet the accessibility requirement through renderer choice, labelling and decals (`cpt-frontx-dashboard-adr-charting-library`).
 6. **Routed extension details.** The route pattern and presentation label of the dashboards root's routed extension, the static route of the larger-view modal, and the form of the modal's private subroute parameters.
-7. **Reference check inside `order` pairs.** Whether GTS v0.17 checks `x-gts-instance-ref` inside `prefixItems` is unconfirmed. This is checked against the FrontX v0.17 gts-plugin (`cpt-frontx-dashboard-adr-shared-data-types-and-schemas`, `cpt-frontx-dashboard-adr-query-vocabulary-and-datasets`). Membership holds either way, through the dataset enum on the pair's first item and the owner's `order` member check.
+7. **Reference check inside `order` pairs.** The specification requires reference keywords to apply in array-item schemas, including `prefixItems` (GTS specification v0.17, section 9.6.3). Whether the FrontX v0.17 gts-plugin does so is a conformance test (`cpt-frontx-dashboard-adr-shared-data-types-and-schemas`, `cpt-frontx-dashboard-adr-query-vocabulary-and-datasets`). The dataset enum on the pair's first item and the owner's `order` member check enforce membership as a second layer.
 
 **Risks.**
 
