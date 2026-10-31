@@ -1,6 +1,7 @@
 ---
 status: accepted
 version: 1
+priority: p1
 date: 2026-10-31
 decision-makers: template-dashboard architecture maintainers
 description: "Decision record for the charting library of the catalog chart widget types: Apache ECharts through echarts/core, with a per-instance frontx-dashboard theme built from ui-kit tokens of the scope the host theme id maps to, rebuilt on every theme change, counted by the DESIGN budget rule."
@@ -19,8 +20,8 @@ description: "Decision record for the charting library of the catalog chart widg
   - [Consequences](#consequences)
   - [Confirmation](#confirmation)
 - [Pros and Cons of the Options](#pros-and-cons-of-the-options)
-  - [Apache ECharts with echarts/core](#apache-echarts-with-echartscore)
-  - [Chart.js with react-chartjs-2](#chartjs-with-react-chartjs-2)
+  - [Apache ECharts with `echarts/core`](#apache-echarts-with-echartscore)
+  - [Chart.js with `react-chartjs-2`](#chartjs-with-react-chartjs-2)
   - [Recharts](#recharts)
 - [More Information](#more-information)
 - [Traceability](#traceability)
@@ -29,17 +30,17 @@ description: "Decision record for the charting library of the catalog chart widg
 
 ## Context and Problem Statement
 
-The catalog chart widget types `cartesian_chart`, `pie_chart` and `heatmap` draw cartesian charts (bar, line, area), pie charts and heatmaps from the typed data the dashboard root passes through `render_widget` ([ADR-0009](0009-subject-agnostic-widget-catalog-v1.md)). A widget is a passive renderer: it renders the `render_widget {widget, data}` action, including its own empty state, and makes no requests. Which charting library should the catalog chart widgets use, and how do charts take the host's light or dark look?
+The catalog chart widget types `cartesian_chart`, `pie_chart` and `heatmap` draw cartesian charts (bar, line, area, scatter), pie charts and heatmaps from the typed data the dashboard root passes through `render_widget` ([ADR-0009](0009-subject-agnostic-widget-catalog-v1.md)). A widget is a passive renderer: it renders the `render_widget {widget, data}` action, including its own empty state, and makes no requests. Which charting library should the catalog chart widgets use, and how do charts take the host's light or dark look?
 
 The template has no theme of its own. Its only theme input is the host theme id, a shared property the dashboard root publishes, and every widget maps that id to the light or dark scope of `@gears-frontx/ui-kit` ([ADR-0006](0006-theme-distribution-v1.md)). Charts must take their colors and typography from the kit tokens of that scope.
 
-FrontX isolates every widget instance: each evaluates its own copy of its code (FrontX ADR-0011). Every chart widget instance therefore evaluates its own copy of the charting library.
+FrontX isolates every widget instance: each evaluates its own copy of its code (FrontX ADR-0011). Every chart widget instance therefore evaluates its own copy of the charting library. For scale, the full Apache ECharts library is about 300 KB gzipped.
 
 ## Decision Drivers
 
 * Charts must follow the ui-kit tokens of the light or dark scope the host theme id maps to, with no per-widget manual styling (`cpt-frontx-dashboard-nfr-visual-quality`).
 * A chart option should be a JSON object, which fits a widget configured as data.
-* The library must cover cartesian, pie and heatmap without extra plugins.
+* The library must cover cartesian (including scatter), pie and heatmap without extra plugins.
 * The library must take theme values built from ui-kit tokens in one place, and take them again when the host theme changes.
 * Download and evaluation cost must be understood under per-instance isolation.
 
@@ -51,7 +52,7 @@ FrontX isolates every widget instance: each evaluates its own copy of its code (
 
 ## Decision Outcome
 
-Chosen option: "Apache ECharts with `echarts/core`", because it covers cartesian, pie and heatmap natively, takes a JSON option object, and applies one registered theme to every chart type, which keeps token-driven light and dark theming in one place.
+Chosen option: "Apache ECharts with `echarts/core`", because it covers cartesian (including scatter), pie and heatmap natively, takes a JSON option object, and applies one registered theme to every chart type, which keeps token-driven light and dark theming in one place.
 
 **Chart theme.** Each chart widget instance maps the host theme id to the light or dark scope of ui-kit and builds the ECharts theme `frontx-dashboard` from the kit tokens of that scope: colors, typography, axes and tooltips. It registers that theme in its own ECharts copy, and builds and registers it again on every theme change, without any new request. The mapping effort is one theme builder that turns kit tokens into an ECharts theme for all chart types.
 

@@ -21,14 +21,14 @@ description: "Decomposition of the dashboard template DESIGN into four features:
 
 ## 1. Overview
 
-The DESIGN is decomposed into four features. Two are **model features** (the dashboard model and the widget contract) that declare GTS types and have no actor flows. One is a **runtime feature** (the dashboard runtime) that owns the flows. One is a **catalog feature** (the widget catalog) that owns the widget types, their params and data shapes, and the rendering rules.
+The DESIGN is decomposed into four features. Two are **model features** (the dashboard model and the widget contract) that declare GTS types and have no actor flows. One is a **runtime feature** (the dashboard runtime) that owns the flows. One is a **catalog feature** (the widget catalog) that owns the widget types, their render schemas and data shapes, and the rendering rules.
 
 **Decomposition strategy:**
 
 - The dashboard model owns the dashboard type, the layout, the cells, the layout checks, and failure attribution. It is the data a dashboard author writes.
 - The widget contract owns the widget base, `data_widget`, the widget-data base, the `render_widget` action, the `widgets` domain and its extension type, the entry declaration, the widget-author obligations, and the shared-dependency and budget rules. It is the contract a widget author writes against.
 - The dashboard runtime owns the hosting, the registry, the GTS-file loading, the binding runner, the cell frame, the larger-view overlay, and teardown. It is the code that renders a dashboard.
-- The widget catalog owns the 9 widget types, each with its params and data shape, the rendering rules, markdown safety, and the grid's client-side sort and page. It is what a dashboard author picks from.
+- The widget catalog owns the 9 widget types, each with its render schema and data shape, the rendering rules, markdown safety, and the grid's client-side sort and page. It is what a dashboard author picks from.
 - Each feature is `p1`: all four are needed for a complete template. The implementation order is the dependency order in section 3.
 
 Each feature is delivered as a single phase; no sub-decomposition is needed at this level.
@@ -51,17 +51,21 @@ Each feature is delivered as a single phase; no sub-decomposition is needed at t
   - The dashboard GTS type and its instances.
   - The layout cells (`x`, `y`, `w`, `h` on the 60-column grid) as plain closed objects.
   - The embedded widget instance (`widget` and `larger_view`) and its registration on its own.
+  - The dashboard's optional `requests` object for named shared requests.
   - The layout checks: cell bounds, overlaps, `x + w ≤ 60`, unique widget ids.
-  - Failure attribution: dashboard-level vs per-cell (D13).
+  - Failure attribution: dashboard-level vs per-cell; a failure affects only its cell or larger view.
 
 - **Out of scope**:
   - The widget types and data types (feature-widget-contract, feature-widget-catalog).
   - The runtime that runs the checks (feature-dashboard-runtime).
 
 - **Requirements Covered**:
-  - [ ] `p1` - `cpt-frontx-dashboard-fr-dashboard-root`
+  - [ ] `p1` - `cpt-frontx-dashboard-fr-dashboard-root` (type and layout checks)
   - [ ] `p1` - `cpt-frontx-dashboard-fr-per-cell-failure`
   - [ ] `p1` - `cpt-frontx-dashboard-fr-dashboard-as-json`
+  - [ ] `p1` - `cpt-frontx-dashboard-fr-shared-data` (the requests object shape)
+  - [ ] `p1` - `cpt-frontx-dashboard-fr-static-data` (binding data in the dashboard JSON)
+  - [ ] `p1` - `cpt-frontx-dashboard-fr-states`
 
 - **Design Principles Covered**:
   - [ ] `p1` - `cpt-frontx-dashboard-principle-open-bases-closed-leaves`
@@ -69,11 +73,13 @@ Each feature is delivered as a single phase; no sub-decomposition is needed at t
 - **Design Constraints Covered**:
   - [ ] `p1` - `cpt-frontx-dashboard-constraint-sixty-column-grid`
   - [ ] `p1` - `cpt-frontx-dashboard-constraint-one-gts-package`
+  - [ ] `p1` - `cpt-frontx-dashboard-constraint-same-origin-data`
 
 - **Domain Model Entities**:
   - Dashboard (type and instances)
   - Cell (layout coordinates, widget, larger_view)
   - Widget instance (embedded, registered on its own)
+  - Named shared request (dashboard `requests` values)
 
 - **Design Components**:
 
@@ -98,12 +104,12 @@ Each feature is delivered as a single phase; no sub-decomposition is needed at t
 - **Depends On**: `cpt-frontx-dashboard-feature-dashboard-model`
 
 - **Scope**:
-  - Hosting-agnostic mounting (single-page application or screen extension) (D12).
-  - The `widgets` domain registration and its declaration (D7).
-  - Generated extensions per cell and per larger view, with deterministic UUIDv5 ids, `mount_ext`/`unmount_ext` with `history: "none"` (D5).
+  - Hosting-agnostic mounting (single-page application or screen extension); the template is hosting-agnostic.
+  - The `widgets` domain registration and its declaration; the widget renders one action, including its own empty state.
+  - Generated extensions per cell and per larger view, with deterministic UUIDv5 ids, `mount_ext`/`unmount_ext` with `history: "none"`; a fix takes effect on the next page load.
   - The served GTS-file fetch and registration; the bundle-schema guard.
-  - The binding runner: request via the FrontX API package, CEL transform, stamp, register (D2, D3, D16, D17, D20).
-  - The cell frame (title, loader, error state, larger-view button) and the larger-view overlay inside the root's container (D7, D8).
+  - The binding runner: own form (request and transform), shared form (shared request, held response, per-cell transform), static form (transform on params, no loader); request via the FrontX API package, CEL transform, stamp, register; the root runs the binding; widgets make no requests; a request that never answers times out; same-origin absolute paths; stamped with a deterministic combined id.
+  - The cell frame (title, loader, error state, larger-view button) and the larger-view overlay inside the dashboard root's own container; the widget renders one action, including its own empty state.
   - Theme and language publishing; teardown; late-result dropping.
 
 - **Out of scope**:
@@ -112,11 +118,13 @@ Each feature is delivered as a single phase; no sub-decomposition is needed at t
   - The 9 catalog widget types (feature-widget-catalog).
 
 - **Requirements Covered**:
-  - [ ] `p1` - `cpt-frontx-dashboard-fr-dashboard-root`
+  - [ ] `p1` - `cpt-frontx-dashboard-fr-dashboard-root` (mount and render runtime)
   - [ ] `p1` - `cpt-frontx-dashboard-fr-runtime-source`
   - [ ] `p1` - `cpt-frontx-dashboard-fr-states`
   - [ ] `p1` - `cpt-frontx-dashboard-fr-same-origin-data`
   - [ ] `p1` - `cpt-frontx-dashboard-fr-no-product-data-code`
+  - [ ] `p1` - `cpt-frontx-dashboard-fr-shared-data` (send-once runner behavior)
+  - [ ] `p1` - `cpt-frontx-dashboard-fr-static-data` (static evaluation)
   - [ ] `p1` - `cpt-frontx-dashboard-fr-larger-view`
   - [ ] `p1` - `cpt-frontx-dashboard-fr-theme`
   - [ ] `p1` - `cpt-frontx-dashboard-fr-safe-mappings`
@@ -144,6 +152,7 @@ Each feature is delivered as a single phase; no sub-decomposition is needed at t
 
   - [ ] `p1` - `cpt-frontx-dashboard-component-dashboard-root` (runtime side)
   - [ ] `p1` - `cpt-frontx-dashboard-component-binding-runner`
+  - [ ] `p3` - `cpt-frontx-dashboard-tech-dashboard-stack`
 
 - **API**:
   - The `widgets` domain and its declaration.
@@ -167,17 +176,18 @@ Each feature is delivered as a single phase; no sub-decomposition is needed at t
 - **Depends On**: `cpt-frontx-dashboard-feature-dashboard-model`
 
 - **Scope**:
-  - The abstract widget base (`id`, `title?`, `params`) and the `entry` trait schema (D6).
-  - The abstract `data_widget` (required `data`, `data_type` trait) (D19).
-  - The abstract widget-data base and the stamped-data id rule (D20).
-  - The `render_widget` action type (D7).
+  - The abstract widget base (`id`, `title?`, `render`) and the `entry` trait schema; the widget base carries the entry trait.
+  - The abstract `data_widget` (required `data`, `data_type` trait); an abstract data_widget between the base and every data-taking type.
+  - The abstract widget-data base and the stamped-data id rule; stamped with a deterministic combined id.
+  - The `render_widget` action type; the widget renders one action, including its own empty state.
   - The `widgets` domain extension type.
   - The entry declaration (a plain FrontX `entry_mf` instance: `requiredProperties`, `actions`, `domainActions`, `manifest`, `exposedModule`, `exposeAssets`).
-  - The widget-author obligations (renders `params` and `data`, makes no requests, theme mapping, ui-kit tokens, formats, text not markup, no cut-off, no meaning by colour alone, keyboard-operable).
+  - The widget-author obligations (renders `render` and `data`, makes no requests, theme mapping, ui-kit tokens, formats, text not markup, no cut-off, no meaning by colour alone, keyboard-operable).
   - The shared-dependency and budget rules (ADR-0010).
+  - The theme and language shared-property type declarations (part of the bundle).
 
 - **Out of scope**:
-  - The 9 concrete widget types and their params/data shapes (feature-widget-catalog).
+  - The 9 concrete widget types and their render schemas/data shapes (feature-widget-catalog).
   - The runtime that sends `render_widget` (feature-dashboard-runtime).
 
 - **Requirements Covered**:
@@ -201,7 +211,7 @@ Each feature is delivered as a single phase; no sub-decomposition is needed at t
   - Widget base (abstract, `entry` trait)
   - Data widget (abstract, `data`, `data_type` trait)
   - Widget data base (abstract)
-  - Binding (closed sub-schema of `data_widget`)
+  - Binding (a `oneOf` of three closed forms — own, shared, static — a closed sub-schema of `data_widget`)
   - MFE entry (plain FrontX instance)
 
 - **Design Components**:
@@ -223,14 +233,14 @@ Each feature is delivered as a single phase; no sub-decomposition is needed at t
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-feature-widget-catalog`
 
-- **Purpose**: The 9 widget types, each with its params and data shape, the rendering rules, markdown safety, and the grid's client-side sort and page. This is what a dashboard author picks from.
+- **Purpose**: The 9 widget types, each with its render schema and data shape, the rendering rules, markdown safety, and the grid's client-side sort and page. This is what a dashboard author picks from.
 
 - **Depends On**: `cpt-frontx-dashboard-feature-widget-contract`
 
 - **Scope**:
-  - The 9 v1 widget types: `summary_card`, `metric_card`, `ranked_list_card`, `progress_list_card`, `grid`, `cartesian_chart`, `pie_chart`, `heatmap`, `markdown_card` (D1).
-  - The final `params` and data shapes per type (O3).
-  - The grid row cap and page sizes (O8), and the grid's client-side sort and page (D15).
+  - The 9 v1 widget types: `summary_card`, `metric_card`, `ranked_list_card`, `progress_list_card`, `grid`, `cartesian_chart`, `pie_chart`, `heatmap`, `markdown_card`.
+  - The final render schemas and data shapes per type are decided in the widget catalog FEATURE.
+  - The grid row cap and page sizes are set in the widget catalog FEATURE; the grid sorts and pages client-side over the rows the transform delivered.
   - Markdown safety: CommonMark, HTML as text, script links inactive, links with no opener.
   - The per-type rendering rules (theme mapping, ui-kit tokens, formats, accessibility).
   - The catalog widget libraries: ECharts via `echarts/core`, TanStack Table v8 + virtualizer, CommonMark.

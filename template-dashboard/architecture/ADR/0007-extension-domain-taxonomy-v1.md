@@ -1,9 +1,10 @@
 ---
 status: accepted
 version: 1
+priority: p1
 date: 2026-10-31
 decision-makers: template-dashboard architecture maintainers
-description: "Decision record for the extension domain, action, generated ids and lifecycle of the dashboard template: one widgets domain the dashboard root owns, the single render_widget action, one generated extension per cell and per larger view with deterministic UUIDv5 ids, and an in-container larger-view overlay (D7, D8)."
+description: "Decision record for the extension domain, action, generated ids and lifecycle of the dashboard template: one widgets domain the dashboard root owns, the single render_widget action, one generated extension per cell and per larger view with deterministic UUIDv5 ids, and an in-container larger-view overlay."
 ---
 
 # ADR-0007: Extension domain, action and the larger view
@@ -31,10 +32,14 @@ description: "Decision record for the extension domain, action, generated ids an
 
 A dashboard shows widgets in cells, and a cell may define a larger view: a second widget instance shown in an overlay. Widgets are FrontX MFE instances, and FrontX isolates each instance. Which domain does the dashboard root own, which action do widgets render, how are extensions generated and identified, and where does the larger view appear?
 
+Assumptions: FrontX retains per-extension state by id; a nested registry survives an unmount.
+
 ## Decision Drivers
 
-* A widget renders one action, including its own empty state, and nothing more; the dashboard root owns the cell frame (title, loader, error state and the larger-view button) (D7).
-* The larger view is an overlay inside the dashboard root's own container, not a host modal (D8). The template owns its accessibility.
+Drivers in priority order:
+
+* A widget renders one action, including its own empty state, and nothing more; the dashboard root owns the cell frame (title, loader, error state and the larger-view button).
+* The larger view is an overlay inside the dashboard root's own container, not a host modal. The template owns its accessibility.
 * FrontX keeps per-extension state by id, so loading the same dashboard again must reuse the same ids.
 * FrontX requires a generated extension id to be a GTS instance id of an extension type.
 * Every listed action has a handler; if the domain is rejected, the dashboard can't be shown.
@@ -62,13 +67,13 @@ The domain declaration fields (the concrete FrontX domain-declaration call is an
 * `lifecycleStages`: [] and `extensionsLifecycleStages`: [];
 * no `route`.
 
-**The `render_widget` action (D7).** The widget contract is one action, `render_widget {widget, data?}`. The widget renders it, including its own empty state, and nothing more. The dashboard root owns the cell frame: title, loader, error state and the larger-view button. The `render_widget` payload is validated against its action type without polymorphism, so its `widget` and `data` fields reference the open bases, and the payload never closes them.
+**The `render_widget` action.** The widget contract is one action, `render_widget {widget, data?}`. The widget renders it, including its own empty state, and nothing more. The dashboard root owns the cell frame: title, loader, error state and the larger-view button. The `render_widget` payload is validated against its action type without polymorphism, so its `widget` and `data` fields reference the open bases, and the payload never closes them.
 
 **Containers.** The root attaches the domain's one root element (the concrete mounter call is fixed in the DESIGN). The domain's container hooks create each extension's container and append it under that root. Cell placement and the larger-view overlay are done by the hooks and CSS on those containers, never by mounting into arbitrary elements.
 
-**Generated extensions and their ids.** The root registers one generated extension per cell and per larger view in `widgets`, then mounts it with `mount_ext` (`history: "none"`). The extension id is `<widgets extension type>~<UUIDv5 under the template namespace of widget id|role|entry id>`, where role is `cell` or `larger_view` (D5 id rules). FrontX requires it to be a GTS instance id of an extension type. The role keeps a cell extension and a larger-view extension of the same widget apart. The entry id gives a new id when a different entry wins, so FrontX never reuses one id for different code. Reloading the same dashboard reuses the ids. Everything that may differ while the widget id stays the same (params, the binding, data) reaches the widget in `render_widget`, never in the extension declaration.
+**Generated extensions and their ids.** The root registers one generated extension per cell and per larger view in `widgets`, then mounts it with `mount_ext` (`history: "none"`). The extension id is `<widgets extension type>~<UUIDv5 under the template namespace of widget id|role|entry id>`, where role is `cell` or `larger_view`. FrontX requires it to be a GTS instance id of an extension type. The role keeps a cell extension and a larger-view extension of the same widget apart. The entry id gives a new id when a different entry wins, so FrontX never reuses one id for different code. Reloading the same dashboard reuses the ids. Everything that may differ while the widget id stays the same (render, the binding, data) reaches the widget in `render_widget`, never in the extension declaration.
 
-**Larger view (D8).** The cell frame shows the button only when the cell has `larger_view`. A click opens the overlay inside the dashboard root's own container, then the root runs the cell flow for the `larger_view` widget in the same extension domain, with its own request. The cell and its larger view are independent snapshots. The overlay is accessible: a close button with an accessible name, focus kept inside, and closing on Escape or a click outside. It closes on a page refresh. Every `mount_ext` and `unmount_ext` the root sends carries `history: "none"`; FrontX treats a missing intent as `push`, which would drop the host's captured initial route.
+**Larger view.** The cell frame shows the button only when the cell has `larger_view`. A click opens the overlay inside the dashboard root's own container, then the root runs the cell flow for the `larger_view` widget in the same extension domain, with its own binding. The cell and its larger view are independent snapshots for the own and static forms; a shared-form larger view shows the same held response as its cell. The overlay is accessible: a close button with an accessible name, focus kept inside, and closing on Escape or a click outside. It closes on a page refresh. Every `mount_ext` and `unmount_ext` the root sends carries `history: "none"`; FrontX treats a missing intent as `push`, which would drop the host's captured initial route.
 
 **Lifecycle.** On leaving, the root unmounts every extension and keeps the registrations. Before another dashboard loads, it unregisters the generated extensions. Results that arrive late are dropped for any extension that has been unmounted; the root never sends to an unmounted extension.
 
@@ -85,7 +90,10 @@ The domain declaration fields (the concrete FrontX domain-declaration call is an
 ### Confirmation
 
 * A test registers the `widgets` domain and confirms it declares the shared properties, the lifecycle actions, `render_widget`, the `widgets` extension type, and no route.
+* A test confirms the domain is rejected without its `render_widget` handler.
+* A test confirms a widget entry lacking `render_widget` is rejected at admission.
 * A test mounts a dashboard and confirms one extension is generated per cell and per larger view, with ids of the form `<widgets extension type>~<UUIDv5(widget id|role|entry id)>`, and that a reload reuses the same ids.
+* A test loads the same dashboard twice with another dashboard in between, and confirms the generated ids are equal for the same widget, role and entry, that the extensions of the first dashboard are unregistered before the second registers, and that no collision diagnostic is logged.
 * A test opens a larger view and confirms the overlay appears inside the root's container, the close button and Escape and a click outside close it, focus stays inside while open, and it closes on a page refresh.
 * A test confirms every `mount_ext` and `unmount_ext` carries `history: "none"`.
 * A test confirms a late result for an extension that has been unmounted is dropped and never sent.
@@ -114,7 +122,7 @@ A `cells` domain for cell widgets and a `larger_view` domain for larger-view wid
 The larger view is a static extension of a host modal domain, mounted outside the dashboard root.
 
 * Good, because the host's modal chrome is reused.
-* Bad, because the template no longer owns the larger view's accessibility (D8), and the template depends on a host modal feature it cannot guarantee (it is hosting-agnostic, D12).
+* Bad, because the template no longer owns the larger view's accessibility, and the template depends on a host modal feature it cannot guarantee (it is hosting-agnostic).
 * Bad, because a child cannot register into an ancestor's registry, so the root could not register the larger-view extension without a separate registry and a separate static extension.
 
 ## More Information
@@ -131,7 +139,7 @@ The larger view is a static extension of a host modal domain, mounted outside th
 
 This decision directly addresses the following requirements or design elements:
 
-* `cpt-frontx-dashboard-fr-larger-view` — the larger view is an overlay inside the root's own container, accessible, and closable on Escape, a click outside, or a page refresh (D8).
+* `cpt-frontx-dashboard-fr-larger-view` — the larger view is an overlay inside the root's own container, accessible, and closable on Escape, a click outside, or a page refresh.
 * `cpt-frontx-dashboard-fr-isolation` — each widget is a generated FrontX extension in the `widgets` domain.
-* `cpt-frontx-dashboard-fr-states` — the root owns the cell frame (title, loader, error state, the larger-view button); the widget owns its empty state (D7).
+* `cpt-frontx-dashboard-fr-states` — the root owns the cell frame (title, loader, error state, the larger-view button); the widget owns its empty state.
 * `cpt-frontx-dashboard-interface-contract` — the `widgets` domain and the `render_widget` action are part of the published contract.

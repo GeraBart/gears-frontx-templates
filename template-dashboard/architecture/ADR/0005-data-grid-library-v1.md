@@ -1,9 +1,10 @@
 ---
 status: accepted
 version: 1
+priority: p1
 date: 2026-10-31
 decision-makers: template-dashboard architecture maintainers
-description: "Decision record for the library behind the grid widget type: TanStack Table v8 with the virtualizer and ARIA grid semantics, rendering one client-side page of up to the row cap of rows the transform delivered; the grid sorts and pages client-side (D15), never sends a request, and never holds more than one page."
+description: "Decision record for the library behind the grid widget type: TanStack Table v8 with the virtualizer and ARIA grid semantics, rendering one client-side page at a time of the rows the transform delivered, up to the row cap; the grid holds all rows up to the cap, sorts and pages client-side, and never sends a request."
 ---
 
 # ADR-0005: Data grid library
@@ -22,6 +23,8 @@ description: "Decision record for the library behind the grid widget type: TanSt
   - [TanStack Table v8 (headless) with the virtualizer](#tanstack-table-v8-headless-with-the-virtualizer)
   - [AG Grid Community Edition](#ag-grid-community-edition)
   - [MUI DataGrid (free tier)](#mui-datagrid-free-tier)
+  - [Mantine DataTable](#mantine-datatable)
+  - [Glide Data Grid (canvas-based)](#glide-data-grid-canvas-based)
   - [No library: semantic HTML table rendered by the widget](#no-library-semantic-html-table-rendered-by-the-widget)
 - [More Information](#more-information)
 - [Traceability](#traceability)
@@ -30,27 +33,30 @@ description: "Decision record for the library behind the grid widget type: TanSt
 
 ## Context and Problem Statement
 
-The `grid` widget type shows tabular data. Its data is the grid's data shape, delivered through `render_widget` from the rows the binding's transform produced ([ADR-0009](0009-subject-agnostic-widget-catalog-v1.md), [ADR-0011](0011-widget-data-binding-v1.md)). The transform output has a row cap (O8). The grid is a passive renderer: it receives its data and renders it, and makes no requests.
+The `grid` widget type shows tabular data. Its data is the grid's data shape, delivered through `render_widget` from the rows the binding's transform produced ([ADR-0009](0009-subject-agnostic-widget-catalog-v1.md), [ADR-0011](0011-widget-data-binding-v1.md)). The transform output has a row cap. The grid is a passive renderer: it receives its data and renders it, and makes no requests.
 
-The grid sorts and pages client-side over the rows it received (D15). The browser holds only the rows the transform delivered, up to the row cap; it never holds more than one page at a time. Column resizing is the only interaction that redraws locally and is never saved. In FrontX each widget instance is isolated, so every grid instance evaluates its own copy of whatever library the grid uses.
+The grid sorts and pages client-side over the rows it received. The browser holds the rows the transform delivered, up to the row cap; the grid renders one page at a time. Column resizing is the only interaction that redraws locally and is never saved. In FrontX each widget instance is isolated, so every grid instance evaluates its own copy of whatever library the grid uses.
 
 Which library, if any, renders the `grid` widget type?
 
 ## Decision Drivers
 
-* The grid sorts and pages client-side over the rows the transform delivered (D15); the library must not fetch, filter or page from a backend.
+* The grid sorts and pages client-side over the rows the transform delivered; the library must not fetch, filter or page from a backend.
 * Strict TypeScript support with generic column definitions.
 * MIT license for every feature the widget uses.
 * Headless rendering, so the widget owns the markup and ui-kit tokens style the grid.
 * Small library size, because every grid instance evaluates its own copy (FrontX ADR-0011).
 * Rendering performance with one page of up to the row cap, so only the visible rows of a page may be rendered.
 * Accessibility: ARIA grid semantics, including row counts and positions for virtualized rows and sort state on headers.
+* Reliable AI code generation for the library's API.
 
 ## Considered Options
 
 * TanStack Table v8 (headless) with the virtualizer
 * AG Grid Community Edition
 * MUI DataGrid (free tier)
+* Mantine DataTable
+* Glide Data Grid (canvas-based)
 * No library: semantic HTML table rendered by the widget
 
 ## Decision Outcome
@@ -59,13 +65,13 @@ Chosen option: "TanStack Table v8 (headless) with the virtualizer", because it c
 
 **Data and columns.** The `grid` widget type uses TanStack Table v8 as a typed column and row model for rendering. The widget builds one column definition per displayed column. Each definition reads its value from the row in the data shape. The widget keeps the rows in the delivered order. The library's own fetching, filtering and pagination features are not used, because the grid sorts and pages client-side over the rows it already has. Its column sizing feature is used for resizing only.
 
-**Client-side sort and page (D15).** A click on a sortable column header sorts the rows the widget holds, in place. A page control moves between pages of the row cap. A new page size changes the page size. None of these sends a request or re-runs the binding: the grid works only on the rows the transform delivered, up to the row cap (O8). The pager shows the position in the result, the number of rows on the page and the total. A page size is always offered. The larger view of a grid is its own grid widget with its own data, and it sorts and pages the same way.
+**Client-side sort and page.** A click on a sortable column header sorts the rows the widget holds, in place. A page control moves between pages of the row cap. A new page size changes the page size. None of these sends a request or re-runs the binding: the grid works only on the rows the transform delivered, up to the row cap. The pager shows the position in the result, the number of rows on the page and the total. A page size is always offered. The larger view of a grid is its own grid widget with its own data, and it sorts and pages the same way.
 
 **Presentation features keyed by column.** Frozen leading columns that stay visible during horizontal scroll, grouped column headings, column alignment, and row colouring keyed by a column whose value names a ui-kit row-colour token, which adapts to the light or dark scope. A coloured row also shows an icon with an accessible name, so meaning is never conveyed by colour alone (`cpt-frontx-dashboard-fr-accessibility`).
 
 **Virtualized rows per page.** The widget uses the TanStack virtualizer: it renders only the rows in view, so one page of up to the row cap renders and scrolls smoothly. The widget renders the table itself, and each cell shows its value as text. The widget keeps the library behind its own typed props, so the grid configuration does not depend on library types.
 
-**Grid checks.** The widget type's schema closes its presentation fields (`unevaluatedProperties: false`), so a misspelled field fails validation and the widget gets the cannot-be-shown state ([ADR-0003](0003-shared-data-types-and-schemas-v1.md)). The row cap and the page sizes are decided in the widget catalog ([ADR-0009](0009-subject-agnostic-widget-catalog-v1.md), O8).
+**Grid checks.** The widget type's schema closes its presentation fields (`unevaluatedProperties: false`), so a misspelled field fails validation and the widget gets the cannot-be-shown state ([ADR-0003](0003-shared-data-types-and-schemas-v1.md)). The row cap and the page sizes are decided in the widget catalog ([ADR-0009](0009-subject-agnostic-widget-catalog-v1.md)). Grid columns are keyed by position: data rows stay positional arrays, `render.columns[i]` describes position `i` and has a required `key` (unique, `^[a-z][a-z0-9_]{0,63}$`), and `column_groups[].members` and `row_color` refer to column keys. The consistency checks are based on keys: there is exactly one column per data position, group members are columns, groups are contiguous, there are no repeats inside a group, no column belongs to two groups, and `row_color` names a column. A failure of a consistency check gives the cannot-be-shown state.
 
 ### Consequences
 
@@ -73,7 +79,7 @@ Chosen option: "TanStack Table v8 (headless) with the virtualizer", because it c
 * Good, because every feature the widget uses is MIT-licensed, with no commercial tier.
 * Good, because the headless design keeps ui-kit in charge of appearance, and row colours follow the light or dark kit scope.
 * Good, because virtualized rows keep a page of up to the row cap responsive, and the rows stay DOM elements.
-* Good, because the grid never holds more than the rows the transform delivered, so a result of any size up to the cap shows with the same grid.
+* Good, because the grid holds all rows up to the cap and renders one page at a time, so a result of any size up to the cap shows with the same grid.
 * Good, because the library is small (about 15 KB gzipped), so the repeated per-instance cost stays low.
 * Bad, because headless means the header and row markup, including frozen columns, grouped headings, alignment and the pager, must be built once. Mitigation: it lives in one grid component all grid configurations share.
 * Bad, because accessibility (ARIA grid semantics, including row counts and positions for virtualized rows, and sort state on headers) must be implemented in that component by hand.
@@ -90,8 +96,9 @@ Confirmed by code review and by checks on the `grid` widget:
 * A click on a sortable header sorts the rows in place and sends no request. A page control moves between pages and sends no request. A new page size changes the page size and sends no request. Resizing a column redraws the grid and sends no request.
 * A row with a colour shows an icon with an accessible name, and no row meaning rests on colour alone.
 * Frozen columns, grouped column headings, alignment and row colours render as configured.
+* A test confirms the grid cross-checks: there is exactly one column per data position, group members are columns, groups are contiguous, there are no repeats inside a group, no column belongs to two groups, and `row_color` names a column. A failure of each check gives the cannot-be-shown state.
 * The component exposes ARIA grid semantics, including row counts and positions for virtualized rows and the sort state of headers, checked by an automated accessibility check and a keyboard test (`cpt-frontx-dashboard-fr-accessibility`).
-* The transferred gzipped size of each `grid` widget entry is measured on a cold load of the reference dashboard under the counting rule of the DESIGN.
+* The transferred gzipped size of each `grid` widget entry is measured on a cold load of the reference dashboard under the counting rule of the DESIGN. TanStack Table and the virtualizer are listed in the manifest's `shared` array and counted once in the page total, not double-counted per entry.
 
 ## Pros and Cons of the Options
 
@@ -125,6 +132,21 @@ The Material UI data grid.
 * Good, because UI and accessibility come built in.
 * Bad, because it pulls in the MUI ecosystem, which conflicts with ui-kit, and it is large to evaluate per instance.
 
+### Mantine DataTable
+
+The Mantine data table component.
+
+* Good, because it is MIT-licensed with a simple API.
+* Bad, because it has no virtualization and needs the Mantine ecosystem, which conflicts with ui-kit.
+
+### Glide Data Grid (canvas-based)
+
+A canvas-rendered grid for very large datasets.
+
+* Good, because canvas rendering is fast on very large sets.
+* Bad, because cells are canvas draw calls, outside ui-kit's components and tokens.
+* Bad, because canvas output has no DOM for screen readers.
+
 ### No library: semantic HTML table rendered by the widget
 
 The widget renders a plain `<table>` from its configuration and its page of rows.
@@ -148,7 +170,7 @@ The widget renders a plain `<table>` from its configuration and its page of rows
 
 This decision directly addresses the following requirements or design elements:
 
-* `cpt-frontx-dashboard-fr-grid-sort-page` — the grid sorts and pages client-side over the rows the transform delivered (D15), never sends a request, and never holds more than one page.
+* `cpt-frontx-dashboard-fr-grid-sort-page` — the grid sorts and pages client-side over the rows the transform delivered, never sends a request, and renders one page at a time.
 * `cpt-frontx-dashboard-nfr-large-table` — virtualized rows keep a page of up to the row cap responsive.
 * `cpt-frontx-dashboard-fr-accessibility` — the grid component exposes ARIA grid semantics, and no row meaning rests on colour alone.
 * `cpt-frontx-dashboard-nfr-bundle-budget` — the grid library is small; its shared dependency source text is fetched once.

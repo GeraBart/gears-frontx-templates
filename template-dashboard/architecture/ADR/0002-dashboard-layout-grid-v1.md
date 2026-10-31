@@ -1,9 +1,10 @@
 ---
 status: accepted
 version: 1
+priority: p1
 date: 2026-10-31
 decision-makers: template-dashboard architecture maintainers
-description: "Decision record for the dashboard layout grid: integer {x, y, w, h} cells on a fixed 60-column grid (x 0-59, w 1-60), rendered with CSS Grid and no layout library, with cell bounds, overlaps, x+w <= 60 and unique widget ids checked by the dashboard root, and a fixed row track and reading order."
+description: "Decision record for the dashboard layout grid: integer {x, y, w, h} cells on a fixed 60-column grid (x 0-59, y 0-9999, w 1-60, h 1-9999), rendered with CSS Grid and no layout library, with cell bounds, overlaps, x+w <= 60 and unique widget ids checked by the dashboard root, and a fixed row track and reading order."
 ---
 
 # ADR-0002: Dashboard layout grid
@@ -19,8 +20,8 @@ description: "Decision record for the dashboard layout grid: integer {x, y, w, h
   - [Consequences](#consequences)
   - [Confirmation](#confirmation)
 - [Pros and Cons of the Options](#pros-and-cons-of-the-options)
-  - [60-column {x, y, w, h} cells rendered with CSS Grid](#60-column-x-y-w-h-cells-rendered-with-css-grid)
-  - [12- or 24-column {x, y, w, h} cells rendered with CSS Grid](#12--or-24-column-x-y-w-h-cells-rendered-with-css-grid)
+  - [60-column `{x, y, w, h}` cells rendered with CSS Grid](#60-column-x-y-w-h-cells-rendered-with-css-grid)
+  - [12- or 24-column `{x, y, w, h}` cells rendered with CSS Grid](#12--or-24-column-x-y-w-h-cells-rendered-with-css-grid)
   - [A layout library at run time (react-grid-layout) in the dashboard root](#a-layout-library-at-run-time-react-grid-layout-in-the-dashboard-root)
 - [More Information](#more-information)
 - [Traceability](#traceability)
@@ -31,7 +32,7 @@ description: "Decision record for the dashboard layout grid: integer {x, y, w, h
 
 A dashboard places widgets in cells. The dashboard root needs a layout model that is easy to store as data and easy to render. The dashboard is one JSON; the template renders it and does not edit it. How should layout be represented and rendered?
 
-A layout is a set of cells, each stored as integer `{x, y, w, h}` coordinates on a fixed 60-column grid (`x` 0–59, `w` 1–60, static schema bounds, D14). A cell holds one widget and an optional larger-view widget.
+A layout is a set of cells, each stored as integer `{x, y, w, h}` coordinates on a fixed 60-column grid (`x` 0–59, `y` 0–9999, `w` 1–60, `h` 1–9999, static schema bounds). A cell holds one widget and an optional larger-view widget.
 
 ## Decision Drivers
 
@@ -39,7 +40,8 @@ A layout is a set of cells, each stored as integer `{x, y, w, h}` coordinates on
 * The dashboard root must not carry a layout library, to keep its bundle small.
 * Layout must render the same way for every dashboard, with no hidden collision logic at run time.
 * Common row splits, including five equal widgets in a row, must fit without remainders, while coordinates stay easy to write by hand.
-* The grid sorts and pages client-side (D15); the layout only places cells.
+* The grid sorts and pages client-side; the layout only places cells.
+* The rendered layout must work inside the style scope that the dashboard root owns, with no document-level stylesheets.
 
 ## Considered Options
 
@@ -53,9 +55,9 @@ Chosen option: "60-column `{x, y, w, h}` cells rendered with CSS Grid", because 
 
 The layout-to-CSS mapping is direct. The container is a grid with 60 equal columns. A cell with `x`, `y`, `w`, `h` occupies the column range starting at `x + 1` and spanning `w` columns, and the row range starting at `y + 1` and spanning `h` rows. Each cell holds one widget and may hold a larger-view widget; when it is absent, the cell hides its larger-view button. The dashboard root trusts valid coordinates and does not move cells to resolve collisions.
 
-**Row track and reading order.** The unit of `h` is one fixed row track, whose height is set in the DESIGN. Cells are read and reached by keyboard in row-major order (by `y`, then `x`), which is the order a viewer scans them. This settles the row track and the keyboard and reading order of cells (O10).
+**Row track and reading order.** The unit of `h` is one fixed row track, whose height is set in the DESIGN. Cells are read and reached by keyboard in row-major order (by `y`, then `x`), which is the order a viewer scans them. This settles the row track and the keyboard and reading order of cells.
 
-**Layout checks.** The dashboard root runs the layout checks in its own code when it opens a dashboard: cell bounds (`0 ≤ x ≤ 59`, `1 ≤ w ≤ 60`, `x + w ≤ 60`), no overlaps, and unique widget ids across `widget` and `larger_view` (every GTS instance id is unique, so a dashboard never holds the same widget instance twice). All layout failures of one pass are reported together. A failed layout check is a dashboard-level failure (D13): the dashboard area shows the cannot-be-shown state, and no cell is mounted. A widget that fails its own registration gets a failed cell.
+**Layout checks.** The dashboard root runs the layout checks in its own code when it opens a dashboard: cell bounds (`0 ≤ x ≤ 59`, `0 ≤ y ≤ 9999`, `1 ≤ w ≤ 60`, `1 ≤ h ≤ 9999`, `x + w ≤ 60`), no overlaps, and unique widget ids across `widget` and `larger_view` (every GTS instance id is unique, so a dashboard never holds the same widget instance twice). All layout failures of one pass are reported together. A failed layout check is a dashboard-level failure: the dashboard area shows the cannot-be-shown state, and no cell is mounted. A widget that fails its own registration gets a failed cell.
 
 ### Consequences
 
@@ -76,6 +78,7 @@ Confirmed by rendering a test dashboard and checking that each cell lands on the
 Cells are integer coordinates on a fixed 60-column grid, mapped to CSS grid lines.
 
 * Good, because it uses browser-native layout.
+* Good, because the grid styles live in the style scope that the dashboard root owns, with no document-level stylesheets.
 * Good, because the stored model is simple and library-independent.
 * Good, because 60 is divisible by 2, 3, 4, 5, 6, 10, 12, 15, 20 and 30, so five equal widgets in a row fit exactly.
 * Neutral, because authoring is out of scope and left to the product.
@@ -98,6 +101,7 @@ The dashboard root would render and position cells through a drag-and-resize gri
 * Good, because collision handling is built in.
 * Bad, because the dashboard root would load an editing library only to display fixed layouts.
 * Bad, because each isolated instance would pay for that code.
+* Bad, because the library imposes its own DOM and document-level stylesheets that would have to be injected into the style scope that the dashboard root owns.
 
 ## More Information
 

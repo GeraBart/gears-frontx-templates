@@ -1,6 +1,7 @@
 ---
 status: accepted
 version: 1
+priority: p1
 date: 2026-10-31
 decision-makers: template-dashboard architecture maintainers
 description: "Decision record for where the dashboard's look comes from and how a theme change reaches every widget: the host theme and language shared properties, whose values the host supplies, published unchanged by the dashboard root, with @gears-frontx/ui-kit in every widget and chart themes built from kit tokens inside each chart widget."
@@ -23,6 +24,7 @@ description: "Decision record for where the dashboard's look comes from and how 
   - [Template-owned theme instance with light and dark palettes](#template-owned-theme-instance-with-light-and-dark-palettes)
   - [Theme instance supplied by the backend and referenced by the dashboard](#theme-instance-supplied-by-the-backend-and-referenced-by-the-dashboard)
   - [Pre-generated CSS and chart theme JSON supplied by a backend](#pre-generated-css-and-chart-theme-json-supplied-by-a-backend)
+  - [Separate theme bundle delivered as its own artifact](#separate-theme-bundle-delivered-as-its-own-artifact)
 - [More Information](#more-information)
 - [Traceability](#traceability)
 
@@ -39,7 +41,7 @@ Where does the dashboard's look come from, how does a theme reach every widget, 
 ## Decision Drivers
 
 * The template has no theme of its own: the dashboard follows the host's light or dark value and uses the host's design-system look (`cpt-frontx-dashboard-fr-theme`).
-* The host supplies the theme and language values (D12); the template takes them as given.
+* The host supplies the theme and language values; the template takes them as given.
 * One theme input that reaches every widget, including the larger view.
 * Per-instance isolation: each widget styles itself, and each chart widget registers its chart theme in its own ECharts copy.
 * A theme switch reaches every mounted widget and an open larger view without a reload, without re-running any binding and without showing loading states again.
@@ -51,6 +53,7 @@ Where does the dashboard's look come from, how does a theme reach every widget, 
 * Template-owned theme instance with light and dark palettes
 * Theme instance supplied by the backend and referenced by the dashboard
 * Pre-generated CSS and chart theme JSON supplied by a backend
+* Separate theme bundle delivered as its own artifact
 
 ## Decision Outcome
 
@@ -71,9 +74,12 @@ The decision has these parts:
 * Good, because one input reaches every widget, including the larger view, through the same FrontX channel.
 * Good, because the template owns no theme contract: no type to version and freeze, no instance to validate, and nothing in the dashboard.
 * Good, because a theme switch is a property change: no reload, no request and no loading states.
+* Good, because the dashboard root has no ECharts dependency; chart themes live only in chart widgets.
 * Bad, because a product cannot give the dashboard a look of its own that differs from the host's design system, and all dashboards share that look.
 * Bad, because chart colors are limited to what the kit tokens offer in each scope.
 * Bad, because every widget repeats the scope mapping, and every chart widget repeats the chart theme building. Mitigation: both are one small helper per package, and the per-instance cost is minor next to evaluating ECharts itself.
+* Bad, because the dark-theme set is enumerated per helper, and it must gain an entry when the host adds a dark theme.
+* Bad, because themes beyond light and dark fold into one of the two scopes, so a host theme that is neither is not shown distinctly.
 * Bad, because an unknown theme id falls back to the light scope.
 * Neutral, because every widget evaluates its own copy of the kit (FrontX ADR-0011); the kit is a shared dependency, so its source text is fetched once only when every template widget publishes the same `contentHash` for it (FrontX ADR-0034), with realm-wide reach (FrontX ADR-0035), and it is counted once in the page total ([ADR-0010](0010-template-packages-and-host-contract-v1.md)).
 
@@ -86,6 +92,7 @@ Confirmed by design review, tests and inspection:
 * A test checks that a widget in the larger view follows a light and dark switch while the larger view is open.
 * A test checks that every widget selects the kit's light or dark scope for each host theme value, and that an unrecognised id selects light.
 * A test checks that each chart widget registers `frontx-dashboard` built from kit tokens and registers it again on a theme change.
+* A dependency check finds no ECharts dependency in the dashboard root package.
 * A test switches the theme on the open reference dashboard and checks that no binding re-runs, no loading state is shown again, and the dashboard position and an open larger view are kept.
 * Design inspection of all widget types in both scopes, in a cell and in the larger view, against the design-system reference.
 
@@ -100,6 +107,7 @@ The template takes the theme and language the host supplies and forwards them un
 * Good, because it adds no GTS contract and needs no backend.
 * Neutral, because every widget carries a small scope-mapping helper.
 * Bad, because a template-specific or per-dashboard look is not possible.
+* Bad, because the helper knows only the light and dark kit scopes, so a host theme beyond them folds into one of the two.
 
 ### Template-owned theme instance with light and dark palettes
 
@@ -124,6 +132,14 @@ A backend resolves the theme into CSS and ECharts JSON and sends both.
 * Good, because the dashboard root would only apply what it receives.
 * Bad, because the theme would exist in several formats that must be kept in step with the host's design system.
 * Bad, because it adds a request and a failure path to something the host already provides.
+
+### Separate theme bundle delivered as its own artifact
+
+The theme is a standalone artifact, fetched apart from the template's code.
+
+* Good, because the theme could change without a template release.
+* Bad, because it duplicates what the host's theme and the kit already provide.
+* Bad, because it adds a fetch and a second failure point.
 
 ## More Information
 
