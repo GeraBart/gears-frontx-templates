@@ -34,8 +34,6 @@ description: "Feature: the dashboard model — the dashboard GTS type with named
   - [Shared-request source check](#shared-request-source-check)
 - [6. Domain Model](#6-domain-model)
   - [Dashboard type](#dashboard-type)
-  - [Layout subschema](#layout-subschema)
-  - [Cell subschema](#cell-subschema)
 - [7. Acceptance Criteria](#7-acceptance-criteria)
 
 <!-- /toc -->
@@ -50,15 +48,17 @@ The dashboard GTS type, its instances, the inlined 60-column grid layout and cel
 
 ### 1.2 Purpose
 
-A dashboard author writes one JSON: a title, cells on the 60-column grid, and in each cell a widget instance. The root validates the dashboard against its type and runs the layout checks before it mounts any cell; one pass reports the dashboard's root validation failures and its layout failures together. A failure of the dashboard itself is dashboard-level; a widget that fails its own registration gets a failed cell, so a failure affects only its cell or larger view. A cell whose `source` names no entry in `requests` is marked failed at cell scope before its binding runs.
+A dashboard author writes one JSON: a title, cells on the 60-column grid, and in each cell a widget instance. The root validates the dashboard against its type and runs the layout checks before it mounts any cell; one pass reports the dashboard's root validation failures and its layout failures together. A failure of the dashboard itself, including an embedded widget that breaks the open widget base, is dashboard-level; a widget that fails its own registration against the type its `id` names gets a failed cell, so that failure affects only its cell or larger view. A cell whose `source` names no entry in `requests` is marked failed at cell scope before its binding runs.
 
 **Requirements**: `cpt-frontx-dashboard-fr-dashboard-root`, `cpt-frontx-dashboard-fr-per-cell-failure`, `cpt-frontx-dashboard-fr-dashboard-as-json`, `cpt-frontx-dashboard-fr-shared-data`, `cpt-frontx-dashboard-fr-static-data`, `cpt-frontx-dashboard-fr-states`.
+
+**Use cases**: `cpt-frontx-dashboard-usecase-author-dashboard` (the dashboard JSON an author writes).
 
 **Principles**: `cpt-frontx-dashboard-principle-open-bases-closed-leaves`.
 
 **Constraints**: `cpt-frontx-dashboard-constraint-sixty-column-grid`, `cpt-frontx-dashboard-constraint-one-gts-package`, `cpt-frontx-dashboard-constraint-same-origin-data`.
 
-**Not applicable**: persistence/DB (no database), auth/security (sign-in out of scope), ops/rollout (no deployed service), compliance/privacy (no data stored).
+**Not applicable**: persistence/DB (no database, `cpt-frontx-dashboard-db-none`), auth/security (sign-in out of scope), ops/rollout (no deployed service), compliance/privacy (no data stored).
 
 ### 1.3 Actors
 
@@ -71,7 +71,7 @@ A dashboard author writes one JSON: a title, cells on the 60-column grid, and in
 
 - **PRD**: [PRD.md](../../PRD.md)
 - **Design**: [DESIGN.md](../../DESIGN.md) (§3.1 Domain Model, §3.6 Runtime Flow load step and per-cell step)
-- **Dependencies**: None (foundation feature)
+- **Dependencies**: `cpt-frontx-dashboard-feature-widget-contract` (the dashboard schema `$ref`s the widget base and the request type that the widget contract declares)
 
 ## 2. Actor Flows (CDSL)
 
@@ -98,7 +98,7 @@ Not applicable because the dashboard runtime drives the load and layout-check st
    1. [ ] - `p1` - **IF** `x + w` is greater than 60, add a failure naming the cell index. - `inst-dm-check-width-add`
 4. [ ] - `p1` - **FOR EACH** pair of cells - `inst-dm-check-overlap`
    1. [ ] - `p1` - **IF** the pair overlaps by the overlap rule, add a failure naming both cell indexes. - `inst-dm-check-overlap-add`
-5. [ ] - `p1` - Collect the `id` of every cell widget and every larger-view widget. A widget without a string `id` takes no part: its own failure is widget-level. - `inst-dm-check-ids`
+5. [ ] - `p1` - Collect the `id` of every cell widget and every larger-view widget. A widget without a string `id` takes no part: the dashboard validation reports it, at dashboard level. - `inst-dm-check-ids`
 6. [ ] - `p1` - **FOR EACH** `id` that occurs more than once, add a failure naming every cell that carries it and whether the `id` is on its cell widget or its larger-view widget. - `inst-dm-check-repeat`
 7. [ ] - `p1` - **IF** the list of failures is not empty, **RETURN** failure with all of them. Otherwise **RETURN** pass. An empty `cells` array passes: no cell is rendered and no placeholder is shown. - `inst-dm-check-return`
 
@@ -119,7 +119,8 @@ Each failure is reported once. A non-empty failure list is a dashboard-level fai
 2. [ ] - `p1` - **FOR EACH** cell in `cells` - `inst-dm-place-each`
    1. [ ] - `p1` - Place the cell widget in the column range that starts at column `x + 1` and spans `w` columns, and the row range that starts at row `y + 1` and spans `h` rows. - `inst-dm-place-cell`
    2. [ ] - `p1` - Do not place the larger-view widget: it shows only in the larger view. - `inst-dm-place-larger`
-3. [ ] - `p1` - **RETURN**. No cell is moved, reordered or resized, and the order of `cells` does not change the placement. - `inst-dm-place-return`
+3. [ ] - `p1` - Put the cells in the document in row-major order, by `y` and then by `x`, whatever their order in `cells`. This is the reading and keyboard order of the cells (ADR-0002). - `inst-dm-place-order`
+4. [ ] - `p1` - **RETURN**. No cell is moved, reordered or resized on the grid, and the order of `cells` does not change the placement or the reading and keyboard order. - `inst-dm-place-return`
 
 ### Check shared-request sources
 
@@ -132,22 +133,24 @@ Each failure is reported once. A non-empty failure list is a dashboard-level fai
 **Steps**:
 1. [ ] - `p1` - Collect the names in the dashboard's `requests` (absent means none). - `inst-dm-src-names`
 2. [ ] - `p1` - **FOR EACH** `source` reference across all cell and larger-view bindings - `inst-dm-src-each`
-   1. [ ] - `p1` - **IF** `source` names no entry in `requests`, mark that cell or larger view failed at cell scope, before its binding runs. - `inst-dm-src-unknown`
+   1. [ ] - `p1` - **IF** `source` names no entry in `requests`, mark that cell or larger view failed at cell scope, before its binding runs: no request is sent and no transform is evaluated for it. - `inst-dm-src-unknown`
 3. [ ] - `p1` - **RETURN**. The runtime runs this check after the layout checks, as a separate step; it is not a layout failure and the other cells are unaffected. - `inst-dm-src-return`
 
 ### Attribute a failure
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-algo-dashboard-model-failure-attribution`
 
-**Input**: the step that failed (file fetch, type rejection, dashboard validation, layout check, widget registration, request, transform, data validation, mount).
+**Input**: the step that failed (file fetch, type rejection, dashboard validation, layout check, widget registration, trait resolution, request, transform, data validation, mount, `render_widget`) and, for a dashboard validation failure, its instance path.
 
 **Output**: the scope the failure affects (dashboard or a single cell/larger view).
 
 **Steps**:
-1. [ ] - `p1` - **IF** the failure is a file-fetch failure, a type rejection, a dashboard validation failure, or a layout check failure - `inst-dm-fail-dashboard`
-   1. [ ] - `p1` - **RETURN** dashboard scope. - `inst-dm-fail-dashboard-return`
-2. [ ] - `p1` - **ELSE** the failure is a widget registration, request, transform, data validation, or mount failure - `inst-dm-fail-cell`
-   1. [ ] - `p1` - **RETURN** the cell (or larger view) scope of that widget. - `inst-dm-fail-cell-return`
+1. [ ] - `p1` - **IF** the failure is a dashboard validation failure whose instance path lies under `layout.cells[i].widget` or `layout.cells[i].larger_view` - `inst-dm-fail-embedded`
+   1. [ ] - `p1` - **RETURN** dashboard scope. Registering the dashboard instance checks each embedded widget only against the open widget base, so an embedded widget that breaks the base, such as one with no `id`, fails the whole dashboard. - `inst-dm-fail-embedded-return`
+2. [ ] - `p1` - **IF** the failure is a file-fetch failure, a type rejection, any other dashboard validation failure, or a layout check failure - `inst-dm-fail-dashboard`
+   1. [ ] - `p1` - **RETURN** dashboard scope. A validation failure under `layout.cells[i]` but not under its `widget` or `larger_view` is a cell failure that the layout check collects (`inst-dm-check-cell-failures`); a validation failure anywhere else, such as a missing `title` or an invalid `requests` name, fails the dashboard itself. - `inst-dm-fail-dashboard-return`
+3. [ ] - `p1` - **ELSE** the failure is a failure of the widget's own registration against the type its `id` names, an unresolved trait or a missing `entry` or `data_type`, or a request, transform, data validation, mount or `render_widget` failure - `inst-dm-fail-cell`
+   1. [ ] - `p1` - **RETURN** the scope of that cell for its `widget`, or of its larger view for its `larger_view`. - `inst-dm-fail-cell-return`
 
 A dashboard-scope failure shows the dashboard-level cannot-be-shown state and mounts no cell. A cell-scope failure shows the cell's cannot-be-shown state; a failure affects only its cell or larger view, so the other cells are unaffected.
 
@@ -162,24 +165,12 @@ A dashboard-scope failure shows the dashboard-level cannot-be-shown state and mo
 **Initial State**: `loading`
 
 **Transitions**:
-1. [ ] - `p1` - **FROM** `loading` **TO** `shown` **WHEN** the dashboard validates and the layout checks pass. - `inst-dm-state-shown`
-2. [ ] - `p1` - **FROM** `loading` **TO** `cannot-be-shown` **WHEN** the file can't be fetched, a type is rejected, the dashboard fails validation, or the layout checks fail. - `inst-dm-state-cannot`
+1. [ ] - `p1` - **FROM** `loading` **TO** `shown` **WHEN** the dashboard has no validation failure and the layout checks pass; a widget that later fails its own registration against the type its `id` names fails only that cell or larger view. - `inst-dm-state-shown`
+2. [ ] - `p1` - **FROM** `loading` **TO** `cannot-be-shown` **WHEN** the file can't be fetched, a type is rejected, the dashboard fails validation (including an embedded widget that breaks the open widget base), or the layout checks fail. - `inst-dm-state-cannot`
 
 ### Cell load state
 
-- [ ] `p2` - **ID**: `cpt-frontx-dashboard-state-dashboard-model-cell`
-
-**States**: `loading`, `shown`, `empty`, `cannot-be-shown`
-
-**Initial State**: `loading` for the own and shared forms. A static binding starts without a loader: its transform evaluates on `params` at once, with no `loading` state.
-
-**Transitions**:
-1. [ ] - `p1` - **FROM** `loading` **TO** `shown` **WHEN** the binding's data validates and is non-empty and the widget mounts (own and shared forms). - `inst-dm-cell-shown`
-2. [ ] - `p1` - **FROM** `loading` **TO** `empty` **WHEN** the binding's data validates and is empty; the widget renders its own empty state (own and shared forms). - `inst-dm-cell-empty`
-3. [ ] - `p1` - **FROM** `loading` **TO** `cannot-be-shown` **WHEN** the request fails or times out, the CEL transform errors, data validation fails, registration is rejected, or mount fails (own and shared forms). - `inst-dm-cell-cannot`
-4. [ ] - `p1` - A static binding ends `shown`, `empty`, or `cannot-be-shown` directly, with the same failure causes; a `markdown_card` cell has no binding and ends `shown` at once, with no loader. - `inst-dm-cell-static`
-
-The frame shows a loader at mount only for the own and shared forms. A failed or timed-out shared request shows the cannot-be-shown state in every dependent cell, and the developer log names the request; the other cells are unaffected.
+A cell's own state machine belongs to the runtime (`cpt-frontx-dashboard-state-dashboard-runtime-cell`). The model contributes the failures it attributes to a cell (`cpt-frontx-dashboard-algo-dashboard-model-failure-attribution`) and the unknown-`source` check.
 
 ## 5. Definitions of Done
 
@@ -187,11 +178,13 @@ The frame shows a loader at mount only for the own and shared forms. A failed or
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-dashboard-model-type`
 
-The system **MUST** ship the dashboard GTS type `gts.frontx.dashboard.dashboard.dashboard.v1~` under the `dashboard` package, with a `title`, an optional `description`, an optional `requests` object (a name matching `^[a-z][a-z0-9_]{0,63}$` maps to a closed request with `method` (`GET` or `POST`), `path` and an optional `body` allowed only for `POST`), and an inlined `layout` of closed cell objects (`x`, `y`, `w`, `h`, `widget`, optional `larger_view`). The `id` field names its base type as a literal operand. The type is closed with `unevaluatedProperties: false`, so a dashboard with any other field, such as `theme`, fails validation; there is no `columns` field, the grid being fixed at 60 columns. The full schema is in section 6. A data widget's `data` is a `oneOf` of three closed forms (own, shared, static). The dashboard embeds widget instances, each registered on its own by the runtime.
+The system **MUST** ship the dashboard GTS type `gts.frontx.dashboard.dashboard.dashboard.v1~` under the `dashboard` package, with a `title`, an optional `description`, an optional `requests` object (a name matching `^[a-z][a-z0-9_]{0,63}$` maps to a request of the request type `gts.frontx.dashboard.widget.request.v1~`, declared in `cpt-frontx-dashboard-feature-widget-contract`), and an inlined `layout` of closed cell objects (`x`, `y`, `w`, `h`, `widget`, optional `larger_view`). The `id` field names its base type as a literal operand. The type is closed with `unevaluatedProperties: false`, so a dashboard with any other field, such as `theme`, fails validation; there is no `columns` field, the grid being fixed at 60 columns. The full schema is in section 6. A data widget's `data` is a `oneOf` of three closed forms (own, shared, static). The dashboard embeds widget instances, each registered on its own by the runtime.
 
 **Implements**: `cpt-frontx-dashboard-fr-dashboard-as-json`, `cpt-frontx-dashboard-fr-shared-data`, `cpt-frontx-dashboard-fr-static-data`.
 
 **Constraints**: `cpt-frontx-dashboard-constraint-one-gts-package`, `cpt-frontx-dashboard-constraint-same-origin-data`.
+
+**Covers (DESIGN)**: `cpt-frontx-dashboard-principle-open-bases-closed-leaves`, `cpt-frontx-dashboard-component-dashboard-root` (model side: the dashboard type).
 
 **Touches**:
 - Entities: Dashboard, Cell, Widget instance, Named shared request (dashboard `requests` values)
@@ -206,6 +199,8 @@ The root **MUST** run the layout checks (`cpt-frontx-dashboard-algo-dashboard-mo
 
 **Constraints**: `cpt-frontx-dashboard-constraint-sixty-column-grid`.
 
+**Covers (DESIGN)**: `cpt-frontx-dashboard-component-dashboard-root` (model side: the layout checks), `cpt-frontx-dashboard-seq-runtime-flow` (load and layout-check steps).
+
 **Touches**:
 - Entities: Dashboard, Cell
 
@@ -213,7 +208,7 @@ The root **MUST** run the layout checks (`cpt-frontx-dashboard-algo-dashboard-mo
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-dashboard-model-placement`
 
-The root **MUST** place the cells of a valid layout with CSS Grid (`cpt-frontx-dashboard-algo-dashboard-model-place-cells`): a cell with `x`, `y`, `w` and `h` occupies columns `x + 1` to `x + w` and rows `y + 1` to `y + h`; the larger-view widget is never placed on the grid; no cell is moved, reordered or resized, and the order of `cells` does not change the placement.
+The root **MUST** place the cells of a valid layout with CSS Grid (`cpt-frontx-dashboard-algo-dashboard-model-place-cells`): a cell with `x`, `y`, `w` and `h` occupies columns `x + 1` to `x + w` and rows `y + 1` to `y + h`; the larger-view widget is never placed on the grid; no cell is moved, reordered or resized, and the order of `cells` does not change the placement. Cells are read and reached by keyboard in row-major order (by `y`, then `x`), whatever their order in `cells`.
 
 **Implements**: `cpt-frontx-dashboard-algo-dashboard-model-place-cells`.
 
@@ -226,9 +221,11 @@ The root **MUST** place the cells of a valid layout with CSS Grid (`cpt-frontx-d
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-dashboard-model-attribution`
 
-The root **MUST** attribute each failure to its scope (`cpt-frontx-dashboard-algo-dashboard-model-failure-attribution`): dashboard-level or a single cell/larger view.
+The root **MUST** attribute each failure to its scope (`cpt-frontx-dashboard-algo-dashboard-model-failure-attribution`): dashboard-level or a single cell/larger view. Every dashboard validation failure is dashboard scope, including one whose instance path lies under a cell's `widget` or `larger_view`, because registering the dashboard checks embedded widgets only against the open widget base. Only a failure at the widget's own registration against the type its `id` names, or a later trait, entry, data type, request, transform, data validation, mount or `render_widget` failure, is cell (or larger-view) scope.
 
 **Implements**: `cpt-frontx-dashboard-algo-dashboard-model-failure-attribution`, `cpt-frontx-dashboard-fr-per-cell-failure`.
+
+**Covers (DESIGN)**: `cpt-frontx-dashboard-component-dashboard-root` (model side: failure attribution), `cpt-frontx-dashboard-seq-runtime-flow` (load step and per-cell step).
 
 **Touches**:
 - Entities: Dashboard, Cell
@@ -282,30 +279,9 @@ The dashboard type is a GTS type. The layout and the cell are inlined closed sub
     },
     "requests": {
       "type": "object",
-      "description": "Optional named shared requests. A shared-form binding names one of these in its source. Each name matches ^[a-z][a-z0-9_]{0,63}$ and maps to a closed request. Plain data, not a GTS type.",
+      "description": "Optional named shared requests. A shared-form binding names one of these in its source. Each name matches ^[a-z][a-z0-9_]{0,63}$ and maps to a request of the request type. Plain data, not GTS instances.",
       "propertyNames": {"pattern": "^[a-z][a-z0-9_]{0,63}$"},
-      "additionalProperties": {
-        "type": "object",
-        "required": ["method", "path"],
-        "properties": {
-          "method": {
-            "type": "string",
-            "enum": ["GET", "POST"],
-            "description": "HTTP method. Only GET and POST are allowed."
-          },
-          "path": {
-            "type": "string",
-            "pattern": "^/",
-            "description": "Same-origin absolute path. The query string is part of the path. The root rejects any other target before sending."
-          },
-          "body": {
-            "description": "Request body, any JSON value. Allowed only when method is POST."
-          }
-        },
-        "unevaluatedProperties": false,
-        "if": {"properties": {"method": {"const": "GET"}}, "required": ["method"]},
-        "then": {"not": {"required": ["body"]}}
-      }
+      "additionalProperties": {"$ref": "gts://gts.frontx.dashboard.widget.request.v1~"}
     },
     "layout": {"$ref": "#/$defs/layout"}
   },
@@ -371,78 +347,9 @@ The dashboard type is a GTS type. The layout and the cell are inlined closed sub
 **Cross-references**:
 - No abstract base (flat single-segment chain). The type is closed: no field other than the declared ones is accepted, so a dashboard with an extra field such as `theme` fails validation at the dashboard level.
 - Related types: the widget base `gts.frontx.dashboard.widget.widget.v1~` (`cpt-frontx-dashboard-feature-widget-contract`), embedded inline through `$ref` in each cell's `widget` and `larger_view`.
-- The layout and cell are inlined in the dashboard as `$defs.layout` and `$defs.cell`; they are not GTS types and carry no `$id` of their own.
-
-### Layout subschema
-
-Inlined as the dashboard `$defs.layout`; not a GTS type. It declares no `$id`, `$schema` or `title`, and has no `columns` field (the grid is fixed at 60 columns). It is closed.
-
-```json
-{
-  "type": "object",
-  "description": "Grid layout embedded in a Dashboard: an ordered array of positioned cells on the 60-column grid. Inlined as the Dashboard layout property (Dashboard $defs.layout); not a GTS type, so it declares no $id, $schema or title, and is not independently addressable.",
-  "required": ["cells"],
-  "properties": {
-    "cells": {
-      "type": "array",
-      "description": "Ordered array of layout cells defining widget positions within the grid. May be empty; an empty array renders nothing and shows no placeholder.",
-      "items": {"$ref": "#/$defs/cell"}
-    }
-  },
-  "unevaluatedProperties": false
-}
-```
-
-### Cell subschema
-
-Inlined as each item of the layout `$defs.cell`; not a GTS type. It declares no `$id`, `$schema` or `title`. Its `widget` and `larger_view` `$ref` the widget base `gts://gts.frontx.dashboard.widget.widget.v1~`. The four integer bounds are kept: `x` 0–59, `w` 1–60, `y` 0–9999, `h` 1–9999. It is closed.
-
-```json
-{
-  "type": "object",
-  "description": "Embedded cell within a Layout specifying grid position, size, the widget it renders, and an optional widget for its larger view. Inlined as each item of the layout cells array (Dashboard $defs.cell); not a GTS type, so it declares no $id, $schema or title, and is not independently addressable.",
-  "required": ["x", "y", "w", "h", "widget"],
-  "properties": {
-    "x": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 59,
-      "description": "Horizontal grid position (column index, 0-based)."
-    },
-    "y": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 9999,
-      "description": "Vertical grid position (row index, 0-based)."
-    },
-    "w": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 60,
-      "description": "Width of the cell in grid columns."
-    },
-    "h": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 9999,
-      "description": "Height of the cell in grid rows."
-    },
-    "widget": {
-      "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~",
-      "description": "The widget rendered in this cell, embedded inline. It is registered on its own against the widget type that its id names. A data widget carries its own embedded binding in data."
-    },
-    "larger_view": {
-      "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~",
-      "description": "Optional widget shown in the larger view of this cell, embedded inline and registered on its own. It is a second widget instance with its own id. When it is absent, the cell widget hides its larger-view button."
-    }
-  },
-  "unevaluatedProperties": false
-}
-```
-
-**Cross-references**:
-- Related types: the widget base `gts.frontx.dashboard.widget.widget.v1~`, embedded inline through `$ref` in `widget` and `larger_view`.
-- Widget validation: each embedded widget is registered on its own and validated against the type that its `id` names, as part of the dashboard load. A failure under a cell's `widget` or `larger_view` is a widget-level failure of that cell, not a layout failure.
+- The layout and cell are inlined in the dashboard as `$defs.layout` and `$defs.cell`; they are not GTS types and carry no `$id`, `$schema` or `title` of their own. Both are closed. The cell bounds are `x` 0–59, `w` 1–60, `y` 0–9999 and `h` 1–9999, all integers; there is no `columns` field, the grid being fixed at 60 columns.
+- Each `requests` value is a request of the request type `gts.frontx.dashboard.widget.request.v1~` (`cpt-frontx-dashboard-feature-widget-contract`), the same type an own binding's `request` uses.
+- Widget validation: the dashboard validation checks each embedded widget only against the open widget base; a widget that breaks the base, such as one with no `id`, fails the dashboard. Each embedded widget is then registered on its own and validated against the type that its `id` names, as part of the dashboard load; a failure there is a widget-level failure of that cell or larger view, not a layout failure.
 - Layout checks: the bounds in this schema are checked by the GTS validation of the dashboard, and the layout checks of section 3 run after them.
 
 ## 7. Acceptance Criteria
@@ -471,11 +378,17 @@ Inlined as each item of the layout `$defs.cell`; not a GTS type. It declares no 
 - [ ] Given a layout with an empty `cells` array, when the layout is checked, then the layout is valid, no cell is rendered, and no placeholder is shown.
 - [ ] A cell embeds one widget and an optional `larger_view`; a data widget carries its own embedded binding in `data`, and the cell carries no widget data.
 - [ ] A cell without `larger_view` is valid, and its cell widget hides the larger-view button.
-- [ ] The root resolves the embedded widget of a cell and its larger-view widget to the widget type that each `id` names, with no custom validation code, and a failure under a cell's `widget` or `larger_view` is a widget-level failure of that cell, not a layout failure.
+- [ ] The root resolves the embedded widget of a cell and its larger-view widget to the widget type that each `id` names, with no custom validation code; a failure at a widget's own registration against that type is a widget-level failure of that cell or larger view, not a layout failure, and an embedded widget that breaks the open widget base fails the dashboard.
 - [ ] Given a valid cell with `x` of 10, `y` of 2, `w` of 20 and `h` of 3, when the root places it, then it occupies columns 11 to 30 and rows 3 to 5 of the 60-column grid; the larger-view widget is not placed on the grid, and the order of `cells` does not change the placement.
+- [ ] Given cells listed out of order (cell 0 at `x` 0, `y` 4; cell 1 at `x` 30, `y` 0; cell 2 at `x` 0, `y` 0), when the root places them, then the reading and keyboard order is cell 2, cell 1, cell 0, and each cell keeps its grid area.
 - [ ] The Dashboard, Layout and Cell schemas are each closed with `unevaluatedProperties: false`, so a dashboard, layout or cell with any other field fails the validation of the dashboard.
 - [ ] The Layout is inlined in the Dashboard and declares no `$id` or `title`; no layout reference or separate layout type exists.
 - [ ] A dashboard missing `title` whose layout also has two overlapping cells and a cell with `x + w` above 60 yields one pass that names all three failures together, each by its instance path or its cells.
-- [ ] A widget that fails its own registration fails only its cell; the other cells are unaffected.
+- [ ] A widget that fails its own registration against the type its `id` names fails only its cell (or its larger view for a `larger_view` widget); the other cells are unaffected.
 - [ ] A cell or larger view whose `source` names no entry in the dashboard's `requests` is marked failed at cell scope before its binding runs; the other cells are unaffected.
-- [ ] The frame shows a loader at mount only for the own and shared forms; a static binding starts without a loader and ends `shown`, `empty` or `cannot-be-shown`.
+- [ ] Given a dashboard whose `requests` has an entry named `Bad-Name`, when the dashboard is validated, then the validation fails and the failure is dashboard-level: no cell is mounted.
+- [ ] Given a cell whose `larger_view` binding has a `source` that names no entry in `requests`, when the dashboard loads, then only that larger view is failed at cell scope; the cell widget and the other cells are unaffected.
+- [ ] Given a dashboard with no `requests` object and a cell whose binding has a `source`, when the dashboard loads, then that cell is failed at cell scope and the other cells are unaffected.
+- [ ] Given any of the unknown-`source` cases above, when the dashboard loads, then no request is sent and no transform is evaluated for the failed cell or larger view.
+- [ ] Given (a) a dashboard missing `title`, (b) a cell whose embedded `widget` has no `id`, (c) a cell with `w` of 0, and (d) a cell whose embedded `widget` has a `render` field its concrete type does not allow, when each failure is attributed, then (a) and (b) are dashboard scope, (c) is a cell failure collected by the layout check, which makes the dashboard fail at dashboard level, and (d) is the scope of that cell only.
+- [ ] The frame shows a loader at mount only for the own and shared forms; a static binding starts without a loader and ends `shown` or `cannot-be-shown`; an empty result is shown by the widget's own empty state.

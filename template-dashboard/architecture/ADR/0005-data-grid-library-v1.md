@@ -63,7 +63,7 @@ Which library, if any, renders the `grid` widget type?
 
 Chosen option: "TanStack Table v8 (headless) with the virtualizer", because it combines full rendering control, strict TypeScript generics, an MIT license, a column sizing feature for local resizing, and a library small enough to be evaluated once per instance. It spares the widget a hand-built column and row model, and it pairs with a virtualizer from the same project for one page of up to the row cap.
 
-**Data and columns.** The `grid` widget type uses TanStack Table v8 as a typed column and row model for rendering. The widget builds one column definition per displayed column. Each definition reads its value from the row in the data shape. The widget keeps the rows in the delivered order. The library's own fetching, filtering and pagination features are not used, because the grid sorts and pages client-side over the rows it already has. Its column sizing feature is used for resizing only.
+**Data and columns.** The `grid` widget type uses TanStack Table v8 as a typed column and row model for rendering. The widget builds one column definition per displayed column. Each definition reads its value from the row in the data shape. The widget keeps the rows in the delivered order. The widget uses the library's column model, its sorting and pagination row models, and its column sizing feature. The grid sorts and pages client-side over the rows it already has, which is what these row models do, so the widget does not build them by hand. Sorting uses the widget's own sort function, which follows the grid's sort rule in the widget catalog. Column sizing is used for resizing only. The library's filtering and grouping features and its manual (server-side) sorting and pagination modes are not used, because the grid filters nothing and already holds every row it shows.
 
 **Client-side sort and page.** A click on a sortable column header sorts the rows the widget holds, in place. A page control moves between pages of the row cap. A new page size changes the page size. None of these sends a request or re-runs the binding: the grid works only on the rows the transform delivered, up to the row cap. The pager shows the position in the result, the number of rows on the page and the total. A page size is always offered. The larger view of a grid is its own grid widget with its own data, and it sorts and pages the same way.
 
@@ -71,7 +71,7 @@ Chosen option: "TanStack Table v8 (headless) with the virtualizer", because it c
 
 **Virtualized rows per page.** The widget uses the TanStack virtualizer: it renders only the rows in view, so one page of up to the row cap renders and scrolls smoothly. The widget renders the table itself, and each cell shows its value as text. The widget keeps the library behind its own typed props, so the grid configuration does not depend on library types.
 
-**Grid checks.** The widget type's schema closes its presentation fields (`unevaluatedProperties: false`), so a misspelled field fails validation and the widget gets the cannot-be-shown state ([ADR-0003](0003-shared-data-types-and-schemas-v1.md)). The row cap and the page sizes are decided in the widget catalog ([ADR-0009](0009-subject-agnostic-widget-catalog-v1.md)). Grid columns are keyed by position: data rows stay positional arrays, `render.columns[i]` describes position `i` and has a required `key` (unique, `^[a-z][a-z0-9_]{0,63}$`), and `column_groups[].members` and `row_color` refer to column keys. The consistency checks are based on keys: there is exactly one column per data position, group members are columns, groups are contiguous, there are no repeats inside a group, no column belongs to two groups, and `row_color` names a column. A failure of a consistency check gives the cannot-be-shown state.
+**Grid checks.** The widget type's schema closes its presentation fields (`unevaluatedProperties: false`), so a misspelled field fails validation and the widget gets the cannot-be-shown state ([ADR-0003](0003-shared-data-types-and-schemas-v1.md)). [ADR-0009](0009-subject-agnostic-widget-catalog-v1.md) owns the row cap of 500: it counts every row the transform delivers, not the rows on one page. The page size is a separate render choice, decided in the widget catalog. Grid columns are keyed by position: data rows stay positional arrays, `render.columns[i]` describes position `i` and has a required `key` (unique, `^[a-z][a-z0-9_]{0,63}$`), and `column_groups[].members` and `row_color` refer to column keys. The consistency checks are based on keys: there is exactly one column per data position, group members are columns, groups are contiguous, there are no repeats inside a group, no column belongs to two groups, and `row_color` names a column. A failure of a consistency check gives the cannot-be-shown state.
 
 ### Consequences
 
@@ -84,7 +84,7 @@ Chosen option: "TanStack Table v8 (headless) with the virtualizer", because it c
 * Bad, because headless means the header and row markup, including frozen columns, grouped headings, alignment and the pager, must be built once. Mitigation: it lives in one grid component all grid configurations share.
 * Bad, because accessibility (ARIA grid semantics, including row counts and positions for virtualized rows, and sort state on headers) must be implemented in that component by hand.
 * Bad, because virtualization adds a second small library, and off-screen rows are not in the DOM. Mitigation: it is the TanStack virtualizer, used only inside the grid component.
-* Bad, because the library's fetching, filtering and pagination APIs are present but must stay unused. Mitigation: the grid component exposes no props for them, and code review rejects their use.
+* Bad, because the library ships filtering, grouping and manual-mode code the grid does not use, a small size cost. Mitigation: the grid component exposes no props for them, and code review rejects their use.
 
 ### Confirmation
 
@@ -113,7 +113,7 @@ The headless table library with full rendering control.
 * Good, because virtualized rows through `@tanstack/react-virtual` cover a page of up to the row cap.
 * Good, because its column sizing feature covers local resizing.
 * Bad, because all grid markup must be built, including the pager.
-* Bad, because its fetching, filtering and pagination features are unused weight, since the grid sorts and pages client-side over the rows it has.
+* Bad, because its filtering and grouping features and its manual modes are unused weight, since the grid filters nothing and holds every row it shows.
 * Bad, because there is no built-in accessibility.
 
 ### AG Grid Community Edition
@@ -121,7 +121,7 @@ The headless table library with full rendering control.
 A complete grid with built-in UI.
 
 * Good, because rendering and accessibility come built in.
-* Bad, because most of its built-in UI is client-side sorting, filtering and pagination, which the grid does client-side on its own rows; the library is overkill here.
+* Bad, because much of its weight is built-in UI the grid does not use, such as filtering, grouping and editing; the library is overkill here.
 * Bad, because the library is about 300 KB gzipped, which every isolated instance would evaluate again.
 * Bad, because its own CSS conflicts with ui-kit.
 
@@ -161,7 +161,7 @@ The widget renders a plain `<table>` from its configuration and its page of rows
 * Review trigger: the measured benefit of the typed column model does not outweigh the library cost (the no-library option becomes preferable); the row cap is raised above what virtualized rendering handles smoothly; a TanStack Table major version forces a large component rewrite.
 * Row order is the delivered order of the rows, and the grid sorts in place. Grouped column headings only label contiguous columns in the header.
 * Scope: the `grid` widget type and its grid component. Does not change other widget types or the binding runner.
-* Checklist applicability: ARCH applicable; PERF applicable (per-instance evaluation cost, virtualized rendering); SEC N/A; REL N/A; DATA N/A (the grid reads its data and persists nothing); INT N/A; OPS N/A; MAINT applicable (the component hides the library, and the repository's agent guidance pins TanStack Table to version 8); TEST applicable; COMPL applicable (every used feature must be MIT-licensed); UX applicable (accessibility is built in the component; the viewer sorts, pages and resizes).
+* Checklist applicability: ARCH applicable; PERF applicable (per-instance evaluation cost, virtualized rendering); SEC applicable (cells show untrusted API values as text only, with no cell renderers); REL N/A because the template is source code with no service, no availability target and no runbook (DESIGN section 4.2); DATA N/A (the grid reads its data and persists nothing); INT N/A because the library is internal to the widget entry, and the render and data contract is owned by ADR-0009; OPS N/A because the template is source code with no service, no availability target and no runbook (DESIGN section 4.2); MAINT applicable (the component hides the library, and the repository's agent guidance pins TanStack Table to version 8); TEST applicable; COMPL applicable (every used feature must be MIT-licensed); UX applicable (accessibility is built in the component; the viewer sorts, pages and resizes; no migration, because v1 has no prior users; changes are communicated in release notes; the author guides of DESIGN section 5 document the grid); BIZ applicable (the hand-built markup and accessibility are a one-time build cost, see Consequences).
 
 ## Traceability
 

@@ -38,7 +38,7 @@ Assumptions: FrontX retains per-extension state by id; a nested registry survive
 
 Drivers in priority order:
 
-* A widget renders one action, including its own empty state, and nothing more; the dashboard root owns the cell frame (title, loader, error state and the larger-view button).
+* A widget renders one action, including its own empty state, and nothing more; the dashboard root owns the cell frame (title, loader, cannot-be-shown state and the larger-view button).
 * The larger view is an overlay inside the dashboard root's own container, not a host modal. The template owns its accessibility.
 * FrontX keeps per-extension state by id, so loading the same dashboard again must reuse the same ids.
 * FrontX requires a generated extension id to be a GTS instance id of an extension type.
@@ -55,21 +55,21 @@ Drivers in priority order:
 
 Chosen option: "One `widgets` domain with a single `render_widget` action", because one domain with one action is the smallest contract, the same widget code serves a cell and the larger view, and the larger view stays inside the root's own container so the template owns it.
 
-**The `widgets` domain.** The dashboard root registers the `widgets` domain in a registry it can write to: in a single-page application, the application's own registry; in an MFE, a nested registry the root builds in its first mount (the concrete registry-construction call is an implementation detail fixed in the DESIGN). A child cannot register into an ancestor's registry, but FrontX advertises the nested registry's domains and extensions upward. The nested registry and its registrations survive an unmount.
+**The `widgets` domain.** The dashboard root registers the `widgets` domain in a registry it can write to: in a single-page application, the application's own registry; in an MFE, a nested registry the root builds in its first mount (the concrete registry-construction call is an implementation detail of the runtime FEATURE, `cpt-frontx-dashboard-algo-dashboard-runtime-register-domain`). A child cannot register into an ancestor's registry, but FrontX advertises the nested registry's domains and extensions upward. The nested registry and its registrations survive an unmount.
 
-The domain declaration fields (the concrete FrontX domain-declaration call is an implementation detail fixed in the DESIGN):
+The domain declaration fields (the concrete FrontX domain-declaration call is an implementation detail of the runtime FEATURE, `cpt-frontx-dashboard-algo-dashboard-runtime-register-domain`):
 
 * `sharedProperties`: theme and language;
 * `actions`: lifecycle only, [`mount_ext`, `unmount_ext`];
 * `extensionsActions`: [`render_widget`];
 * `extensionsTypeId`: the `widgets` extension type `gts.frontx.mfes.ext.extension.v1~frontx.dashboard.mfe.widget_ext.v1~`;
-* `defaultActionTimeout`;
+* `defaultActionTimeout`: 30000 ms;
 * `lifecycleStages`: [] and `extensionsLifecycleStages`: [];
 * no `route`.
 
-**The `render_widget` action.** The widget contract is one action, `render_widget {widget, data?}`. The widget renders it, including its own empty state, and nothing more. The dashboard root owns the cell frame: title, loader, error state and the larger-view button. The `render_widget` payload is validated against its action type without polymorphism, so its `widget` and `data` fields reference the open bases, and the payload never closes them.
+**The `render_widget` action.** The widget contract is one action, `render_widget {render, value_format?, data?}`. The widget renders it, including its own empty state, and nothing more. The dashboard root owns the cell frame: title, loader, cannot-be-shown state and the larger-view button. The payload carries the widget instance's `render` object and, for a data widget, its `value_format` and the stamped data instance; all are validated before it is sent, the widget instance against its own type and the data against its data type. The widget gets no widget id, title or binding. Sending only these keeps every widget independent of the binding and of the widget base's other fields.
 
-**Containers.** The root attaches the domain's one root element (the concrete mounter call is fixed in the DESIGN). The domain's container hooks create each extension's container and append it under that root. Cell placement and the larger-view overlay are done by the hooks and CSS on those containers, never by mounting into arbitrary elements.
+**Containers.** The root attaches the domain's one root element (the concrete mounter call is an implementation detail of the runtime FEATURE, `cpt-frontx-dashboard-algo-dashboard-runtime-register-domain`). The domain's container hooks create each extension's container and append it under that root. Cell placement and the larger-view overlay are done by the hooks and CSS on those containers, never by mounting into arbitrary elements.
 
 **Generated extensions and their ids.** The root registers one generated extension per cell and per larger view in `widgets`, then mounts it with `mount_ext` (`history: "none"`). The extension id is `<widgets extension type>~<UUIDv5 under the template namespace of widget id|role|entry id>`, where role is `cell` or `larger_view`. FrontX requires it to be a GTS instance id of an extension type. The role keeps a cell extension and a larger-view extension of the same widget apart. The entry id gives a new id when a different entry wins, so FrontX never reuses one id for different code. Reloading the same dashboard reuses the ids. Everything that may differ while the widget id stays the same (render, the binding, data) reaches the widget in `render_widget`, never in the extension declaration.
 
@@ -85,18 +85,20 @@ The domain declaration fields (the concrete FrontX domain-declaration call is an
 * Good, because deterministic ids let the root reuse the same extensions on a reload, so the page does not pile up extensions.
 * Good, because `history: "none"` keeps the host's captured route when the larger view opens.
 * Bad, because the root builds its own registry in an MFE, which is one more step at first mount.
-* Bad, because a FrontX failure outside the root's own handler stays invisible, and that cell stays empty (a known limit).
+* Bad, because the root cannot see inside an isolated widget. Mitigation: the widget's `render_widget` handler resolves as soon as it accepts the payload, before drawing, within the domain's `defaultActionTimeout` (30000 ms). If the action chain ends in its fallback or times out, the cell shows the cannot-be-shown state and the root logs a diagnostic. A widget that fails while drawing shows its own cannot-be-shown state; this is a widget obligation.
+* Bad, because one limit remains: a widget that crashes after it accepted the payload and shows nothing leaves its cell blank. The root cannot observe this, so nothing is logged. The decision makers accept it: only a broken widget release causes it, it affects only that widget's cells, and the fix is a widget release. PRD §6.3 lists it as a product limitation.
 
 ### Confirmation
 
 * A test registers the `widgets` domain and confirms it declares the shared properties, the lifecycle actions, `render_widget`, the `widgets` extension type, and no route.
 * A test confirms the domain is rejected without its `render_widget` handler.
 * A test confirms a widget entry lacking `render_widget` is rejected at admission.
-* A test mounts a dashboard and confirms one extension is generated per cell and per larger view, with ids of the form `<widgets extension type>~<UUIDv5(widget id|role|entry id)>`, and that a reload reuses the same ids.
+* A test mounts a dashboard and confirms one extension is generated per cell and per larger view, with ids of the form `<widgets extension type>~<UUIDv5(namespace, widget id | role | entry id)>`, and that a reload reuses the same ids.
 * A test loads the same dashboard twice with another dashboard in between, and confirms the generated ids are equal for the same widget, role and entry, that the extensions of the first dashboard are unregistered before the second registers, and that no collision diagnostic is logged.
 * A test opens a larger view and confirms the overlay appears inside the root's container, the close button and Escape and a click outside close it, focus stays inside while open, and it closes on a page refresh.
 * A test confirms every `mount_ext` and `unmount_ext` carries `history: "none"`.
 * A test confirms a late result for an extension that has been unmounted is dropped and never sent.
+* A test confirms that a widget whose `render_widget` handler never resolves, or whose action chain ends in its fallback, gets the cannot-be-shown state and a diagnostic.
 
 ## Pros and Cons of the Options
 
@@ -122,7 +124,7 @@ A `cells` domain for cell widgets and a `larger_view` domain for larger-view wid
 The larger view is a static extension of a host modal domain, mounted outside the dashboard root.
 
 * Good, because the host's modal chrome is reused.
-* Bad, because the template no longer owns the larger view's accessibility, and the template depends on a host modal feature it cannot guarantee (it is hosting-agnostic).
+* Bad, because the template would not own the larger view's accessibility, and the template depends on a host modal feature it cannot guarantee (it is hosting-agnostic).
 * Bad, because a child cannot register into an ancestor's registry, so the root could not register the larger-view extension without a separate registry and a separate static extension.
 
 ## More Information
@@ -141,5 +143,5 @@ This decision directly addresses the following requirements or design elements:
 
 * `cpt-frontx-dashboard-fr-larger-view` — the larger view is an overlay inside the root's own container, accessible, and closable on Escape, a click outside, or a page refresh.
 * `cpt-frontx-dashboard-fr-isolation` — each widget is a generated FrontX extension in the `widgets` domain.
-* `cpt-frontx-dashboard-fr-states` — the root owns the cell frame (title, loader, error state, the larger-view button); the widget owns its empty state.
+* `cpt-frontx-dashboard-fr-states` — the root owns the cell frame (title, loader, cannot-be-shown state, the larger-view button); the widget owns its empty state.
 * `cpt-frontx-dashboard-interface-contract` — the `widgets` domain and the `render_widget` action are part of the published contract.

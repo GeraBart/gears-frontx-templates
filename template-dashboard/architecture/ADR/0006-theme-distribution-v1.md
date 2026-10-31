@@ -36,6 +36,8 @@ A dashboard must render in a light and in a dark theme, follow the host's theme,
 
 The host already supplies theme and language values. The FrontX design system `@gears-frontx/ui-kit` provides components and tokens in a light and a dark scope. The dashboard arrives as one JSON and carries no theme.
 
+Assumption: FrontX defines the types of its theme and language shared properties. It does not define them yet; this is a FrontX prerequisite listed in DESIGN §3.1.
+
 Where does the dashboard's look come from, how does a theme reach every widget, including the larger view, and how does a theme switch reach them without a reload?
 
 ## Decision Drivers
@@ -61,8 +63,8 @@ Chosen option: "Host theme and language shared properties used unchanged, with u
 
 The decision has these parts:
 
-1. **One theme input.** The template's only theme input is the host theme value, which the host supplies. The template uses it unchanged. The root's bundle registers theme and language as shared-property types under the ids hosts already use (`gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~`, a non-empty string, and `…~frontx.mfes.comm.language.v1~`).
-2. **Delivery to every widget.** The dashboard root publishes the theme and language with `updateSharedProperty` on every mount, before any cell mounts, and republishes them on every change. `updateSharedProperty` validates the value against the property type, so the bundle registers those types first. It reaches every widget in the root's registry that declares the property. FrontX does not replay updates when a bridge is reactivated, so widgets read `getProperty` on mount. The larger view is a widget instance in the same domain, so it receives them the same way.
+1. **One theme input.** The template's only theme input is the host theme value, which the host supplies. The template uses it unchanged. The `widgets` domain shares it through the FrontX theme and language properties hosts already use (`gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~` and `…~frontx.mfes.comm.language.v1~`); the template refers to these ids and defines no schema for them.
+2. **Delivery to every widget.** The dashboard root publishes the theme and language with `updateSharedProperty` on every mount, before any cell mounts, and republishes them on every change. `updateSharedProperty` validates the value against the property type. These types are FrontX's: the template registers none of them and refers only to their ids. FrontX does not yet define them, which is a FrontX prerequisite listed in DESIGN §3.1. It reaches every widget in the root's registry that declares the property. FrontX does not replay updates when a bridge is reactivated, so widgets read `getProperty` on mount. The larger view is a widget instance in the same domain, so it receives them the same way.
 3. **The look comes from ui-kit.** Every widget uses `@gears-frontx/ui-kit`. The kit has two scopes, light and dark, and the host theme maps onto one of them. Each widget maps the host theme id to one of the two scopes; an unknown id gives light. Every color, font and spacing value comes from kit tokens of that scope, and no widget carries manual styling.
 4. **Chart themes in each chart widget.** Each chart widget instance builds its ECharts theme `frontx-dashboard` from the kit tokens of the active scope and registers it in its own ECharts copy. It builds and registers it again on every theme change ([ADR-0004](0004-charting-library-v1.md)).
 5. **Theme switch.** A theme switch is a shared-property change only. The host updates the property; the dashboard root republishes it; each widget selects the new kit scope, and chart widgets re-register their chart theme. A theme change never re-runs any binding or remounts anything (`cpt-frontx-dashboard-fr-theme`).
@@ -78,7 +80,7 @@ The decision has these parts:
 * Bad, because a product cannot give the dashboard a look of its own that differs from the host's design system, and all dashboards share that look.
 * Bad, because chart colors are limited to what the kit tokens offer in each scope.
 * Bad, because every widget repeats the scope mapping, and every chart widget repeats the chart theme building. Mitigation: both are one small helper per package, and the per-instance cost is minor next to evaluating ECharts itself.
-* Bad, because the dark-theme set is enumerated per helper, and it must gain an entry when the host adds a dark theme.
+* Bad, because the dark-theme set is enumerated per helper, and it must gain an entry when the host adds a dark theme. Mitigation: each package keeps the set in one place, so a new host dark theme is one edit per package.
 * Bad, because themes beyond light and dark fold into one of the two scopes, so a host theme that is neither is not shown distinctly.
 * Bad, because an unknown theme id falls back to the light scope.
 * Neutral, because every widget evaluates its own copy of the kit (FrontX ADR-0011); the kit is a shared dependency, so its source text is fetched once only when every template widget publishes the same `contentHash` for it (FrontX ADR-0034), with realm-wide reach (FrontX ADR-0035), and it is counted once in the page total ([ADR-0010](0010-template-packages-and-host-contract-v1.md)).
