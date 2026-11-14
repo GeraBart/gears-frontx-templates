@@ -9,7 +9,7 @@ import type { PieData, PieRender } from '../types';
 import { PALETTE, legendOf } from './CartesianChart';
 import { ChartShell } from './ChartShell';
 import type { ValuesTable } from './DataView';
-import { isCompact, useElementSize } from './size';
+import { isCompact, isLaidOut, useElementSize } from './size';
 import styles from '../widgets.module.css';
 
 const FILL = { '--chart-aspect-ratio': 'auto', blockSize: '100%', inlineSize: '100%' } as CSSProperties;
@@ -127,6 +127,7 @@ export function PieChart({
     <div ref={measure} className={styles.fill} role="figure" aria-label={label}>
       <ChartShell
         drillDown={render.drill_down === true}
+        laidOut={isLaidOut({ width, height })}
         table={table}
         label={texts.dataOf(label)}
         texts={texts}

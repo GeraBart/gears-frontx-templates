@@ -5,6 +5,7 @@ import { MinusIcon, TrendingDownIcon, TrendingUpIcon } from 'lucide-react';
 import type { RenderWidgetPayload, ValueFormat } from '@gears-frontx/frontx-dashboard-root/contract';
 
 import { formatValue, nonFiniteProblemOf, relativeChangeOf } from '../format';
+import { isLaidOut, useElementSize } from '../chart/size';
 import { SafeLink } from '../links';
 import { DEFAULT_WIDGET_TEXTS, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
 import type { MetricCardData, MetricCardRender } from '../types';
@@ -123,6 +124,8 @@ export function MetricCard({
   container?: HTMLElement | ShadowRoot | null;
 }) {
   const { render, data, value_format } = payload;
+  // The sparkline is drawn only while the card is laid out (`isLaidOut`).
+  const [measure, box] = useElementSize();
   if (!data) return <WidgetCannotBeShown texts={texts} problem="metric_card: no data" />;
   const nonFinite = nonFiniteProblemOf('metric_card', payload);
   if (nonFinite) return <WidgetCannotBeShown texts={texts} problem={nonFinite} />;
@@ -133,7 +136,7 @@ export function MetricCard({
   // One point per step; a single point draws no line.
   const steps = (data.sparkline ?? []).map((y, index) => ({ step: index, y }));
   return (
-    <div className={styles.metric}>
+    <div ref={measure} className={styles.metric}>
       <div className={styles.metricHead}>
         <Text typography="kpi" render={<strong />}>
           {formatValue(data.value, value_format, locale)}
@@ -151,7 +154,7 @@ export function MetricCard({
           </div>
         ) : null}
       </div>
-      {steps.length > 1 ? (
+      {steps.length > 1 && isLaidOut(box) ? (
         <ChartContainer config={SPARK_CONFIG} style={FILL} className={styles.spark}>
           <AreaChart data={steps} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             {/* connectNulls off draws a null point as a gap, not a straight line through it. */}

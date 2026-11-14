@@ -10,7 +10,7 @@ import type { CartesianData, CartesianRender, CartesianSeriesOption, LegendPosit
 import styles from '../widgets.module.css';
 import { ChartShell } from './ChartShell';
 import type { ValuesTable } from './DataView';
-import { isCompact, useElementSize } from './size';
+import { isCompact, isLaidOut, useElementSize } from './size';
 
 // The kit's five series colours in an order that keeps neighbours apart; the sixth series wraps to the first.
 export const PALETTE = ['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)', 'var(--chart-1)', 'var(--chart-3)'];
@@ -420,6 +420,7 @@ export function CartesianChart({
   const { render, data, value_format } = payload;
   const label = labelProp ?? texts.chart;
   const [measure, { width, height }] = useElementSize();
+  const laidOut = isLaidOut({ width, height });
   const compact = isCompact(height);
   if (!data) return <WidgetCannotBeShown texts={texts} problem="cartesian_chart: no data" />;
   const nonFinite = nonFiniteProblemOf('cartesian_chart', payload);
@@ -535,6 +536,7 @@ export function CartesianChart({
       <div ref={measure} className={styles.fill} role="figure" aria-label={label}>
         <ChartShell
           drillDown={render.drill_down === true}
+          laidOut={laidOut}
           table={table}
           label={texts.dataOf(label)}
           texts={texts}
@@ -783,6 +785,7 @@ export function CartesianChart({
     <div ref={measure} className={styles.fill} role="figure" aria-label={label}>
       <ChartShell
         drillDown={render.drill_down === true}
+        laidOut={laidOut}
         table={table}
         label={texts.dataOf(label)}
         texts={texts}

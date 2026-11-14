@@ -17,6 +17,7 @@ export type DrawChart = (onPick: ((row: number) => void) | undefined) => ReactNo
  */
 export function ChartShell({
   drillDown,
+  laidOut = true,
   table,
   draw,
   label,
@@ -26,6 +27,11 @@ export function ChartShell({
   container,
 }: {
   drillDown: boolean;
+  /**
+   * Whether the chart's measured box is laid out (`isLaidOut`); the chart is drawn only then. A chart drawn with the
+   * chart library passes it; one drawn without it (the funnel, the heatmap) leaves it out.
+   */
+  laidOut?: boolean;
   table: ValuesTable;
   draw: DrawChart;
   label: string;
@@ -40,7 +46,7 @@ export function ChartShell({
   // It covers the rows only: a new language renames the headings and keeps the pick.
   const version = useDataVersion(drillDown ? JSON.stringify(table.rows) : null);
   const picked = view.version === version ? view.picked : null;
-  if (!drillDown) return <div className={styles.chart}>{draw(undefined)}</div>;
+  if (!drillDown) return <div className={styles.chart}>{laidOut ? draw(undefined) : null}</div>;
   return (
     <div className={styles.chartShell}>
       <div className={styles.chartActions}>
@@ -52,7 +58,7 @@ export function ChartShell({
       {view.data ? (
         <DataView key={picked ?? 'all'} table={table} version={version} picked={picked} label={label} format={format} locale={locale} container={container} />
       ) : (
-        <div className={`${styles.chart} ${styles.clickable}`}>{draw((row) => setView({ data: true, picked: row, version }))}</div>
+        <div className={`${styles.chart} ${styles.clickable}`}>{laidOut ? draw((row) => setView({ data: true, picked: row, version })) : null}</div>
       )}
     </div>
   );
