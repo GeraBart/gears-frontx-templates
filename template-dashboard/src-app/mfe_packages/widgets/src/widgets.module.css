@@ -243,6 +243,11 @@
   gap: var(--space-1);
 }
 
+/* The headline's unit word wraps under the number when the card is too narrow for both; a unit wider than the card breaks inside it rather than being clipped. */
+.metricUnit {
+  overflow-wrap: anywhere;
+}
+
 .metricMeta {
   display: flex;
   flex-wrap: wrap;

@@ -131,6 +131,9 @@ export function MetricCard({
   if (nonFinite) return <WidgetCannotBeShown texts={texts} problem={nonFinite} />;
   if (data.value === null) return <WidgetEmpty texts={texts} />;
 
+  // The headline shows the unit word as its own piece, so the number is formatted without it.
+  const unit = value_format?.value_type === 'number' ? value_format.unit_label : undefined;
+  const numberFormat = value_format?.value_type === 'number' ? { ...value_format, unit_label: undefined } : value_format;
   const trend = trendOf(data.value, data.previous_value);
   const reference = typeof data.reference_value === 'number' ? data.reference_value : null;
   // One point per step; a single point draws no line.
@@ -138,8 +141,15 @@ export function MetricCard({
   return (
     <div ref={measure} className={styles.metric}>
       <div className={styles.metricHead}>
+        {/* The unit word is its own piece after an ordinary space: in a narrow card it wraps under the number, which stays whole. */}
         <Text typography="kpi" render={<strong />}>
-          {formatValue(data.value, value_format, locale)}
+          {formatValue(data.value, numberFormat, locale)}
+          {unit ? (
+            <>
+              {' '}
+              <span className={styles.metricUnit}>{unit}</span>
+            </>
+          ) : null}
         </Text>
         {/* The trend, the caption and the reference share one line that wraps, so a low card keeps room for its foot. */}
         {trend || render.value_label || reference !== null ? (

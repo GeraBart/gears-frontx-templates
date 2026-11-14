@@ -96,6 +96,17 @@ describe('metric_card', () => {
     expect(screen.getByText('90 sec')).toBeTruthy();
   });
 
+  it('lets the unit word wrap under the number in a narrow card, the number staying whole', () => {
+    const { container } = render(<MetricCard payload={{ render: {}, value_format: { value_type: 'number', unit_label: 'commits' }, data: { value: 12_345 } }} />);
+    const headline = container.querySelector('strong')!;
+    // An ordinary space, where a line can break, not the no-break space a value and its unit share elsewhere.
+    expect(headline.textContent).toBe('12,345 commits');
+    // The unit is a piece of its own after the number, and the number itself has no place to break.
+    const unit = screen.getByText('commits');
+    expect(unit.parentElement).toBe(headline);
+    expect(headline.firstChild!.textContent).toBe('12,345');
+  });
+
   it('draws the sparkline and breaks it at a null point', () => {
     const { container, unmount } = render(<MetricCard payload={{ render: {}, data: { value: 3, sparkline: [1, null, 3, 5] } }} />);
     const curve = container.querySelector('.recharts-area-curve');
