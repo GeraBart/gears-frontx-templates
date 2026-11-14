@@ -18,6 +18,7 @@ const CASES: [string, RenderWidgetPayload, string][] = [
   ['pie_chart', { render: {}, data: { slices: [{ label: 'a', value: 1 }] } } as RenderWidgetPayload, '.recharts-pie'],
   ['funnel_chart', { render: {}, data: { stages: [{ label: 'a', value: 2 }, { label: 'b', value: 1 }] } } as RenderWidgetPayload, 'ol [data-share]'],
   ['radar_chart', { render: {}, data: { points: [{ axis: 'a', series: null, value: 3 }, { axis: 'b', series: null, value: 2 }, { axis: 'c', series: null, value: 1 }] } } as RenderWidgetPayload, '.recharts-radar-polygon'],
+  ['treemap_chart', { render: {}, data: { items: [{ label: 'a', value: 3, group: null }, { label: 'b', value: 2, group: null }] } } as RenderWidgetPayload, '[class*="treemapTile"]'],
   ['cartesian_chart', { render: { series: [{ name: 'a', type: 'bar' }] }, data: { series: [{ name: 'a', points: [{ x: 'x', y: 1 }] }] } } as RenderWidgetPayload, '.recharts-bar'],
   ['grid', { render: { columns: [{ key: 'a', title: 'A' }] }, data: { rows: [['one']] } } as RenderWidgetPayload, 'table'],
 ];

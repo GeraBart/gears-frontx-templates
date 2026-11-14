@@ -13,6 +13,7 @@ export { ProgressListCard } from './cards/ProgressListCard';
 export { RadialProgress, checkRadialProgress } from './cards/RadialProgress';
 export { DataView, type ValuesTable } from './chart/DataView';
 export { RadarChart, checkRadar } from './chart/RadarChart';
+export { TreemapChart, checkTreemap } from './chart/TreemapChart';
 export { GridWidget } from './grid/GridWidget';
 export { checkGrid, sortRows, pinnedCount } from './grid/gridModel';
 export { SafeLink, linkTargetOf, type LinkTarget } from './links';

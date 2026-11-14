@@ -11,6 +11,7 @@ import { CartesianChart } from './chart/CartesianChart';
 import { FunnelChart } from './chart/FunnelChart';
 import { PieChart } from './chart/PieChart';
 import { RadarChart } from './chart/RadarChart';
+import { TreemapChart } from './chart/TreemapChart';
 import { GridWidget } from './grid/GridWidget';
 import { Heatmap } from './heatmap/Heatmap';
 import { METRIC_CARD_SAMPLE, PROGRESS_LIST_CARD_SAMPLE, RANKED_LIST_CARD_SAMPLE, SUMMARY_CARD_SAMPLE } from './samples';
@@ -68,6 +69,12 @@ const WIDGETS: Array<{ widget: string; draw: Draw; payload: Payload; inputs: str
     draw: (payload) => <RadarChart payload={payload} />,
     payload: { render: {}, value_format: { value_type: 'number', decimals: 0 }, data: { points: [{ axis: 'Mon', series: 'a', value: 3 }, { axis: 'Tue', series: 'a', value: 2 }, { axis: 'Wed', series: 'a', value: 1 }] } },
     inputs: ['data.points[1].value', 'value_format.decimals'],
+  },
+  {
+    widget: 'treemap_chart',
+    draw: (payload) => <TreemapChart payload={payload} />,
+    payload: { render: {}, value_format: { value_type: 'number', decimals: 0 }, data: { items: [{ label: 'a', value: 3, group: null }, { label: 'b', value: 2, group: null }] } },
+    inputs: ['data.items[1].value', 'value_format.decimals'],
   },
   {
     widget: 'heatmap',
@@ -196,6 +203,14 @@ const DERIVED: Array<{ name: string; draw: Draw; payload: Payload; shows: string
     payload: { render: {}, data: { stages: [{ label: 'a', value: 1e-300 }, { label: 'b', value: BIG }] } },
     shows: ['[data-share="0"]', '[data-share="100"]', '[data-part="conversion"]'],
     text: /^[^%]*$/,
+  },
+  // The total of the two values is beyond the largest number, so the shares and areas divide by the largest value
+  // instead: two equal tiles of 50% each.
+  {
+    name: 'a treemap of two 1e308 items, whose total overflows',
+    draw: (payload) => <TreemapChart payload={payload} />,
+    payload: { render: {}, data: { items: [{ label: 'a', value: 1e308, group: null }, { label: 'b', value: 1e308, group: null }] } },
+    shows: ['[data-share="50"]', '[class*="treemapTile"]:nth-of-type(2)[data-share="50"]'],
   },
   {
     name: 'a percent stack of two 1e308 values',

@@ -2,12 +2,13 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CartesianData, CartesianRender, FunnelData, FunnelRender, RadarData, RadarRender } from '../types';
+import type { CartesianData, CartesianRender, FunnelData, FunnelRender, RadarData, RadarRender, TreemapData, TreemapRender } from '../types';
 import { DEFAULT_WIDGET_TEXTS, type WidgetTexts } from '../states';
 import { CartesianChart, checkCartesian } from './CartesianChart';
 import { PieChart, checkPie } from './PieChart';
 import { FunnelChart, checkFunnel } from './FunnelChart';
 import { RadarChart, checkRadar } from './RadarChart';
+import { TreemapChart, checkTreemap } from './TreemapChart';
 
 const DATA: CartesianData = {
   series: [
@@ -1073,5 +1074,435 @@ describe('radar_chart', () => {
     const { container } = draw(POINTS);
     expect(screen.queryByRole('button', { name: 'Show data' })).toBeNull();
     expect(container.querySelector('[class*="clickable"]')).toBeNull();
+  });
+});
+
+describe('treemap_chart', () => {
+  const ITEMS: TreemapData['items'] = [
+    { label: 'payments-api', value: 420, group: null },
+    { label: 'web-console', value: 260, group: null },
+    { label: 'mobile-app', value: 140, group: null },
+  ];
+  const draw = (items: TreemapData['items'], options: TreemapRender = {}, extra: object = {}) =>
+    render(<TreemapChart payload={{ render: options, data: { items }, ...extra }} label="Commits" />);
+  const rowsOf = () => within(alternative('Commits')).getAllByRole('row', { hidden: true }).map((row) => [...row.children].map((cell) => cell.textContent));
+  const tiles = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('[class*="treemapTile"]')];
+  const heads = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('[class*="treemapGroupHead"]')];
+  const faces = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('[class*="treemapGroupFace"]')];
+  const boxOf = (element: HTMLElement) => ['left', 'top', 'width', 'height'].map((side) => Number.parseFloat(element.style[side as 'left']));
+  const ratioOf = ([, , width, height]: number[]) => Math.max(width / height, height / width);
+  // Every rendered tile lies inside its box of width by height, and no two overlap.
+  const expectTiled = (boxes: number[][], width: number, height: number) => {
+    for (const [left, top, w, h] of boxes) {
+      expect(left).toBeGreaterThanOrEqual(-1e-6);
+      expect(top).toBeGreaterThanOrEqual(-1e-6);
+      expect(left + w).toBeLessThanOrEqual(width + 1e-6);
+      expect(top + h).toBeLessThanOrEqual(height + 1e-6);
+    }
+    for (const [a, b] of boxes.flatMap((first, index) => boxes.slice(index + 1).map((second) => [first, second] as const))) {
+      const across = Math.min(a[0] + a[2], b[0] + b[2]) - Math.max(a[0], b[0]);
+      const down = Math.min(a[1] + a[3], b[1] + b[3]) - Math.max(a[1], b[1]);
+      expect(across <= 1e-6 || down <= 1e-6).toBe(true);
+    }
+  };
+  const expectBoxes = (got: number[][], want: number[][]) => {
+    expect(got).toHaveLength(want.length);
+    for (const [index, box] of got.entries()) for (const [side, value] of box.entries()) expect(value).toBeCloseTo(want[index][side], 6);
+  };
+
+  // The widget's body as the ResizeObserver reports it.
+  const original = globalThis.ResizeObserver;
+  const sized = (width: number, height: number) => {
+    globalThis.ResizeObserver = class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        this.callback([{ target, contentRect: { width, height } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  };
+  beforeEach(() => sized(600, 300));
+  afterEach(() => {
+    globalThis.ResizeObserver = original;
+    vi.restoreAllMocks();
+  });
+
+  it('lays the values out squarified: the whole box for one, squares for four equals, 0 by 0 in a box without room', () => {
+    sized(100, 50);
+    expectBoxes(tiles(draw([{ label: 'a', value: 7, group: null }]).container).map(boxOf), [[0, 0, 100, 50]]);
+    cleanup();
+    sized(100, 100);
+    const four = draw([1, 2, 3, 4].map((at) => ({ label: `v${at}`, value: 1, group: null })));
+    expectBoxes(tiles(four.container).map(boxOf), [
+      [0, 0, 50, 50],
+      [50, 0, 50, 50],
+      [0, 50, 50, 50],
+      [50, 50, 50, 50],
+    ]);
+    cleanup();
+    // A box without room lays every tile out at 0 by 0 at its corner.
+    sized(0, 100);
+    expect(tiles(draw(ITEMS).container).map(boxOf)).toEqual([
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+    ]);
+  });
+
+  it('gives every tile the area of its value over the total, and covers the box with no overlap', () => {
+    sized(320, 200);
+    const values = [12, 7, 5, 3, 2, 1, 1];
+    const boxes = tiles(draw(values.map((value, at) => ({ label: `v${at}`, value, group: null }))).container).map(boxOf);
+    const total = values.reduce((sum, value) => sum + value, 0);
+    for (const [index, [, , width, height]] of boxes.entries()) expect(width * height).toBeCloseTo((values[index] * 320 * 200) / total, 6);
+    expect(boxes.reduce((sum, [, , width, height]) => sum + width * height, 0)).toBeCloseTo(320 * 200, 6);
+    expectTiled(boxes, 320, 200);
+  });
+
+  it('lays each row across the shorter side, as Bruls, Huizing and van Wijk do: the textbook case keeps its worst aspect ratio under 3', () => {
+    // The paper's values 6, 6, 4, 3, 2, 2, 1 in a 6 by 4 box (here 600 by 400): rows across the shorter side give a
+    // worst aspect ratio of 2.78; rows across the longer side would leave a 36:1 sliver.
+    sized(600, 400);
+    const boxes = tiles(draw([6, 6, 4, 3, 2, 2, 1].map((value, at) => ({ label: `v${at}`, value, group: null }))).container).map(boxOf);
+    expect(boxes).toHaveLength(7);
+    expect(Math.max(...boxes.map(ratioOf))).toBeCloseTo(25 / 9, 6);
+    expectBoxes(boxes.slice(0, 2), [
+      [0, 0, 300, 200],
+      [0, 200, 300, 200],
+    ]);
+  });
+
+  it('keeps the aspect ratios low over random sorted sets, as the rendered tiles show', () => {
+    // A fixed generator (the Park and Miller minimal standard), so the sets are the same on every run.
+    let seed = 7;
+    const next = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
+    sized(578, 222);
+    const ratios: number[] = [];
+    for (let set = 0; set < 40; set += 1) {
+      const values = Array.from({ length: 12 }, () => 1 + Math.floor(next() * 100)).sort((a, b) => b - a);
+      const boxes = tiles(draw(values.map((value, at) => ({ label: `v${at}`, value, group: null }))).container).map(boxOf);
+      expect(boxes).toHaveLength(12);
+      expectTiled(boxes, 578, 222);
+      ratios.push(...boxes.map(ratioOf));
+      cleanup();
+    }
+    expect(ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length).toBeLessThan(2);
+    expect(Math.max(...ratios)).toBeLessThan(25);
+  });
+
+  it('draws one tile per positive item, as large as its value over the total, in the delivered order and palette colour', () => {
+    sized(200, 100);
+    const { container } = draw([
+      { label: 'a', value: 3, group: null },
+      { label: 'b', value: 1, group: null },
+    ]);
+    expect(tiles(container)).toHaveLength(2);
+    expectBoxes(
+      tiles(container).map(boxOf),
+      [
+        [0, 0, 150, 100],
+        [150, 0, 50, 100],
+      ],
+    );
+    expect(tiles(container).map((tile) => tile.getAttribute('data-share'))).toEqual(['75', '25']);
+    // The delivered order of a treemap of many: the tiles come in the items' order, the first item's tile first in
+    // the layout, at the box's corner.
+    cleanup();
+    const many = tiles(draw(ITEMS).container);
+    expect(many.map((tile) => tile.getAttribute('aria-label'))).toEqual(['payments-api: 420', 'web-console: 260', 'mobile-app: 140']);
+    expect(boxOf(many[0]).slice(0, 2)).toEqual([0, 0]);
+  });
+
+  it('keeps every tile at its slot: a tile too small for text draws no text box, and nothing leaves the box', () => {
+    sized(200, 100);
+    const { container } = draw([
+      { label: 'large', value: 100, group: null },
+      { label: 'tiny', value: 1, group: null },
+    ]);
+    const [large, tiny] = tiles(container);
+    // A sliver of under 2 px: it writes nothing, so its box is all it has (no text with padding inside it).
+    expect(boxOf(tiny)[2]).toBeCloseTo((200 * 1) / 101, 6);
+    expect(tiny.children).toHaveLength(0);
+    expect(large.querySelector('[class*="treemapText"]')).not.toBeNull();
+    expectTiled(tiles(container).map(boxOf), 200, 100);
+    cleanup();
+    // 60 small items in a small box: every tile still inside its slot and no two overlapping.
+    sized(240, 120);
+    const crowd = tiles(draw(Array.from({ length: 60 }, (_, at) => ({ label: `item ${at}`, value: 60 - at, group: null }))).container).map(boxOf);
+    expect(crowd).toHaveLength(60);
+    expectTiled(crowd, 240, 120);
+  });
+
+  it('draws no tile for a positive value whose area scales to 0, and keeps it in the data view', () => {
+    const { container } = draw([
+      { label: 'huge', value: 1e308, group: null },
+      { label: 'tiny', value: 5e-324, group: null },
+    ]);
+    expect(tiles(container)).toHaveLength(1);
+    expect(boxOf(tiles(container)[0]).every(Number.isFinite)).toBe(true);
+    expect(rowsOf().slice(1).map((row) => row[0])).toEqual(['huge', 'tiny']);
+  });
+
+  it('names every tile and its value whatever the tile shows, and colours it by its palette place', () => {
+    const { container } = draw(ITEMS);
+    expect(tiles(container).map((tile) => tile.getAttribute('aria-label'))).toEqual(['payments-api: 420', 'web-console: 260', 'mobile-app: 140']);
+    expect(tiles(container).map((tile) => tile.getAttribute('title'))).toEqual(['payments-api: 420', 'web-console: 260', 'mobile-app: 140']);
+    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)']);
+  });
+
+  it('formats the values with value_format, in the tiles and the text alternative', () => {
+    const { container } = draw(ITEMS, {}, { value_format: { value_type: 'number', unit_label: 'commits' } });
+    expect(tiles(container).map((tile) => tile.querySelector('[class*="treemapValue"]')?.textContent)).toEqual([
+      '420\u00a0commits',
+      '260\u00a0commits',
+      '140\u00a0commits',
+    ]);
+    expect(rowsOf()).toEqual([
+      ['Label', 'Value'],
+      ['payments-api', '420\u00a0commits'],
+      ['web-console', '260\u00a0commits'],
+      ['mobile-app', '140\u00a0commits'],
+    ]);
+  });
+
+  it('fails the cell on a negative value, naming its position and never its value', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    draw([
+      { label: 'a', value: 3, group: null },
+      { label: 'b', value: -1, group: null },
+    ]);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] treemap_chart: data.items[1].value is below 0');
+    expect(String(error.mock.calls[0][0])).not.toContain('1 is');
+    expect(checkTreemap({ items: [{ label: 'a', value: 0, group: null }, { label: 'b', value: null, group: null }] })).toBeNull();
+    expect(checkTreemap({ items: [{ label: 'a', value: 2, group: null }] })).toBeNull();
+  });
+
+  it.each([
+    ['all zero', [{ label: 'a', value: 0, group: null }, { label: 'b', value: 0, group: null }]],
+    ['all null', [{ label: 'a', value: null, group: null }, { label: 'b', value: null, group: null }]],
+    ['zero and null', [{ label: 'a', value: 0, group: null }, { label: 'b', value: null, group: null }]],
+  ])('shows the empty state when the values are %s', (_name, items) => {
+    draw(items);
+    expect(screen.getByText('No data to show')).toBeTruthy();
+  });
+
+  it('draws no tile for a value of 0 or null, and keeps the item in the data view', () => {
+    const { container } = draw([
+      { label: 'a', value: 3, group: null },
+      { label: 'b', value: 0, group: null },
+      { label: 'c', value: null, group: null },
+      { label: 'd', value: 1, group: null },
+    ]);
+    expect(tiles(container)).toHaveLength(2);
+    expect(rowsOf()).toHaveLength(5);
+    expect(rowsOf().slice(1).map((row) => row[0])).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('keeps a group literally named "Other" apart from the items without a group', () => {
+    const { container } = draw([
+      { label: 'a', value: 2, group: 'Other' },
+      { label: 'b', value: 1, group: null },
+    ]);
+    expect(faces(container)).toHaveLength(2);
+    expect(faces(container).map((face) => face.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)']);
+    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)']);
+    expect(tiles(container).map((tile) => tile.getAttribute('data-share'))).toEqual(['66.67', '33.33']);
+  });
+
+  it('nests the items one level by group in first-seen order, a null group under the widget text "Other"', () => {
+    sized(400, 200);
+    const { container } = draw([
+      { label: 'a', value: 4, group: 'Web' },
+      { label: 'b', value: 3, group: null },
+      { label: 'c', value: 2, group: 'Web' },
+      { label: 'd', value: 1, group: 'Data' },
+    ]);
+    // The groups keep their first-seen order, each header writing its name and total.
+    expect(heads(container).map((head) => head.textContent)).toEqual(['Web, 6', 'Other, 3', 'Data, 1']);
+    expect(heads(container).map((head) => head.getAttribute('title'))).toEqual(['Web: 6', 'Other: 3', 'Data: 1']);
+    expect(faces(container)).toHaveLength(3);
+    expect(faces(container).map((face) => face.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)']);
+    // Every tile sits inside its group's face, in that group's colour.
+    for (const face of faces(container)) {
+      const [left, top, width, height] = boxOf(face);
+      const inside = tiles(container).filter((tile) => {
+        const [x, y] = boxOf(tile);
+        return x >= left && y >= top && x < left + width && y < top + height;
+      });
+      expect(inside.length).toBeGreaterThan(0);
+      expect(new Set(inside.map((tile) => tile.style.getPropertyValue('--tile')))).toEqual(new Set([face.style.getPropertyValue('--tile')]));
+    }
+    expect(tiles(container).map((tile) => tile.getAttribute('title'))).toEqual(['a: 4, Web', 'c: 2, Web', 'b: 3, Other', 'd: 1, Data']);
+    expect(tiles(container).map((tile) => tile.getAttribute('data-share'))).toEqual(['40', '20', '30', '10']);
+  });
+
+  it('hides a group header that does not fit its group box, keeping the group in the tile tooltips', () => {
+    sized(120, 100);
+    const { container } = draw([
+      { label: 'a', value: 1, group: 'A group with a long name' },
+      { label: 'b', value: 1, group: 'Web' },
+    ]);
+    expect(heads(container).map((head) => head.textContent)).toEqual(['Web']);
+    expect(faces(container)).toHaveLength(2);
+    expect(tiles(container).at(0)?.getAttribute('title')).toBe('a: 1, A group with a long name');
+  });
+
+  it('writes the label and value of a tile where they fit by value_labels, and hides what does not', () => {
+    sized(120, 160);
+    const items: TreemapData['items'] = [
+      { label: 'Long label here', value: 3, group: null },
+      { label: 'x', value: 1, group: null },
+    ];
+    const { container } = draw(items);
+    // The first tile of 120 by 120 fits no label (an estimated 128 px with its padding); the second of 120 by 40
+    // fits the label's line and padding (32 px) but not the value's second line (50 px).
+    expect(tiles(container).map((tile) => tile.querySelector('[class*="treemapLabel"]')?.textContent ?? null)).toEqual([null, 'x']);
+    expect(tiles(container).map((tile) => tile.querySelector('[class*="treemapValue"]')?.textContent ?? null)).toEqual([null, null]);
+    // The tooltip and the text alternative keep both anyway.
+    expect(tiles(container).at(0)?.getAttribute('title')).toBe('Long label here: 3');
+    expect(rowsOf().slice(1)).toEqual([
+      ['Long label here', '3'],
+      ['x', '1'],
+    ]);
+    cleanup();
+    // A second tile of 120 by 30 is too low for even the label's line with its padding.
+    sized(120, 120);
+    expect(tiles(draw(items).container).map((tile) => tile.querySelector('[class*="treemapLabel"]')?.textContent ?? null)).toEqual([null, null]);
+    cleanup();
+    sized(600, 300);
+    const wide = draw(items).container;
+    expect(tiles(wide).map((tile) => tile.querySelector('[class*="treemapLabel"]')?.textContent)).toEqual(['Long label here', 'x']);
+    expect(tiles(wide).map((tile) => tile.querySelector('[class*="treemapValue"]')?.textContent)).toEqual(['3', '1']);
+    cleanup();
+    // `always` writes both whatever the tile fits, `never` neither; the text alternative keeps every value.
+    const always = draw(items, { value_labels: 'always' }).container;
+    expect(tiles(always).map((tile) => tile.querySelector('[class*="treemapLabel"]')?.textContent)).toEqual(['Long label here', 'x']);
+    expect(tiles(always).map((tile) => tile.querySelector('[class*="treemapValue"]')?.textContent)).toEqual(['3', '1']);
+    cleanup();
+    const never = draw(items, { value_labels: 'never' }).container;
+    expect(never.querySelectorAll('[class*="treemapLabel"], [class*="treemapValue"]')).toHaveLength(0);
+    expect(rowsOf().slice(1)).toEqual([
+      ['Long label here', '3'],
+      ['x', '1'],
+    ]);
+  });
+
+  it('writes the share of the total beside the value and in the tooltip with show_share, like other percents', () => {
+    const { container } = draw(
+      [
+        { label: 'a', value: 3, group: null },
+        { label: 'b', value: 1, group: null },
+      ],
+      { show_share: true },
+    );
+    expect(tiles(container).map((tile) => tile.querySelector('[class*="treemapShare"]')?.textContent)).toEqual(['75%', '25%']);
+    expect(tiles(container).map((tile) => tile.getAttribute('title'))).toEqual(['a: 3, 75% of the total', 'b: 1, 25% of the total']);
+    cleanup();
+    // Without show_share no share is written anywhere, and the text alternative has no share column.
+    expect(draw([{ label: 'a', value: 3, group: null }, { label: 'b', value: 1, group: null }]).container.querySelectorAll('[class*="treemapShare"]')).toHaveLength(0);
+    expect(rowsOf()[0]).toEqual(['Label', 'Value']);
+  });
+
+  it('adds a share column to the text alternative and the data view with show_share, a null value without a share', async () => {
+    const user = userEvent.setup();
+    const items: TreemapData['items'] = [
+      { label: 'a', value: 3, group: null },
+      { label: 'b', value: null, group: null },
+      { label: 'c', value: 1, group: null },
+    ];
+    const { unmount } = draw(items, { show_share: true, drill_down: true });
+    const nullShare = rowsOf()[2][2];
+    expect(rowsOf()).toEqual([
+      ['Label', 'Value', 'Share'],
+      ['a', '3', '75%'],
+      ['b', rowsOf()[2][1], nullShare],
+      ['c', '1', '25%'],
+    ]);
+    expect(nullShare).not.toMatch(/%/);
+    await user.click(screen.getByRole('button', { name: 'Show data' }));
+    const region = await screen.findByRole('region', { name: 'Data of Commits' });
+    expect(within(region).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['Label', 'Value', 'Share']);
+    expect(within(region).getByText('75%')).toBeTruthy();
+    unmount();
+  });
+
+  it('writes a group header with its total, and its share with show_share, while they fit; the name alone where only it fits', () => {
+    sized(600, 300);
+    const items: TreemapData['items'] = [
+      { label: 'a', value: 4, group: 'Web' },
+      { label: 'b', value: 2, group: 'Web' },
+      { label: 'c', value: 3, group: 'Data' },
+      { label: 'd', value: 1, group: 'Data' },
+    ];
+    const { container } = draw(items, { show_share: true });
+    expect(heads(container).map((head) => head.textContent)).toEqual(['Web, 6 60%', 'Data, 4 40%']);
+    expect(heads(container).map((head) => head.querySelector('[class*="treemapShare"]')?.textContent)).toEqual(['60%', '40%']);
+    cleanup();
+    expect(heads(draw(items).container).map((head) => head.textContent)).toEqual(['Web, 6', 'Data, 4']);
+    cleanup();
+    // A box whose group faces fit the names but not the totals: the names alone.
+    sized(50, 300);
+    expect(heads(draw(items).container).map((head) => head.textContent)).toEqual(['Web', 'Data']);
+  });
+
+  it('hides the labels a low cell cannot fit, and keeps them in the tooltip and the text alternative', () => {
+    sized(240, 90);
+    const items: TreemapData['items'] = [
+      { label: 'A long repository name here', value: 3, group: null },
+      { label: 'b', value: 1, group: null },
+    ];
+    const { container } = draw(items);
+    // Tiles of 180 by 90 and 60 by 90: the long label (an estimated 233 px) fits neither, the short one fits.
+    expect(tiles(container).map((tile) => tile.querySelector('[class*="treemapLabel"]')?.textContent ?? null)).toEqual([null, 'b']);
+    expect(tiles(container).map((tile) => tile.querySelector('[class*="treemapValue"]')?.textContent ?? null)).toEqual([null, '1']);
+    expect(tiles(container).at(0)?.getAttribute('title')).toBe('A long repository name here: 3');
+    expect(rowsOf().slice(1).map((row) => row[0])).toEqual(['A long repository name here', 'b']);
+  });
+
+  it('is a figure named by its label, with a text alternative of every item, formatted by value_format', () => {
+    draw(ITEMS, {}, { value_format: { value_type: 'number', decimals: 0 } });
+    expect(screen.getByRole('figure', { name: 'Commits' })).toBeTruthy();
+    expect(rowsOf()).toEqual([
+      ['Label', 'Value'],
+      ['payments-api', '420'],
+      ['web-console', '260'],
+      ['mobile-app', '140'],
+    ]);
+  });
+
+  it('takes the group heading, the Other group and the share words from the texts', () => {
+    const texts: WidgetTexts = { ...DEFAULT_WIDGET_TEXTS, chart: 'Diagramm', treemap: { group: 'Gruppe', share: 'Anteil', other: 'Rest', ofTotal: 'von der Gesamtzeit' } };
+    const { container } = render(
+      <TreemapChart
+        payload={{
+          render: { show_share: true },
+          data: { items: [{ label: 'a', value: 3, group: null }, { label: 'b', value: 1, group: 'Web' }] },
+        }}
+        texts={texts}
+      />,
+    );
+    expect(within(alternative('Diagramm')).getAllByRole('columnheader', { hidden: true }).map((cell) => cell.textContent)).toEqual(['Label', 'Gruppe', 'Value', 'Anteil']);
+    expect(heads(container).map((head) => head.textContent)).toEqual(['Rest, 3 75%', 'Web, 1 25%']);
+    expect(tiles(container).at(0)?.getAttribute('title')).toBe('a: 3, Rest, 75% von der Gesamtzeit');
+  });
+
+  it('opens the data view from the button and from a tile with drill_down', async () => {
+    const user = userEvent.setup();
+    const { container, unmount } = draw(ITEMS, { drill_down: true });
+    await user.click(tiles(container)[0]);
+    const region = await screen.findByRole('region', { name: 'Data of Commits' });
+    expect(await within(region).findByText('payments-api', { selector: '[aria-current="true"]' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Show chart' }));
+    await user.click(screen.getByRole('button', { name: 'Show data' }));
+    expect(await screen.findByRole('region', { name: 'Data of Commits' })).toBeTruthy();
+    unmount();
+  });
+
+  it('draws no data view button and no clickable tile with drill-down off', () => {
+    const { container } = draw(ITEMS);
+    expect(screen.queryByRole('button', { name: 'Show data' })).toBeNull();
+    expect(container.querySelector('button[class*="treemapTile"]')).toBeNull();
   });
 });

@@ -65,8 +65,8 @@ describe('registration order under reference lookup', () => {
         return [/\.([a-z_]+)_render\.v1~$/.exec(String(type.$id))![1], { fields: Object.keys(own.properties ?? {}), required: own.required ?? [] }] as const;
       }),
   );
-  it('finds the twelve shipped widget types and their twelve render types in the catalog, so the table below is not empty', () => {
-    expect(shipped).toHaveLength(12);
+  it('finds the thirteen shipped widget types and their thirteen render types in the catalog, so the table below is not empty', () => {
+    expect(shipped).toHaveLength(13);
     expect([...renderTypes.keys()].sort()).toEqual(shipped.map((type) => /\.([a-z_]+)\.v1~$/.exec(type)![1]).sort());
   });
   // Pinned on purpose: the required render fields are the published render contract (ADR-0009), so the rows
@@ -92,6 +92,7 @@ describe('registration order under reference lookup', () => {
       cartesian_chart: [],
       pie_chart: [],
       radar_chart: [],
+      treemap_chart: [],
       funnel_chart: [],
       heatmap: [],
       markdown_card: ['body'],
@@ -107,6 +108,7 @@ describe('registration order under reference lookup', () => {
     cartesian_chart: { drill_down: 'yes' },
     pie_chart: { radius: '50%' },
     radar_chart: { scale_max: 'high' },
+    treemap_chart: { show_share: 'yes' },
     funnel_chart: { show_conversion: 'yes' },
     heatmap: { show_cell_values: 'yes' },
     markdown_card: { body: 5 },
@@ -200,6 +202,16 @@ describe('registration order under reference lookup', () => {
     const result = registerDashboard(types, dashboardOf([withLegend('50', 'top'), withLegend('51', 'right'), withLegend('52', 'bottom'), withLegend('53', 'left'), withLegend('54', 'none'), withLegend('55', 'outside')]));
     expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(5, 'cell')]);
     expect(result.ok && result.failed.get(slotOf(5, 'cell'))).toMatch(/\/render\/legend_position/);
+  });
+
+  it('accepts each treemap_chart value_labels, and fails one outside the catalog values', () => {
+    const type = shipped.find((id) => id.endsWith('.treemap_chart.v1~'))!;
+    const treemap = demoWidgets.find((widget) => widget.id.startsWith(type))!;
+    const { types } = loaded();
+    const withLabels = (uuid: string, value_labels: unknown) => ({ size: 'small', widget: { ...treemap, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...treemap.render, value_labels } } });
+    const result = registerDashboard(types, dashboardOf([withLabels('60', 'auto'), withLabels('61', 'always'), withLabels('62', 'never'), withLabels('63', 'inside')]));
+    expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(3, 'cell')]);
+    expect(result.ok && result.failed.get(slotOf(3, 'cell'))).toMatch(/\/render\/value_labels/);
   });
 
   it('accepts ranked status tones from the shared tones type, and fails a tone outside its closed values or an empty status', () => {
@@ -735,7 +747,7 @@ describe('the render type of a widget type', () => {
 
   // The render base only groups render types, so the render_widget action can name one type for every render;
   // each catalog widget type names its own render type, read by the root's own rule. The type count and the
-  // closed render types are checked in 'registration order under reference lookup' (the twelve shipped types,
+  // closed render types are checked in 'registration order under reference lookup' (the thirteen shipped types,
   // and an extra render field failing each of them).
   it('is, for every catalog widget type, its own render type, one to one with the catalog render types', () => {
     const types = loaded().types;
@@ -900,6 +912,44 @@ describe('the funnel_chart data type', () => {
     ['an empty label', { stages: [{ label: '', value: 3 }] }, /\/stages\/0\/label .* minimum length of `1`/],
     ['a stage without a value', { stages: [{ label: 'a' }] }, /required property 'value'/],
     ['an extra stage field', { stages: [{ label: 'a', value: 1, color: 'red' }] }, /\/stages\/0 Additional property `color`/],
+  ])('fails %s', (_name, data, reason) => {
+    expect(problemOf(data)).toMatch(reason);
+  });
+});
+
+// The treemap_chart data type on the real store: what a transform result must carry, as the root registers it.
+describe('the treemap_chart data type', () => {
+  const TREEMAP_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.treemap_chart.v1~';
+  const problemOf = (data: Record<string, unknown>) => {
+    const { types } = loaded();
+    try {
+      types.register({ ...data, id: `${TREEMAP_DATA}1a2b3c4d-0000-4000-8000-0000000000e1` });
+    } catch (error) {
+      return String(error);
+    }
+    const { valid, errors } = types.validateInstance(`${TREEMAP_DATA}1a2b3c4d-0000-4000-8000-0000000000e1`);
+    return valid ? null : JSON.stringify(errors);
+  };
+  const items = (count: number) => Array.from({ length: count }, (_, index) => ({ label: `i${index}`, value: index % 3, group: null }));
+
+  it.each([
+    ['one item', { items: items(1) }],
+    ['60 items with groups, a null group, a null value and a 0', { items: [...items(58), { label: 'z', value: null, group: 'g' }, { label: 'y', value: 0, group: null }] }],
+  ])('takes %s', (_name, data) => {
+    expect(problemOf(data)).toBeNull();
+  });
+
+  it.each([
+    ['no items field', {}, /required property 'items'/],
+    ['no item', { items: [] }, /\/items Too few items in `#\/items`, should be at least `1`/],
+    ['61 items', { items: items(61) }, /\/items Too many items in `#\/items`, should be `60` at most/],
+    ['a number label', { items: [{ label: 7, value: 1, group: null }] }, /\/items\/0\/label is not of type/],
+    ['a label over 80 characters', { items: [{ label: 'x'.repeat(81), value: 1, group: null }] }, /\/items\/0\/label .* maximum length of `80`/],
+    ['an empty label', { items: [{ label: '', value: 1, group: null }] }, /\/items\/0\/label .* minimum length of `1`/],
+    ['a group over 40 characters', { items: [{ label: 'a', value: 1, group: 'x'.repeat(41) }] }, /\/items\/0\/group .* maximum length of `40`/],
+    ['an item without a group', { items: [{ label: 'a', value: 1 }] }, /required property 'group'/],
+    ['a string value', { items: [{ label: 'a', value: '3', group: null }] }, /\/items\/0\/value is not of type/],
+    ['an extra item field', { items: [{ label: 'a', value: 1, group: null, color: 'red' }] }, /\/items\/0 Additional property `color`/],
   ])('fails %s', (_name, data, reason) => {
     expect(problemOf(data)).toMatch(reason);
   });

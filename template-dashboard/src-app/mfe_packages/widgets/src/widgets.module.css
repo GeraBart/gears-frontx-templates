@@ -817,3 +817,95 @@
   block-size: 100%;
   border-radius: var(--radius-sm);
 }
+
+/* The treemap: squarified tiles over the measured box, no chart library, like the funnel and the heatmap. A tile
+   mixes its palette colour over the card surface as the heatmap's tile does, and the hairline of the same colour
+   keeps two tiles of one group apart. The component fits the text by estimated widths (its PAD, LINE); what turns
+   out wider than its tile anyway is clipped here instead of painting over the neighbour. */
+.treemapBox {
+  position: relative;
+  flex: 1;
+  min-block-size: 0;
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+.treemapTile,
+.treemapGroupFace,
+.treemapGroupHead {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.treemapGroupFace {
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile) 45%, transparent);
+}
+
+.treemapGroupHead {
+  display: flex;
+  align-items: center;
+  /* The component's PAD. */
+  padding-inline: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: color-mix(in oklab, var(--tile) 45%, var(--card));
+}
+
+/* A tile keeps exactly its slot: no padding of its own, so a tile under 16 px draws at its slot's size and nothing
+   overlaps its neighbour; the room around its text is the text's own (`.treemapText`). */
+.treemapTile {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklab, var(--tile) 30%, var(--card));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile) 48%, transparent);
+  color: var(--foreground);
+}
+
+/* A tile that opens the data view: the tile itself, as a button. Only the button's own face is reset: the
+   tile's size, colour and clipping stay. */
+.treemapButton {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: start;
+}
+
+.treemapButton:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+/* The text a tile writes, with the component's PAD around it and its LINE_GAP between label and value; the tile
+   clips what does not fit (value_labels always). */
+.treemapText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  box-sizing: border-box;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  padding: 8px;
+}
+
+.treemapLabel {
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.treemapValue {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The share of the total beside its value: the tile's own text colour, as the muted tone over a tile's colour mix
+   falls below 4.5:1 in the dark theme. */
+.treemapShare {
+  color: var(--foreground);
+}

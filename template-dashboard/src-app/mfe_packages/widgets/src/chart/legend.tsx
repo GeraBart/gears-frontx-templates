@@ -3,8 +3,9 @@ import { ChartLegend, ChartLegendContent } from '@gears-frontx/ui-kit';
 import type { LegendPosition } from '../types';
 import styles from '../widgets.module.css';
 
-// The kit's five series colours in an order that keeps neighbours apart; the sixth series wraps to the first.
-export const PALETTE = ['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)', 'var(--chart-1)', 'var(--chart-3)'];
+// The series palette of every chart that draws with it, in one place (`palette.ts`): this module carries the
+// ui-kit chart legend, which a widget drawn without a chart library imports nothing of.
+export { PALETTE } from './palette';
 
 // Room between the plot and a legend beside it, so an x tick centred on the plot's edge stays clear of the legend.
 const LEGEND_GAP = 16;

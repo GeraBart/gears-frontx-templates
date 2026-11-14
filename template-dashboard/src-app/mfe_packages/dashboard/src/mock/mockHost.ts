@@ -250,6 +250,14 @@ const FIXTURES: Record<string, (body: unknown, query: URLSearchParams) => unknow
     };
   },
   '/api/demo/commits/calendar': () => ({ days: CALENDAR }),
+  // The commits of each repository over the period's days, in the format a treemap_chart takes: the labels and
+  // values of the activity answer above, the treemap cell beside it draws.
+  '/api/demo/repos/commits': (_body, query) => {
+    const days = daysOf(query);
+    return {
+      items: REPOS.map((repo, index) => ({ label: repo, value: sum(REPO_DAILY[index].slice(-days).map((count) => count ?? 0)), group: null })).sort((a, b) => (b.value ?? 0) - (a.value ?? 0)),
+    };
+  },
   '/api/demo/ci/daily': () => ({ daily: CI_DAILY }),
   '/api/demo/broken': () => {
     throw new RequestFailure('the mock API answers 500 for this path');

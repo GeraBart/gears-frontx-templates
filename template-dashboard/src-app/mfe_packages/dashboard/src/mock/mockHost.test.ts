@@ -195,6 +195,19 @@ describe('the mock host', () => {
     }
   });
 
+  it('answers the treemap items of the repositories, whose labels and values equal the repositories and commits of the activity of the period', async () => {
+    const ask = (path: string) => askDemo(path);
+    for (const query of ['?period=7d', '?period=30d']) {
+      const [treemap, activity] = (await Promise.all([ask(`/api/demo/repos/commits${query}`), ask(`/api/demo/repos/activity${query}`)])) as [
+        { items: { label: string; value: number | null; group: string | null }[] },
+        Activity,
+      ];
+      expect(treemap.items.map((item) => [item.label, item.value])).toEqual(activity.map((row) => [row.repo, row.commits]));
+      // The treemap cell groups by nothing: every item carries a null group.
+      expect(treemap.items.every((item) => item.group === null)).toBe(true);
+    }
+  });
+
   it('answers the weekday and hour heatmap with cells that add up to the commits of the daily rows', async () => {
     const [{ cells }, daily] = (await Promise.all([askDemo('/api/demo/commits/heatmap'), askDemo('/api/demo/delivery/daily')])) as [{ cells: { count: number }[] }, Daily];
     const cellTotal = cells.reduce((sum, cell) => sum + cell.count, 0);

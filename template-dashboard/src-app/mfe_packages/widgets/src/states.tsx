@@ -46,6 +46,12 @@ export interface WidgetTexts {
   funnel: { conversion: string; ofPrevious: string };
   /** A radar_chart: the heading of the axis column in its text alternative and data view. */
   radar: { axis: string };
+  /**
+   * A treemap_chart: the headings of the group column and (with show_share) the share column in its text alternative
+   * and data view, the name of the group the items without one go under, and the words after a tile's share in its
+   * tooltip.
+   */
+  treemap: { group: string; share: string; other: string; ofTotal: string };
   /** The accessible note of a link that opens in a new tab. */
   link: { newTab: string };
   /**
@@ -73,6 +79,7 @@ export const DEFAULT_WIDGET_TEXTS: WidgetTexts = {
   pie: { total: 'Total' },
   funnel: { conversion: 'Conversion', ofPrevious: 'of the previous stage' },
   radar: { axis: 'Axis' },
+  treemap: { group: 'Group', share: 'Share', other: 'Other', ofTotal: 'of the total' },
   link: { newTab: 'opens in a new tab' },
   grid: {
     search: 'Search the table',

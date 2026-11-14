@@ -287,3 +287,26 @@ export interface RadarData {
    */
   points: { axis: string; series: string | null; value: number | null }[];
 }
+
+/** The `treemap_chart` render. */
+export interface TreemapRender {
+  /**
+   * Where a tile writes its value: `auto` when the label and it fit the tile, estimated from their lengths,
+   * the label alone when only it fits, nothing below that; `always` whatever the tile fits; `never` nowhere.
+   * Without it, auto.
+   */
+  value_labels?: 'auto' | 'always' | 'never';
+  /** The value as a share of the total beside itself in the tile and in the tooltip. Without it, false. */
+  show_share?: boolean;
+  /** Tiles open the data view with the picked row expanded, and a button opens the whole data view. */
+  drill_down?: boolean;
+}
+
+export interface TreemapData {
+  /**
+   * One to 60 items in the delivered order. When any item names a group, the items are nested one level by group
+   * in first-seen order, and a null group goes under the widget's "Other" group. A null or 0 value draws no tile
+   * and stays in the data view.
+   */
+  items: { label: string; value: number | null; group: string | null }[];
+}

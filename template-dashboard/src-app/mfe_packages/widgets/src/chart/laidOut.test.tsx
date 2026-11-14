@@ -3,10 +3,11 @@ import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MetricCard } from '../cards/MetricCard';
-import type { CartesianData, PieData, RadarData } from '../types';
+import type { CartesianData, PieData, RadarData, TreemapData } from '../types';
 import { CartesianChart } from './CartesianChart';
 import { PieChart } from './PieChart';
 import { RadarChart } from './RadarChart';
+import { TreemapChart } from './TreemapChart';
 
 // Every observed element reports the current size, at once and again on each `resizeAll`, as a browser reports a
 // widget's elements when a dashboard takes the widget out of the page while its cell reloads (0 by 0) and puts it back.
@@ -82,5 +83,31 @@ describe('a chart whose widget is taken out of the page', () => {
     expect(sizeOfSurface()).toEqual(['480', '200']);
     resizeAll({ width: 560, height: 240 });
     expect(sizeOfSurface()).toEqual(['560', '240']);
+  });
+
+  // The treemap draws with no chart library, so it has no responsive container to warn: its rule is the same, kept
+  // by the tiles it draws only into a laid-out box.
+  it('a treemap chart is not drawn at 0 by 0, and its tiles are drawn again once it has a size', () => {
+    const items: TreemapData['items'] = [
+      { label: 'a', value: 1, group: null },
+      { label: 'b', value: 1, group: null },
+    ];
+    const { container } = render(<TreemapChart payload={{ render: {}, data: { items } }} />);
+    const tiles = () => container.querySelectorAll('[class*="treemapTile"]').length;
+    expect(tiles()).toBe(2);
+    resizeAll({ width: 640, height: 0 });
+    // A box whose height comes from its chart measures W by 0: the tiles stay drawn, or they would never come back.
+    expect(tiles()).toBe(2);
+    resizeAll({ width: 0, height: 0 });
+    expect(tiles()).toBe(0);
+    resizeAll({ width: 480, height: 200 });
+    expect(tiles()).toBe(2);
+    // Drawn again at the size it has now, measured afresh: two equal tiles share the box side by side.
+    const [first, second] = [...container.querySelectorAll<HTMLElement>('[class*="treemapTile"]')];
+    expect(Number.parseFloat(first!.style.width)).toBeCloseTo(240, 6);
+    expect(Number.parseFloat(first!.style.height)).toBeCloseTo(200, 6);
+    expect(Number.parseFloat(second!.style.left)).toBeCloseTo(240, 6);
+    resizeAll({ width: 560, height: 240 });
+    expect(Number.parseFloat(container.querySelector<HTMLElement>('[class*="treemapTile"]')!.style.width)).toBeCloseTo(280, 6);
   });
 });
