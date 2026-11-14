@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MetricCard } from './cards/MetricCard';
+import { ActivityFeed } from './cards/ActivityFeed';
 import { ProgressListCard } from './cards/ProgressListCard';
 import { RadialProgress } from './cards/RadialProgress';
 import { RankedListCard } from './cards/RankedListCard';
@@ -86,6 +87,12 @@ const WIDGETS: Array<{ widget: string; draw: Draw; payload: Payload; inputs: str
       data: { steps: [{ label: 'a', value: 3 }, { label: 'b', value: -1 }, { label: 'c', value: null }, { label: 'd', value: 2, kind: 'total' }] },
     },
     inputs: ['data.steps[1].value', 'value_format.decimals'],
+  },
+  {
+    widget: 'activity_feed',
+    draw: (payload) => <ActivityFeed payload={payload} />,
+    payload: { render: { page_size: 5 }, data: { items: [{ time: '2026-11-01', title: 'a' }, { time: '2026-11-04T09:00:00Z', title: 'b', text: 'text' }] } },
+    inputs: ['render.page_size'],
   },
   {
     widget: 'heatmap',

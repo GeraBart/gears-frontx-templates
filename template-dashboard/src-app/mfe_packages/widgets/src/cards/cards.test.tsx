@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ValueFormat } from '@gears-frontx/frontx-dashboard-root/contract';
@@ -6,11 +6,12 @@ import type { ValueFormat } from '@gears-frontx/frontx-dashboard-root/contract';
 import { DEFAULT_WIDGET_TEXTS, type WidgetTexts } from '../states';
 import type { MetricCardRender, RadialProgressData, RadialProgressRender } from '../types';
 import { MetricCard } from './MetricCard';
+import { ActivityFeed } from './ActivityFeed';
 import { ProgressListCard } from './ProgressListCard';
 import { RadialProgress } from './RadialProgress';
 import { RankedListCard } from './RankedListCard';
 import { SummaryCard } from './SummaryCard';
-import { METRIC_CARD_SAMPLE, PROGRESS_LIST_CARD_SAMPLE, RANKED_LIST_CARD_SAMPLE, SUMMARY_CARD_SAMPLE } from '../samples';
+import { ACTIVITY_FEED_SAMPLE, METRIC_CARD_SAMPLE, PROGRESS_LIST_CARD_SAMPLE, RANKED_LIST_CARD_SAMPLE, SUMMARY_CARD_SAMPLE } from '../samples';
 
 const PAINTS = [
   ['variantSuccess', 'success'],
@@ -807,5 +808,275 @@ describe('radial_progress', () => {
       expect(container.querySelector('svg')!.children).toHaveLength(0);
       expect(ring().getAttribute('aria-valuetext')).toBe('75%, 30 of 40, Goal: 20');
     });
+  });
+});
+
+describe('activity_feed', () => {
+  // The clock the expected relative times are written against: the fake now stands on Wednesday 2026-11-04 at noon UTC,
+  // so the tests hold whatever wall clock and zone they run on.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-04T12:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  const item = (title: string, time: string, rest: object = {}) => ({ title, time, ...rest });
+
+  it('shows one item per data item, in the delivered order, each with its time element, title and text', () => {
+    const { container } = render(
+      <ActivityFeed
+        payload={{
+          render: { time_style: 'absolute' },
+          data: {
+            items: [
+              item('REQ-1042 in payments-api', '2026-11-04T09:24:00Z', { text: 'Fix retry policy' }),
+              item('Deploy of 2026-11-01', '2026-11-01', { text: 'payments-api and web-console' }),
+              item('REQ-1040 in web-console', '2026-10-30T18:05:00Z'),
+            ],
+          },
+        }}
+      />,
+    );
+    expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual([
+      'REQ-1042 in payments-apiNov 4, 2026, 9:24 AMFix retry policy',
+      'Deploy of 2026-11-01Nov 1, 2026payments-api and web-console',
+      'REQ-1040 in web-consoleOct 30, 2026, 6:05 PM',
+    ]);
+    const times = [...container.querySelectorAll('time')].map((time) => time.getAttribute('datetime'));
+    expect(times).toEqual(['2026-11-04T09:24:00Z', '2026-11-01', '2026-10-30T18:05:00Z']);
+  });
+
+  it('writes a relative time from the host clock: past and future items, and one of the moment', () => {
+    const { container } = render(
+      <ActivityFeed
+        payload={{
+          render: {},
+          data: {
+            items: [
+              item('three days old', '2026-11-01T12:00:00Z'),
+              item('of the moment', '2026-11-04T12:00:00Z'),
+              item('in two hours', '2026-11-04T14:00:00Z'),
+              item('two years old', '2024-11-04T12:00:00Z'),
+            ],
+          },
+        }}
+      />,
+    );
+    expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual(['three days old3 days ago', 'of the momentnow', 'in two hoursin 2 hours', 'two years old2 years ago']);
+  });
+
+  it('writes the relative time in the host language', () => {
+    render(<ActivityFeed payload={{ render: {}, data: { items: [item('drei Tage alt', '2026-11-01T12:00:00Z')] } }} locale="de" />);
+    expect(screen.getByText('vor 3 Tagen')).toBeTruthy();
+  });
+
+  it('writes a relative bare date as whole calendar days from today, moving up to weeks, months and years', () => {
+    const { container } = render(
+      <ActivityFeed
+        payload={{
+          render: {},
+          data: {
+            items: [
+              item('today', '2026-11-04'),
+              item('yesterday', '2026-11-03'),
+              item('tomorrow', '2026-11-05'),
+              item('in three days', '2026-11-07'),
+              item('six days ago', '2026-10-29'),
+              item('a week ago', '2026-10-28'),
+              item('a month ago', '2026-10-03'),
+              item('a year ago', '2025-11-10'),
+            ],
+          },
+        }}
+      />,
+    );
+    expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual([
+      'todaytoday',
+      'yesterdayyesterday',
+      'tomorrowtomorrow',
+      'in three daysin 3 days',
+      'six days ago6 days ago',
+      'a week agolast week',
+      'a month agolast month',
+      'a year agolast year',
+    ]);
+  });
+
+  it('counts a relative bare date from the date of the host zone, west of UTC too', () => {
+    // 03:00 UTC on Nov 4 is still the evening of Nov 3 in Los Angeles: there Nov 3 is today and Nov 4 tomorrow.
+    vi.stubEnv('TZ', 'America/Los_Angeles');
+    try {
+      vi.setSystemTime(new Date('2026-11-04T03:00:00Z'));
+      const { container } = render(<ActivityFeed payload={{ render: {}, data: { items: [item('a', '2026-11-03'), item('b', '2026-11-04'), item('c', '2026-11-02')] } }} />);
+      expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual(['atoday', 'btomorrow', 'cyesterday']);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('moves a relative date-time up a unit when its rounded count reaches the next unit', () => {
+    const { container } = render(
+      <ActivityFeed
+        payload={{
+          render: {},
+          data: {
+            items: [
+              item('59.7 minutes', '2026-11-04T11:00:20Z'),
+              item('6.6 days', '2026-10-28T21:36:00Z'),
+              item('360 days', '2025-11-09T12:00:00Z'),
+              item('23.6 hours ahead', '2026-11-05T11:36:00Z'),
+            ],
+          },
+        }}
+      />,
+    );
+    expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual(['59.7 minutes1 hour ago', '6.6 dayslast week', '360 dayslast year', '23.6 hours aheadtomorrow']);
+  });
+
+  it('draws an absolute date-time in the host zone, with its time of day', () => {
+    render(<ActivityFeed payload={{ render: { time_style: 'absolute' }, data: { items: [item('a date-time', '2026-11-01T23:05:00Z')] } }} />);
+    expect(screen.getByText('Nov 1, 2026, 11:05 PM')).toBeTruthy();
+  });
+
+  it('shows more items on Show more, in delivered order, and hides the button when everything is shown', () => {
+    const items = Array.from({ length: 12 }, (_, index) => item(`t${index}`, '2026-11-01'));
+    const { container } = render(<ActivityFeed payload={{ render: { page_size: 5 }, data: { items } }} />);
+    expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual(['t03 days ago', 't13 days ago', 't23 days ago', 't33 days ago', 't43 days ago']);
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual(['t03 days ago', 't13 days ago', 't23 days ago', 't33 days ago', 't43 days ago', 't53 days ago', 't63 days ago', 't73 days ago', 't83 days ago', 't93 days ago']);
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toHaveLength(12);
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+  });
+
+  it('moves the focus to the first item each Show more reveals: its link, or the item itself', () => {
+    const items = Array.from({ length: 12 }, (_, index) => item(`t${index}`, '2026-11-01', index === 5 ? { href: '/pulls/5' } : {}));
+    const { container } = render(<ActivityFeed payload={{ render: { page_size: 5 }, data: { items } }} />);
+    const rows = () => [...container.querySelectorAll('ul > li')];
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: 't5' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    // The button is gone after the last page; the focus stays in the list, on the first item it revealed.
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    expect(document.activeElement).toBe(rows()[10]);
+    expect(rows()[10].getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('names its list for assistive technology', () => {
+    render(<ActivityFeed payload={{ render: {}, data: { items: [item('a', '2026-11-01')] } }} />);
+    expect(screen.getByRole('list', { name: 'Activity' })).toBeTruthy();
+  });
+
+  it('pages by 10 without a page_size, and starts over when new data arrives', () => {
+    const items = (prefix: string) => Array.from({ length: 12 }, (_, index) => item(`${prefix}${index}`, '2026-11-01'));
+    const { container, rerender } = render(<ActivityFeed payload={{ render: {}, data: { items: items('a') } }} />);
+    expect(container.querySelectorAll('ul > li')).toHaveLength(10);
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(container.querySelectorAll('ul > li')).toHaveLength(12);
+    rerender(<ActivityFeed payload={{ render: {}, data: { items: items('b') } }} />);
+    expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual(['b03 days ago', 'b13 days ago', 'b23 days ago', 'b33 days ago', 'b43 days ago', 'b53 days ago', 'b63 days ago', 'b73 days ago', 'b83 days ago', 'b93 days ago']);
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
+  });
+
+  it('marks an item of each tone beside its title, and names the tone in text for assistive technology', () => {
+    const { container } = render(
+      <ActivityFeed
+        payload={{
+          render: {},
+          data: {
+            items: [
+              item('open', '2026-11-01', { tone: 'info' }),
+              item('blocked', '2026-11-01', { tone: 'warning' }),
+              item('passed', '2026-11-01', { tone: 'success' }),
+              item('failed', '2026-11-01', { tone: 'danger' }),
+              item('plain', '2026-11-01'),
+            ],
+          },
+        }}
+      />,
+    );
+    const rows = [...container.querySelectorAll('ul > li')];
+    // The relative times are all "3 days ago" (the items share one time), so each row reads mark meaning, title, time.
+    expect(rows.map((row) => row.textContent)).toEqual(['Info: open3 days ago', 'Warning: blocked3 days ago', 'Success: passed3 days ago', 'Error: failed3 days ago', 'plain3 days ago']);
+    // The mark is a named-in-text icon, never colour alone: an svg beside the title of a toned item, none without a tone.
+    expect(rows.map((row) => row.querySelector('svg') !== null)).toEqual([true, true, true, true, false]);
+  });
+
+  it('draws no tone mark when the render turns the tones off', () => {
+    const { container } = render(
+      <ActivityFeed payload={{ render: { show_tone: false }, data: { items: [item('open', '2026-11-01', { tone: 'info' }), item('plain', '2026-11-01')] } }} />,
+    );
+    expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual(['open3 days ago', 'plain3 days ago']);
+    expect(container.querySelector('svg')).toBeNull();
+  });
+
+  it('takes its wordings from the texts', () => {
+    const texts: WidgetTexts = { ...DEFAULT_WIDGET_TEXTS, feed: { name: 'Aktivität', showMore: 'Mehr anzeigen', tone: { neutral: 'Neutral', success: 'Erfolg', warning: 'Warnung', danger: 'Kritisch', info: 'Info' } } };
+    const { container } = render(
+      <ActivityFeed payload={{ render: { page_size: 3 }, data: { items: [item('a', '2026-11-01', { tone: 'warning' }), ...Array.from({ length: 3 }, (_, index) => item(`t${index}`, '2026-11-01'))] } }} locale="de" texts={texts} />,
+    );
+    expect(screen.getByText('Warnung:', { exact: false })).toBeTruthy();
+    expect(container.querySelector('ul > li')!.textContent).toMatch(/^Warnung: /);
+    fireEvent.click(screen.getByRole('button', { name: 'Mehr anzeigen' }));
+    expect(container.querySelectorAll('ul > li')).toHaveLength(4);
+  });
+
+  it('makes a title a link to its target, and a refused target plain text', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    render(
+      <ActivityFeed
+        payload={{
+          render: {},
+          data: {
+            items: [
+              item('REQ-1 in api', '2026-11-01', { href: '/pulls/1' }),
+              item('REQ-2 in web', '2026-11-01', { href: 'https://example.org/pulls/2' }),
+              item('REQ-3 in ops', '2026-11-01', { href: 'javascript:alert(1)' }),
+              item('REQ-4 in ui', '2026-11-01'),
+            ],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByRole('link', { name: 'REQ-1 in api' }).getAttribute('href')).toBe('/pulls/1');
+    expect(screen.getByRole('link', { name: 'REQ-2 in web (opens in a new tab)' }).getAttribute('target')).toBe('_blank');
+    expect(screen.getAllByRole('link')).toHaveLength(2);
+    expect(screen.getByText('REQ-3 in ops')).toBeTruthy();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the empty state for no items', () => {
+    render(<ActivityFeed payload={{ ...ACTIVITY_FEED_SAMPLE, data: { items: [] } }} />);
+    expect(screen.getByText('No data to show')).toBeTruthy();
+  });
+
+  it('shows its cannot-be-shown state without data', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<ActivityFeed payload={{ render: {} }} />);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+  });
+
+  it('fails its cell naming the item whose time is neither an ISO 8601 date-time nor a YYYY-MM-DD date', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<ActivityFeed payload={{ render: {}, data: { items: [item('first', '2026-11-01'), item('second', 'Monday'), item('third', '2026-11-02')] } }} />);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] activity_feed: data.items[1] needs an ISO 8601 date-time or a YYYY-MM-DD date as its time');
+  });
+
+  it('fails its cell naming the item whose date the calendar does not have', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<ActivityFeed payload={{ render: {}, data: { items: [item('first', '2026-02-30')] } }} />);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] activity_feed: data.items[0] needs an ISO 8601 date-time or a YYYY-MM-DD date as its time');
+  });
+
+  it('draws with a locale that is not a BCP-47 tag, without throwing', () => {
+    render(<ActivityFeed payload={{ render: {}, data: { items: [item('a', '2026-11-01T12:00:00Z')] } }} locale="pt_BR" />);
+    expect(screen.getByText('a')).toBeTruthy();
   });
 });

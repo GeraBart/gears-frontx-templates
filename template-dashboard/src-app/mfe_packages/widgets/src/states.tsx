@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Empty, EmptyHeader, EmptyTitle, Text, VisuallyHidden } from '@gears-frontx/ui-kit';
 
 import styles from './widgets.module.css';
+import type { Tone } from './types';
 
 /** The widget's own wordings: English, whatever the host language (gears-frontx-templates#105). */
 export interface WidgetTexts {
@@ -57,6 +58,12 @@ export interface WidgetTexts {
    * and the names of its three bar tones in its legend, an increase, a decrease and a total.
    */
   waterfall: { change: string; running: string; increase: string; decrease: string; total: string };
+  /**
+   * An activity_feed: the accessible name of its list when the cell gives none, the Show more button that reveals the
+   * next page of items, and the name of each shared tone an item's mark stands for, which the row writes in text so the
+   * tone never rides on colour alone.
+   */
+  feed: { name: string; showMore: string; tone: Record<Tone, string> };
   /** The accessible note of a link that opens in a new tab. */
   link: { newTab: string };
   /**
@@ -86,6 +93,7 @@ export const DEFAULT_WIDGET_TEXTS: WidgetTexts = {
   radar: { axis: 'Axis' },
   treemap: { group: 'Group', share: 'Share', other: 'Other', ofTotal: 'of the total' },
   waterfall: { change: 'Change', running: 'Running total', increase: 'Increase', decrease: 'Decrease', total: 'Total' },
+  feed: { name: 'Activity', showMore: 'Show more', tone: { neutral: 'Neutral', success: 'Success', warning: 'Warning', danger: 'Error', info: 'Info' } },
   link: { newTab: 'opens in a new tab' },
   grid: {
     search: 'Search the table',

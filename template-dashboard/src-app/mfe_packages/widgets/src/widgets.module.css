@@ -392,6 +392,100 @@
   background-color: var(--foreground);
 }
 
+/* An activity feed: one row per item, the title with the time after it, the text under them, in delivered order;
+   it scrolls when the items outgrow the cell. Kit tokens only: the tone marks paint by the shared tone colours. */
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+.feedList {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex: 1;
+  align-content: start;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.feedRow {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.feedTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  min-inline-size: 0;
+}
+
+.feedMark-success,
+.feedMark-info,
+.feedMark-warning,
+.feedMark-danger {
+  flex-shrink: 0;
+  align-self: center;
+  block-size: var(--space-4);
+  inline-size: var(--space-4);
+}
+
+.feedMark-success {
+  color: var(--success);
+}
+
+.feedMark-warning {
+  color: var(--warning);
+}
+
+.feedMark-danger {
+  color: var(--danger);
+}
+
+.feedMark-info {
+  color: var(--info);
+}
+
+/* The title takes the room left over and wraps; the time keeps its width and never wraps inside itself. In a narrow
+   cell, where the title would get less than its basis beside the time, the time moves to a line of its own under it. */
+.feedTitle {
+  min-inline-size: 0;
+  flex: 1 1 10rem;
+}
+
+.feedName {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.feedTime {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.feedText {
+  margin: 0;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The Show more row stays at the end of the cell, under the scrolling list. */
+.feedMore {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+}
+
 /* A heatmap: the tile grid with its categories and axis titles, the colour scale under it, and the
    values table for assistive technology. No chart library: a tile mixes the kit chart colour over
    the card surface by its value's place on the scale, which reaches the tile as --heat-mix. */

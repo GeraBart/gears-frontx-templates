@@ -3,7 +3,7 @@ import type { ActionHandler, ChildMfeBridge } from '@gears-frontx/mfes';
 import { LANGUAGE_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID, type RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/contract';
 import { describe, expect, it } from 'vitest';
 
-import { HEATMAP_SAMPLE, MARKDOWN_CARD_SAMPLE, METRIC_CARD_SAMPLE, PROGRESS_LIST_CARD_SAMPLE, RANKED_LIST_CARD_SAMPLE, SUMMARY_CARD_SAMPLE } from './samples';
+import { ACTIVITY_FEED_SAMPLE, HEATMAP_SAMPLE, MARKDOWN_CARD_SAMPLE, METRIC_CARD_SAMPLE, PROGRESS_LIST_CARD_SAMPLE, RANKED_LIST_CARD_SAMPLE, SUMMARY_CARD_SAMPLE } from './samples';
 import { entryIdOf, WIDGET_ENTRIES } from './testing';
 
 // Each catalog entry id mounts the widget of its own type: the widget draws a payload of that type.
@@ -20,6 +20,7 @@ const CASES: [string, RenderWidgetPayload, string][] = [
   ['radar_chart', { render: {}, data: { points: [{ axis: 'a', series: null, value: 3 }, { axis: 'b', series: null, value: 2 }, { axis: 'c', series: null, value: 1 }] } } as RenderWidgetPayload, '.recharts-radar-polygon'],
   ['treemap_chart', { render: {}, data: { items: [{ label: 'a', value: 3, group: null }, { label: 'b', value: 2, group: null }] } } as RenderWidgetPayload, '[class*="treemapTile"]'],
   ['waterfall_chart', { render: {}, data: { steps: [{ label: 'a', value: 3 }, { label: 'b', value: -1 }, { label: 'c', value: 2, kind: 'total' }] } } as RenderWidgetPayload, '.recharts-bar'],
+  ['activity_feed', ACTIVITY_FEED_SAMPLE as RenderWidgetPayload, 'ul li'],
   ['cartesian_chart', { render: { series: [{ name: 'a', type: 'bar' }] }, data: { series: [{ name: 'a', points: [{ x: 'x', y: 1 }] }] } } as RenderWidgetPayload, '.recharts-bar'],
   ['grid', { render: { columns: [{ key: 'a', title: 'A' }] }, data: { rows: [['one']] } } as RenderWidgetPayload, 'table'],
 ];

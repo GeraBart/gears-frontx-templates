@@ -90,6 +90,25 @@ const PULL_REQUESTS = Array.from({ length: OPEN.length }, (_, index) => {
 });
 
 /**
+ * The newest open pull request of each of the last 12 days that has one, youngest first, as the items the activity
+ * feed of the demo takes, so the items span 12 distinct days: of a day's pull requests, the first in the grid order.
+ * The time of each is the last daily day counted back by its age, as a bare date (the one date rule of the widgets),
+ * the title names the pull request and its repository, the text is the pull request's own title, and the href is the
+ * row's link. A tone only where the state means one: open is info, blocked is warning, the other states none.
+ */
+const RECENT_ITEMS = [...PULL_REQUESTS]
+  .sort((a, b) => a.age_days - b.age_days)
+  .filter((pull, index, sorted) => index === 0 || sorted[index - 1].age_days !== pull.age_days)
+  .slice(0, 12)
+  .map((pull) => ({
+    time: new Date(new Date(`${DAYS[DAYS.length - 1]}T00:00:00Z`).getTime() - pull.age_days * 86_400_000).toISOString().slice(0, 10),
+    title: `${pull.id} in ${pull.repo}`,
+    text: pull.title,
+    ...(pull.state === 'open' ? { tone: 'info' as const } : pull.state === 'blocked' ? { tone: 'warning' as const } : {}),
+    href: pull.url,
+  }));
+
+/**
  * Commits by weekday and two-hour block of the day, UTC, over the 31 days: the daily commits split in proportion to
  * the block shape times the weekday share, so the cells add up to the daily commits exactly.
  */
@@ -243,6 +262,8 @@ const FIXTURES: Record<string, (body: unknown, query: URLSearchParams) => unknow
   '/api/demo/teams/goals': () =>
     ['Platform', 'Web', 'Mobile', 'Search', 'Billing'].map((team, index) => ({ team, deployed: 18 + index * 7, target: 40 + index * 5 })),
   '/api/demo/pulls/open': () => ({ pulls: PULL_REQUESTS }),
+  // The newest open pull request of each of the last 12 days as the activity feed takes them, not period-bound: the feed shows things as they stand now.
+  '/api/demo/pulls/recent': () => ({ items: RECENT_ITEMS }),
   '/api/demo/repos/health': () => ({ repos: REPO_HEALTH }),
   '/api/demo/commits/heatmap': () => ({
     cells: WEEKDAYS.flatMap((weekday, day) => BLOCKS.map((block, index) => ({ weekday, block: `${block}:00`, count: HEATMAP_COUNTS[day * BLOCKS.length + index] }))),

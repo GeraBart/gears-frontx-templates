@@ -65,8 +65,8 @@ describe('registration order under reference lookup', () => {
         return [/\.([a-z_]+)_render\.v1~$/.exec(String(type.$id))![1], { fields: Object.keys(own.properties ?? {}), required: own.required ?? [] }] as const;
       }),
   );
-  it('finds the fourteen shipped widget types and their fourteen render types in the catalog, so the table below is not empty', () => {
-    expect(shipped).toHaveLength(14);
+  it('finds the fifteen shipped widget types and their fifteen render types in the catalog, so the table below is not empty', () => {
+    expect(shipped).toHaveLength(15);
     expect([...renderTypes.keys()].sort()).toEqual(shipped.map((type) => /\.([a-z_]+)\.v1~$/.exec(type)![1]).sort());
   });
   // Pinned on purpose: the required render fields are the published render contract (ADR-0009), so the rows
@@ -94,6 +94,7 @@ describe('registration order under reference lookup', () => {
       radar_chart: [],
       treemap_chart: [],
       waterfall_chart: [],
+      activity_feed: [],
       funnel_chart: [],
       heatmap: [],
       markdown_card: ['body'],
@@ -111,6 +112,7 @@ describe('registration order under reference lookup', () => {
     radar_chart: { scale_max: 'high' },
     treemap_chart: { show_share: 'yes' },
     waterfall_chart: { connectors: 'yes' },
+    activity_feed: { page_size: 'many' },
     funnel_chart: { show_conversion: 'yes' },
     heatmap: { show_cell_values: 'yes' },
     markdown_card: { body: 5 },
@@ -224,6 +226,16 @@ describe('registration order under reference lookup', () => {
     const result = registerDashboard(types, dashboardOf([withLabels('70', 'auto'), withLabels('71', 'always'), withLabels('72', 'never'), withLabels('73', 'sometimes')]));
     expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(3, 'cell')]);
     expect(result.ok && result.failed.get(slotOf(3, 'cell'))).toMatch(/\/render\/value_labels/);
+  });
+
+  it('accepts each activity_feed time_style, and fails one outside the catalog values', () => {
+    const type = shipped.find((id) => id.endsWith('.activity_feed.v1~'))!;
+    const feed = demoWidgets.find((widget) => widget.id.startsWith(type))!;
+    const { types } = loaded();
+    const withStyle = (uuid: string, time_style: unknown) => ({ size: 'small', widget: { ...feed, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...feed.render, time_style } } });
+    const result = registerDashboard(types, dashboardOf([withStyle('80', 'relative'), withStyle('81', 'absolute'), withStyle('82', 'soonest')]));
+    expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(2, 'cell')]);
+    expect(result.ok && result.failed.get(slotOf(2, 'cell'))).toMatch(/\/render\/time_style/);
   });
 
   it('accepts ranked status tones from the shared tones type, and fails a tone outside its closed values or an empty status', () => {
@@ -759,7 +771,7 @@ describe('the render type of a widget type', () => {
 
   // The render base only groups render types, so the render_widget action can name one type for every render;
   // each catalog widget type names its own render type, read by the root's own rule. The type count and the
-  // closed render types are checked in 'registration order under reference lookup' (the fourteen shipped types,
+  // closed render types are checked in 'registration order under reference lookup' (the fifteen shipped types,
   // and an extra render field failing each of them).
   it('is, for every catalog widget type, its own render type, one to one with the catalog render types', () => {
     const types = loaded().types;
@@ -1002,6 +1014,53 @@ describe('the waterfall_chart data type', () => {
     ['an extra step field', { steps: [{ label: 'a', value: 1, color: 'red' }] }, /\/steps\/0 Additional property `color`/],
   ])('fails %s', (_name, data, reason) => {
     expect(problemOf(data)).toMatch(reason);
+  });
+});
+
+// The activity_feed data type on the real store: what a transform result must carry, as the root registers it.
+describe('the activity_feed data type', () => {
+  const FEED_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.activity_feed.v1~';
+  const problemOf = (data: Record<string, unknown>) => {
+    const { types } = loaded();
+    try {
+      types.register({ ...data, id: `${FEED_DATA}1a2b3c4d-0000-4000-8000-0000000000a1` });
+    } catch (error) {
+      return String(error);
+    }
+    const { valid, errors } = types.validateInstance(`${FEED_DATA}1a2b3c4d-0000-4000-8000-0000000000a1`);
+    return valid ? null : JSON.stringify(errors);
+  };
+  const items = (count: number) => Array.from({ length: count }, (_, index) => ({ time: '2026-11-04', title: `item ${index}` }));
+
+  it.each([
+    ['no items', { items: [] }],
+    ['a bare date and an ISO 8601 date-time, with an optional text, tone and href', { items: [{ time: '2026-11-04', title: 'Deployed' }, { time: '2026-11-04T09:24:00Z', title: 'REQ-1042 in payments-api', text: 'Fix retry policy', tone: 'info', href: '/pulls/1042' }] }],
+    ['200 items', { items: items(200) }],
+  ])('takes %s', (_name, data) => {
+    expect(problemOf(data)).toBeNull();
+  });
+
+  it.each([
+    ['no items field', {}, /required property 'items'/],
+    ['201 items', { items: items(201) }, /\/items Too many items in `#\/items`, should be `200` at most/],
+    ['a number time', { items: [{ time: 7, title: 'a' }] }, /\/items\/0\/time is not of type/],
+    ['an item without a time', { items: [{ title: 'a' }] }, /\/items\/0 must have required property 'time'/],
+    ['a number title', { items: [{ time: '2026-11-04', title: 7 }] }, /\/items\/0\/title is not of type/],
+    ['an item without a title', { items: [{ time: '2026-11-04' }] }, /\/items\/0 must have required property 'title'/],
+    ['an empty title', { items: [{ time: '2026-11-04', title: '' }] }, /\/items\/0\/title .* minimum length of `1`/],
+    ['a title over 120 characters', { items: [{ time: '2026-11-04', title: 'x'.repeat(121) }] }, /\/items\/0\/title .* maximum length of `120`/],
+    ['a text over 400 characters', { items: [{ time: '2026-11-04', title: 'a', text: 'x'.repeat(401) }] }, /\/items\/0\/text .* maximum length of `400`/],
+    ['a tone outside the shared tones', { items: [{ time: '2026-11-04', title: 'a', tone: 'purple' }] }, /\/items\/0\/tone .* one of/],
+    ['a number href', { items: [{ time: '2026-11-04', title: 'a', href: 5 }] }, /\/items\/0\/href is not of type/],
+    ['an extra item field', { items: [{ time: '2026-11-04', title: 'a', color: 'red' }] }, /\/items\/0 Additional property `color`/],
+    ['an extra top field', { items: [], more: true }, /Invalid unevaluated property `#\/more`/],
+  ])('fails %s', (_name, data, reason) => {
+    expect(problemOf(data)).toMatch(reason);
+  });
+
+  // The time is a string to the schema: the widget's own cross-check refuses what no date reads as.
+  it('takes an unparsable time at the schema, which the widget cross-check fails the cell for', () => {
+    expect(problemOf({ items: [{ time: 'not a date', title: 'a' }] })).toBeNull();
   });
 });
 

@@ -228,6 +228,32 @@ describe('the mock host', () => {
     expect(Number(deltas.reduce((sum, value) => sum + value, 0).toFixed(1))).toBe(total);
   });
 
+  it('answers the recently opened pull requests as feed items of the newest open pull request of each of the last 12 days that has one, youngest first, matching the open pull requests rows', async () => {
+    const [recent, { pulls }, daily] = (await Promise.all([askDemo('/api/demo/pulls/recent'), askDemo('/api/demo/pulls/open'), askDemo('/api/demo/delivery/daily')])) as [
+      { items: { time: string; title: string; text?: string; tone?: string; href?: string }[] },
+      { pulls: { id: string; repo: string; title: string; age_days: number; state: string; url: string }[] },
+      Daily,
+    ];
+    expect(recent.items).toHaveLength(12);
+    // The same pull requests the grid lists: of each age, the first in the grid order, the 12 youngest ages that have one.
+    const youngest = [...new Set(pulls.map((pull) => pull.age_days))]
+      .sort((a, b) => a - b)
+      .slice(0, 12)
+      .map((age) => pulls.find((pull) => pull.age_days === age)!);
+    expect(recent.items.map((item) => [item.title, item.text, item.href])).toEqual(
+      youngest.map((pull) => [`${pull.id} in ${pull.repo}`, pull.title, pull.url]),
+    );
+    // The feed's day for an age: the last daily day counted back, as the activity numbers read it.
+    const last = new Date(`${daily.daily.at(-1)!.day}T00:00:00Z`).getTime();
+    expect(recent.items.map((item) => item.time)).toEqual(youngest.map((pull) => new Date(last - pull.age_days * 86_400_000).toISOString().slice(0, 10)));
+    // Twelve distinct days, the newest first.
+    const times = recent.items.map((item) => item.time);
+    expect(new Set(times).size).toBe(12);
+    expect([...times].sort().reverse()).toEqual(times);
+    // A tone only where the state means one: open is info, blocked is warning, the other states carry none.
+    expect(recent.items.map((item) => item.tone ?? null)).toEqual(youngest.map((pull) => (pull.state === 'open' ? 'info' : pull.state === 'blocked' ? 'warning' : null)));
+  });
+
   it('answers the weekday and hour heatmap with cells that add up to the commits of the daily rows', async () => {
     const [{ cells }, daily] = (await Promise.all([askDemo('/api/demo/commits/heatmap'), askDemo('/api/demo/delivery/daily')])) as [{ cells: { count: number }[] }, Daily];
     const cellTotal = cells.reduce((sum, cell) => sum + cell.count, 0);

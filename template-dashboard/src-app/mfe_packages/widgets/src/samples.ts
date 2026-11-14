@@ -1,6 +1,8 @@
 import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/contract';
 
 import type {
+  ActivityFeedData,
+  ActivityFeedRender,
   HeatmapData,
   HeatmapRender,
   MarkdownCardRender,
@@ -102,5 +104,16 @@ export const MARKDOWN_CARD_SAMPLE: RenderWidgetPayload<MarkdownCardRender> = {
       'Read the [metric definitions](https://example.com/metrics) before comparing teams.',
       '- Commits count the default branch only\n- A deploy counts a rollout to production, rollbacks included',
     ].join('\n\n'),
+  },
+};
+
+/** An `activity_feed` sample: the newest pull requests of the delivery space, one item per row in delivered order. */
+export const ACTIVITY_FEED_SAMPLE: CardSample<ActivityFeedRender, ActivityFeedData> = {
+  render: {},
+  data: {
+    items: [
+      { time: '2026-11-04T09:24:00Z', title: 'REQ-1042 in payments-api', text: 'Fix retry policy', tone: 'info', href: '/pulls/1042' },
+      { time: '2026-11-01', title: 'Release cut', text: 'payments-api and web-console, 14 deploys' },
+    ],
   },
 };

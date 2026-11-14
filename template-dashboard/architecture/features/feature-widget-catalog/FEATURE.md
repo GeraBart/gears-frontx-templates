@@ -2,7 +2,7 @@
 status: accepted
 version: 1
 date: 2026-10-31
-description: "Feature: the widget catalog: the 14 v1 widget types, each with its render type and data shape, the rendering rules, markdown safety, and the grid's client-side sort and page."
+description: "Feature: the widget catalog: the 15 v1 widget types, each with its render type and data shape, the rendering rules, markdown safety, and the grid's client-side sort and page."
 ---
 
 # Feature: Widget Catalog
@@ -25,11 +25,11 @@ description: "Feature: the widget catalog: the 14 v1 widget types, each with its
   - [Sort and page grid rows](#sort-and-page-grid-rows)
   - [Check the heatmap scale and calendar](#check-the-heatmap-scale-and-calendar)
   - [Check cartesian x and y values](#check-cartesian-x-and-y-values)
-  - [Check the pie centre, the radar points and the waterfall sum](#check-the-pie-centre-the-radar-points-and-the-waterfall-sum)
+  - [Check the pie centre, the radar points, the waterfall sum and the feed times](#check-the-pie-centre-the-radar-points-the-waterfall-sum-and-the-feed-times)
 - [4. States (CDSL)](#4-states-cdsl)
   - [No lifecycle states](#no-lifecycle-states)
 - [5. Definitions of Done](#5-definitions-of-done)
-  - [Fourteen widget types](#fourteen-widget-types)
+  - [Fifteen widget types](#fifteen-widget-types)
   - [Per-type render schemas and data shapes](#per-type-render-schemas-and-data-shapes)
   - [Grid row cap, page sizes, and client-side sort/page](#grid-row-cap-page-sizes-and-client-side-sortpage)
   - [Markdown safety](#markdown-safety)
@@ -51,6 +51,7 @@ description: "Feature: the widget catalog: the 14 v1 widget types, each with its
   - [radar_chart](#radar_chart)
   - [treemap_chart](#treemap_chart)
   - [waterfall_chart](#waterfall_chart)
+  - [activity_feed](#activity_feed)
   - [funnel_chart](#funnel_chart)
   - [heatmap](#heatmap)
   - [markdown_card](#markdown_card)
@@ -64,7 +65,7 @@ description: "Feature: the widget catalog: the 14 v1 widget types, each with its
 
 ### 1.1 Overview
 
-The 14 v1 widget types, each a GTS type with its own render type (the render schema), a data type (the data shape), and one FrontX MFE entry. The final render types and data shapes per type, the grid row cap and page sizes, the grid sorts and pages client-side over the rows the transform delivered, markdown safety, and the per-type rendering rules.
+The 15 v1 widget types, each a GTS type with its own render type (the render schema), a data type (the data shape), and one FrontX MFE entry. The final render types and data shapes per type, the grid row cap and page sizes, the grid sorts and pages client-side over the rows the transform delivered, markdown safety, and the per-type rendering rules.
 
 ### 1.2 Purpose
 
@@ -78,7 +79,7 @@ A dashboard author picks from the catalog. The catalog is bounded by presentatio
 
 **Constraints**: `cpt-frontx-dashboard-constraint-one-gts-package`, `cpt-frontx-dashboard-constraint-permissive-licences` (widget libraries).
 
-**Components**: `cpt-frontx-dashboard-component-widget-catalog` (the 14 types, libraries, rendering rules).
+**Components**: `cpt-frontx-dashboard-component-widget-catalog` (the 15 types, libraries, rendering rules).
 
 **Security in scope**: output safety. The markdown card follows `cpt-frontx-dashboard-algo-widget-catalog-markdown`; every other widget shows delivered text as text, and chart tooltips are built from text.
 
@@ -95,7 +96,7 @@ A dashboard author picks from the catalog. The catalog is bounded by presentatio
 | Actor | Role in Feature |
 |-------|-----------------|
 | `cpt-frontx-dashboard-actor-dashboard-author` | Picks widget types from the catalog. |
-| `cpt-frontx-dashboard-actor-widget-author` | Ships the 14 types (or fixes one). |
+| `cpt-frontx-dashboard-actor-widget-author` | Ships the 15 types (or fixes one). |
 | `cpt-frontx-dashboard-actor-dashboard-viewer` | Sorts and pages grids; reads cards and charts. |
 
 ### 1.4 References
@@ -234,15 +235,15 @@ The chart widget runs this check itself, each time it accepts a `render_widget` 
 7. [ ] - `p1` - **FOR EACH** reference line, its `axis` `y` when absent: **IF** the axis is `y_secondary` and no series uses the secondary axis, **RETURN** failure naming the line index; **IF** its `value` is a string and the axis is not a `category` x axis, **RETURN** failure naming the line index; **IF** its `value` is a number and the axis is a `category` x axis, **RETURN** failure naming the line index; **IF** the axis is a `time` x axis and its `value` is neither an ISO 8601 date-time string, nor a bare `YYYY-MM-DD` date of the calendar, nor a number, each a time a date can hold (the bound of a point's x, `inst-wc-cart-time-x`), **RETURN** failure naming the line index; **IF** the axis is a value axis that carries a stack group under a percent stack and its `value` is outside 0 to 1, **RETURN** failure naming the line index; **IF** the axis is a `log` value axis (and no percent axis) and its `value` is not above zero, **RETURN** failure naming the line index. - `inst-wc-cart-reference`
 8. [ ] - `p1` - **RETURN** pass. A `category` axis accepts every `x`. - `inst-wc-cart-pass`
 
-### Check the pie centre, the radar points and the waterfall sum
+### Check the pie centre, the radar points, the waterfall sum and the feed times
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-algo-widget-catalog-card-checks`
 
-**Input**: the `render_widget` payload of a `pie_chart` (its `render`), of a `radar_chart` or of a `waterfall_chart` (its validated data).
+**Input**: the `render_widget` payload of a `pie_chart` (its `render`), of a `radar_chart`, of a `waterfall_chart` or of an `activity_feed` (its validated data).
 
 **Output**: pass, or a failure naming the problem.
 
-The pie, the radar and the waterfall widgets run this check themselves, each time they accept a `render_widget` payload and before they draw, with the same outcome as `cpt-frontx-dashboard-algo-widget-catalog-grid-checks`: on a failure, the widget shows its own cannot-be-shown state in its cell and writes the problem to the browser console (never a value).
+The pie, the radar, the waterfall and the feed widgets run this check themselves, each time they accept a `render_widget` payload and before they draw, with the same outcome as `cpt-frontx-dashboard-algo-widget-catalog-grid-checks`: on a failure, the widget shows its own cannot-be-shown state in its cell and writes the problem to the browser console (never a value).
 
 **Steps**:
 1. [ ] - `p1` - **IF** a `pie_chart`'s `center` is `total` and `radius` does not have two items with an inner radius above 0 (the pie is not a donut), **RETURN** failure naming the field. - `inst-wc-card-pie-center`
@@ -256,7 +257,8 @@ The pie, the radar and the waterfall widgets run this check themselves, each tim
    1. [ ] - `p1` - **IF** it is a total after the first step, its `value` is not null, and its `value` and the running sum differ by more than one part in a billion of the larger of the two, **RETURN** failure naming the step index (the data type cannot add up the steps before a total). - `inst-wc-card-waterfall-total`
    2. [ ] - `p1` - Move the running sum: a delta with a value adds it, a first step that is a total with a value sets the sum to it, and a null delta or a later total leaves it. - `inst-wc-card-waterfall-sum`
    3. [ ] - `p1` - **IF** the running sum is not finite (two finite values can add up beyond the largest number), **RETURN** failure naming the step index. - `inst-wc-card-waterfall-finite`
-6. [ ] - `p1` - **RETURN** pass. - `inst-wc-card-pass`
+6. [ ] - `p1` - **FOR EACH** item of an `activity_feed` in the delivered order, **IF** its `time` is neither an ISO 8601 date-time whose date part is a day of the calendar nor a `YYYY-MM-DD` date of the calendar (so 2026-02-30, alone or before a time of day, fails), **RETURN** failure naming `data.items[N]` by its index, never its content (the data type takes any string as a time). - `inst-wc-card-feed-time`
+7. [ ] - `p1` - **RETURN** pass. - `inst-wc-card-pass`
 
 ## 4. States (CDSL)
 
@@ -273,11 +275,11 @@ The pie, the radar and the waterfall widgets run this check themselves, each tim
 
 ## 5. Definitions of Done
 
-### Fourteen widget types
+### Fifteen widget types
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-widget-catalog-types`
 
-The system **MUST** ship 14 widget types, each a closed derived GTS type with `unevaluatedProperties: false`, setting `entry` and (for data widgets) `data_type`, with `render` of its own render type: `summary_card`, `metric_card`, `ranked_list_card`, `progress_list_card`, `radial_progress`, `grid`, `cartesian_chart`, `pie_chart`, `radar_chart`, `treemap_chart`, `waterfall_chart`, `funnel_chart`, `heatmap` (derived from `data_widget`), and `markdown_card` (derived from the widget base, forbidding `data`, carrying its text in `render`).
+The system **MUST** ship 15 widget types, each a closed derived GTS type with `unevaluatedProperties: false`, setting `entry` and (for data widgets) `data_type`, with `render` of its own render type: `summary_card`, `metric_card`, `ranked_list_card`, `progress_list_card`, `radial_progress`, `grid`, `cartesian_chart`, `pie_chart`, `radar_chart`, `treemap_chart`, `waterfall_chart`, `activity_feed`, `funnel_chart`, `heatmap` (derived from `data_widget`), and `markdown_card` (derived from the widget base, forbidding `data`, carrying its text in `render`).
 
 Each widget type has one FrontX MFE entry, a plain `entry_mf` instance with `actions` [`render_widget`] and `domainActions` []; the FrontX manifest pipeline adds `exposeAssets` when the bundle is built. The full entry instances and the entry id table are in [MFE entries](#mfe-entries).
 
@@ -286,7 +288,7 @@ Each widget type has one FrontX MFE entry, a plain `entry_mf` instance with `act
 **Principles**: `cpt-frontx-dashboard-principle-open-bases-closed-leaves` (each concrete type closes itself).
 
 **Touches**:
-- Entities: the 14 widget types, the 14 render types, the 13 data types, the 14 entries
+- Entities: the 15 widget types, the 15 render types, the 14 data types, the 15 entries
 
 ### Per-type render schemas and data shapes
 
@@ -297,7 +299,7 @@ Each widget type **MUST** refer by `$ref` to its own render type `gts.frontx.das
 **Implements**: `cpt-frontx-dashboard-fr-widget-catalog`.
 
 **Touches**:
-- Entities: the 14 widget types, the 14 render types, the 13 data types
+- Entities: the 15 widget types, the 15 render types, the 14 data types
 
 ### Grid row cap, page sizes, and client-side sort/page
 
@@ -327,12 +329,12 @@ Each widget entry **MUST** follow the widget-author obligations of `cpt-frontx-d
 
 - A null label, `x`, `y` or series value is legal; it renders as an empty label and the row is kept.
 - Empty state: the widget owns it. When its data meets the empty condition of its data type, the widget shows "No data to show" inside its cell, and the cell frame stays. The wording is the widget's own English text, not a localized one (widget contract FEATURE, entry declaration).
-- The `grid`, `heatmap`, `cartesian_chart`, `pie_chart`, `radar_chart` and `waterfall_chart` widgets run their own cross-checks (`cpt-frontx-dashboard-algo-widget-catalog-grid-checks`, `cpt-frontx-dashboard-algo-widget-catalog-heatmap-checks`, `cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks`, `cpt-frontx-dashboard-algo-widget-catalog-card-checks` for the pie, the radar and the waterfall, which checks each total against the running sum before it and the running sum against the finite range), `radial_progress` checks its `target` and `current` ([radial_progress](#radial_progress)), and `funnel_chart` and `treemap_chart` check that no stage or item value is negative ([funnel_chart](#funnel_chart), [treemap_chart](#treemap_chart)); each shows their own cannot-be-shown state when one fails: the static "This widget cannot be shown" with no error text, exposed as text to assistive technology, as `cpt-frontx-dashboard-dod-widget-contract-obligations` specifies (English, like every widget-owned wording).
+- The `grid`, `heatmap`, `cartesian_chart`, `pie_chart`, `radar_chart`, `waterfall_chart` and `activity_feed` widgets run their own cross-checks (`cpt-frontx-dashboard-algo-widget-catalog-grid-checks`, `cpt-frontx-dashboard-algo-widget-catalog-heatmap-checks`, `cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks`, `cpt-frontx-dashboard-algo-widget-catalog-card-checks` for the pie, the radar, the waterfall, which checks each total against the running sum before it and the running sum against the finite range, and the feed, which checks each item's time), `radial_progress` checks its `target` and `current` ([radial_progress](#radial_progress)), and `funnel_chart` and `treemap_chart` check that no stage or item value is negative ([funnel_chart](#funnel_chart), [treemap_chart](#treemap_chart)); each shows their own cannot-be-shown state when one fails: the static "This widget cannot be shown" with no error text, exposed as text to assistive technology, as `cpt-frontx-dashboard-dod-widget-contract-obligations` specifies (English, like every widget-owned wording).
 - Chart tooltips are built from text, never HTML strings.
-- Widget links: the `metric_card` foot link, the `ranked_list_card` row links and the `grid` link values go through one shared link rule. It reads a target the way the browser URL parser does (tabs and line breaks removed, leading and trailing controls and spaces trimmed) and takes `https:`, `http:`, `mailto:` and a path from the site root (`/...`, not `//`). Any other target (`javascript:`, `data:`, `vbscript:` or another scheme, a protocol-relative target, a relative target that does not start with `/`, an unparsable one) shows the link text alone and writes one console line naming the kind of target, never any of its text: the `javascript:`, `data:`, `vbscript:`, `file:`, `blob:` and `ftp:` schemes by name, any other scheme as an unsupported scheme; the cell does not fail. A link text with no visible character (empty, only spaces, only invisible characters such as zero-width marks, the word joiner, the byte order mark, the soft hyphen, the braille pattern blank or the musical null notehead, or only combining marks) shows as plain text with no link and no tab stop, and writes no console line: a link needs a name. A link to another origin opens in a new tab without access to its opener (`rel="noopener noreferrer"`), and its accessible name ends with "(opens in a new tab)", the widget's own English text; any other link opens in the same tab. For the grid this replaced its earlier rule: a relative target that does not start with `/` is no longer a link, a link on the same origin no longer opens a new tab, and a `mailto:` target is now a link.
-- Colour is never the only signal: the heatmap's numeric scale, progress values as text (in a progress card, a radial progress and a grid progress column), the trend icon, the status text in its badge (in a ranked card and a grid badge column), the signed reference difference, and naming in legends and tooltips.
+- Widget links: the `metric_card` foot link, the `ranked_list_card` row links, the `grid` link values and the `activity_feed` item titles go through one shared link rule. It reads a target the way the browser URL parser does (tabs and line breaks removed, leading and trailing controls and spaces trimmed) and takes `https:`, `http:`, `mailto:` and a path from the site root (`/...`, not `//`). Any other target (`javascript:`, `data:`, `vbscript:` or another scheme, a protocol-relative target, a relative target that does not start with `/`, an unparsable one) shows the link text alone and writes one console line naming the kind of target, never any of its text: the `javascript:`, `data:`, `vbscript:`, `file:`, `blob:` and `ftp:` schemes by name, any other scheme as an unsupported scheme; the cell does not fail. A link text with no visible character (empty, only spaces, only invisible characters such as zero-width marks, the word joiner, the byte order mark, the soft hyphen, the braille pattern blank or the musical null notehead, or only combining marks) shows as plain text with no link and no tab stop, and writes no console line: a link needs a name. A link to another origin opens in a new tab without access to its opener (`rel="noopener noreferrer"`), and its accessible name ends with "(opens in a new tab)", the widget's own English text; any other link opens in the same tab. For the grid this replaced its earlier rule: a relative target that does not start with `/` is no longer a link, a link on the same origin no longer opens a new tab, and a `mailto:` target is now a link.
+- Colour is never the only signal: the heatmap's numeric scale, progress values as text (in a progress card, a radial progress and a grid progress column), the trend icon, the status text in its badge (in a ranked card and a grid badge column), the signed reference difference, the tone of an `activity_feed` item named in text beside its mark, and naming in legends and tooltips.
 - Legends: a legend takes at most half of its chart (its height above or below the plot, its width beside it) and scrolls beyond that, so the plot or the pie keeps room in a short cell.
-- Small cells: a chart lower than 200 px (a small low cell) is compact. A widget `description` line takes 24 px from a low cell's body: the body is 78 px high instead of 102 px. A compact `cartesian_chart` draws its x ticks horizontally whatever `tick_angle` asks, thinning them out to fit, and leaves out the legend of a single series, which only repeats the cell's title. A compact `pie_chart` moves a legend asked above or below it to its right, and leaves the legend out when the chart is also narrower than 240 px. A compact `cartesian_chart` keeps its orientation, percent stack and reference lines with their labels, keeps the dots of its extreme marks but leaves out their value labels, which would cover the plot's few rows, and halves the largest bubble radius (9 px instead of 18 px). A low cell whose body also holds the drill-down button and a description line leaves a chart's plot at most 12 px high: there a reference label can fall on the axis ticks and bubbles do not fit, so a chart with drill-down, reference lines or bubble sizes belongs in a high cell. In each case the tooltip and the text alternative still name every value. A `radial_progress` in a low cell leaves out its caption (`center_label`), so the numbers keep the hole. A `radar_chart` in a low cell leaves out the axis labels that cannot fit between its circle and the edge of the plot area its legend leaves, and keeps them in the tooltip and the text alternative. A `treemap_chart` in a low cell leaves out the labels and values `value_labels: auto` would hide (a tile writes its text only while the tile fits it), and keeps every name in the tooltips and the text alternative; a group header that its group box cannot fit is left out, and the group stays in the tile tooltips. A `funnel_chart` in a low cell leaves out the values `value_labels: auto` would show, and keeps its conversions while each label keeps at least 3 em (or its whole width, if shorter) beside them; a stage lower than 26 px writes its text line beside its bar instead of over it, and one lower than 16 px leaves out its whole text line, label, value and conversion, and keeps its bar; a bar is never lower than 8 px, so stages that do not fit even as bare 8 px bars scroll inside the widget's body. A `waterfall_chart` in a low cell leaves out the value labels `value_labels: auto` would show (a label shows only while the bar is wide enough for it, estimated from its length), and keeps every change in the tooltips and the text alternative. A `grid` never gets lower than its header, a few rows and its pager; in a lower cell the cell scrolls. A grid link keeps its text and its link icon on one line.
+- Small cells: a chart lower than 200 px (a small low cell) is compact. A widget `description` line takes 24 px from a low cell's body: the body is 78 px high instead of 102 px. A compact `cartesian_chart` draws its x ticks horizontally whatever `tick_angle` asks, thinning them out to fit, and leaves out the legend of a single series, which only repeats the cell's title. A compact `pie_chart` moves a legend asked above or below it to its right, and leaves the legend out when the chart is also narrower than 240 px. A compact `cartesian_chart` keeps its orientation, percent stack and reference lines with their labels, keeps the dots of its extreme marks but leaves out their value labels, which would cover the plot's few rows, and halves the largest bubble radius (9 px instead of 18 px). A low cell whose body also holds the drill-down button and a description line leaves a chart's plot at most 12 px high: there a reference label can fall on the axis ticks and bubbles do not fit, so a chart with drill-down, reference lines or bubble sizes belongs in a high cell. In each case the tooltip and the text alternative still name every value. A `radial_progress` in a low cell leaves out its caption (`center_label`), so the numbers keep the hole. A `radar_chart` in a low cell leaves out the axis labels that cannot fit between its circle and the edge of the plot area its legend leaves, and keeps them in the tooltip and the text alternative. A `treemap_chart` in a low cell leaves out the labels and values `value_labels: auto` would hide (a tile writes its text only while the tile fits it), and keeps every name in the tooltips and the text alternative; a group header that its group box cannot fit is left out, and the group stays in the tile tooltips. A `funnel_chart` in a low cell leaves out the values `value_labels: auto` would show, and keeps its conversions while each label keeps at least 3 em (or its whole width, if shorter) beside them; a stage lower than 26 px writes its text line beside its bar instead of over it, and one lower than 16 px leaves out its whole text line, label, value and conversion, and keeps its bar; a bar is never lower than 8 px, so stages that do not fit even as bare 8 px bars scroll inside the widget's body. A `waterfall_chart` in a low cell leaves out the value labels `value_labels: auto` would show (a label shows only while the bar is wide enough for it, estimated from its length), and keeps every change in the tooltips and the text alternative. A `grid` never gets lower than its header, a few rows and its pager; in a lower cell the cell scrolls. A grid link keeps its text and its link icon on one line. An `activity_feed` keeps its title, its time and its text on wrapping rows that never overflow the cell, and scrolls its list inside the cell.
 - Heatmap size: a heatmap draws at most 10,000 tiles (distinct x values times distinct y values; in calendar mode, its weeks times 7); a larger one fails its own check and shows its own cannot-be-shown state, so sparse data cannot expand into a grid that exhausts the page. In calendar mode the weeks are counted from the earliest and the latest date alone, found in one pass over the rows, before any day of the grid is built: two rows years apart fail at once, and a list of any length is read without spreading it into a call.
 - Text alternatives: `cartesian_chart`, `pie_chart`, `radar_chart`, `treemap_chart`, `waterfall_chart`, `funnel_chart` and `heatmap` each expose an accessible name and a text alternative of the delivered values for assistive technology. The default name and the column headings the configuration does not name (series, x, y, label, group, value, conversion, axis) are the widget's own English texts, not localized ones (widget contract FEATURE, entry declaration; gears-frontx-templates#105).
 - Drill-down: a `cartesian_chart`, `pie_chart`, `radar_chart`, `treemap_chart`, `waterfall_chart` or `funnel_chart` whose `render.drill_down` is `true` shows a "Show data" button that switches its area to the data view, and back with "Show chart" (English, like every widget-owned wording). The data view is a ui-kit DataGrid of every delivered value, one row per x position (or per point for an all-scatter chart, per slice for a pie, per axis for a radar, per item for a treemap, per step for a waterfall, per stage for a funnel), sortable client-side, with no request. A click on a bar, point, segment, radar axis, tile or funnel stage opens the data view with the row of that mark opened (its fields listed under it), marked, and scrolled to the top of the data view, under its header, so its fields show below it. The data view is at least as wide as a minimum width per column, and a data view wider than its cell scrolls sideways inside it. With `drill_down` off or absent the chart has no clickable marks. The button keeps the data view reachable by keyboard; its label names the view it opens, so it carries no pressed state.
@@ -346,7 +348,7 @@ Each widget entry **MUST** follow the widget-author obligations of `cpt-frontx-d
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-dod-widget-catalog-libraries`
 
-The catalog widgets **MUST** use the ui-kit chart component with Recharts (MIT, pinned to the version ui-kit pins) for `cartesian_chart`, `pie_chart`, `radar_chart` and `waterfall_chart`, the ui-kit DataGrid for `grid` and the chart data view, and markdown-it (MIT; CommonMark with raw HTML off and a link validation hook) for `markdown_card`, listed in `shared`, each entry under 100 KB own code only. The heatmap, `radial_progress`, `funnel_chart` and `treemap_chart` use no chart library and import nothing from a module that does.
+The catalog widgets **MUST** use the ui-kit chart component with Recharts (MIT, pinned to the version ui-kit pins) for `cartesian_chart`, `pie_chart`, `radar_chart` and `waterfall_chart`, the ui-kit DataGrid for `grid` and the chart data view, and markdown-it (MIT; CommonMark with raw HTML off and a link validation hook) for `markdown_card`, listed in `shared`, each entry under 100 KB own code only. The heatmap, `radial_progress`, `funnel_chart`, `treemap_chart` and `activity_feed` use no chart library and import nothing from a module that does.
 
 **Implements**: `cpt-frontx-dashboard-nfr-bundle-budget`.
 
@@ -356,7 +358,7 @@ The catalog widgets **MUST** use the ui-kit chart component with Recharts (MIT, 
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-dod-widget-catalog-accessibility`
 
-Every one of the 14 widget types **MUST** pass the host's accessibility checks in both the light and the dark theme, with the text alternatives and keyboard operation of [Per-type rendering rules](#per-type-rendering-rules). Each widget's controls expose their name, role and state, and its empty state ("No data to show") and its own cannot-be-shown state are exposed as text, so a screen reader tells them apart from the root's loaders. This is verified by a keyboard-only walkthrough and a screen-reader walkthrough of the reference dashboard in both themes, covering every widget type in its cell and in the larger view.
+Every one of the 15 widget types **MUST** pass the host's accessibility checks in both the light and the dark theme, with the text alternatives and keyboard operation of [Per-type rendering rules](#per-type-rendering-rules). Each widget's controls expose their name, role and state, and its empty state ("No data to show") and its own cannot-be-shown state are exposed as text, so a screen reader tells them apart from the root's loaders. This is verified by a keyboard-only walkthrough and a screen-reader walkthrough of the reference dashboard in both themes, covering every widget type in its cell and in the larger view.
 
 **Implements**: `cpt-frontx-dashboard-nfr-accessibility` (widget side), `cpt-frontx-dashboard-fr-accessibility`.
 
@@ -559,6 +561,22 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
 
 ```json
 {
+  "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.activity_feed.v1",
+  "requiredProperties": [
+    "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
+    "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+  ],
+  "actions": [
+    "gts.frontx.mfes.comm.action.v1~frontx.dashboard.mfe.render_widget.v1~"
+  ],
+  "domainActions": [],
+  "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.activity_feed.v1",
+  "exposedModule": "./activity_feed"
+}
+```
+
+```json
+{
   "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.funnel_chart.v1",
   "requiredProperties": [
     "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
@@ -620,9 +638,10 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
 | 9 | `radar_chart` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.radar_chart.v1` | `./radar_chart` |
 | 10 | `treemap_chart` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.treemap_chart.v1` | `./treemap_chart` |
 | 11 | `waterfall_chart` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.waterfall_chart.v1` | `./waterfall_chart` |
-| 12 | `funnel_chart` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.funnel_chart.v1` | `./funnel_chart` |
-| 13 | `heatmap` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.heatmap.v1` | `./heatmap` |
-| 14 | `markdown_card` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.markdown_card.v1` | `./markdown_card` |
+| 12 | `activity_feed` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.activity_feed.v1` | `./activity_feed` |
+| 13 | `funnel_chart` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.funnel_chart.v1` | `./funnel_chart` |
+| 14 | `heatmap` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.heatmap.v1` | `./heatmap` |
+| 15 | `markdown_card` | `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.markdown_card.v1` | `./markdown_card` |
 
 ### Tones type
 
@@ -1838,6 +1857,105 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
 - Colour and accessibility: the chart is a figure with an accessible name (the widget's own English default "Chart", gears-frontx-templates#105) and a text alternative table of every delivered step: label, change (a signed delta, a bare total, empty for a null delta) and running total under the widget's own English headings "Change" and "Running total". `drill_down` opens the same data view as the other charts, one row per step, and a click on a bar opens its row.
 - Empty state: no step draws a bar of any extent (every delta null, every total 0 or null). The widget shows its own English "No data to show" (gears-frontx-templates#105).
 
+### activity_feed
+
+**GTS ID**: `gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.activity_feed.v1~`
+
+**Description**: A list of things that happened, in the delivered order the list keeps (an event log, the youngest pull requests): one item per row, each with its time, its title and an optional line of text, the list scrolling inside its cell and a Show more button revealing the next page of items (no chart library; the list is the accessible content, so there is no data view and no drill_down).
+
+**Widget type schema:**
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.activity_feed.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ActivityFeed",
+  "x-gts-traits": {
+    "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.activity_feed.v1",
+    "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.activity_feed.v1~"
+  },
+  "allOf": [
+    { "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~" },
+    {
+      "type": "object",
+      "properties": {
+        "render": { "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.activity_feed_render.v1~" }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
+```
+
+**Render type schema:**
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.activity_feed_render.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ActivityFeedRender",
+  "description": "Render of an activity_feed widget: its presentation fields, closed.",
+  "allOf": [
+    { "$ref": "gts://gts.frontx.dashboard.widget.render.v1~" },
+    {
+      "type": "object",
+      "properties": {
+        "time_style": { "enum": ["relative", "absolute"], "default": "relative", "description": "How an item writes its time: relative from the host clock, in the host language's relative wording (such as \"3 days ago\"), or absolute as the host language writes the date and, for a date-time, its time of day. Without it, relative." },
+        "page_size": { "type": "integer", "minimum": 3, "maximum": 50, "default": 10, "description": "How many items the feed shows before its Show more button, which reveals the next page_size items in the delivered order, and disappears when everything is shown. Without it, 10." },
+        "show_tone": { "type": "boolean", "default": true, "description": "Whether an item of a tone carries its mark beside the title, named in text for assistive technology. Without it, true." }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
+```
+
+**Data type schema:**
+
+```json
+{
+  "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.activity_feed.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ActivityFeedData",
+  "description": "Data of an activity_feed widget: the items of the feed, in the delivered order the list keeps.",
+  "allOf": [
+    { "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~" },
+    {
+      "type": "object",
+      "required": ["items"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 200,
+          "description": "0 to 200 items in the delivered order, which the feed keeps and shows, its Show more button revealing them by page. An empty list is the empty state. Each item needs a time and a title, and may carry a text, a tone of the shared tones, and a link target, which the shared link rule judges. A time no date reads as is legal here: the widget's own cross-check fails the cell naming the item by its position.",
+          "items": {
+            "type": "object",
+            "required": ["time", "title"],
+            "additionalProperties": false,
+            "properties": {
+              "time": { "type": "string", "description": "When the item happened: an ISO 8601 date-time, or a bare YYYY-MM-DD date (its UTC midnight, the one date rule of the widgets). The widget cross-checks that a date reads as one, and a time that does not fails the cell naming the item's position." },
+              "title": { "type": "string", "minLength": 1, "maxLength": 120, "description": "The one line of the item, beside its time: the link text when the item carries a target." },
+              "text": { "type": "string", "maxLength": 400, "description": "An optional line under the title, which wraps." },
+              "tone": { "enum": ["neutral", "success", "warning", "danger", "info"], "description": "The shared tone of the item's mark beside its title, written in text for assistive technology; a neutral item draws no mark. Without it, no mark." },
+              "href": { "type": "string", "description": "The link target of the title, judged by the shared link rule: a refused one shows the title as text, and the cell does not fail." }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}
+```
+
+**Cross-references**:
+- Presentation: one list item per delivered item, in the delivered order, never re-sorted. Each item is a row of its title (a link when the item carries a target the shared link rule takes, a refused one showing the title as text), its time and its optional text under them, all wrapping inside the cell. The list scrolls inside the cell whatever its height, and the rows are laid out by kit layout components and tokens only.
+- Time: `time_style: relative`, its default, writes each time against the host clock in the host language's relative wording (`Intl.RelativeTimeFormat` with `numeric: auto`, such as "3 days ago", "now", "in 2 hours", "yesterday"). A date-time counts its distance from the clock in the longest unit it fills, rounded, and a rounded count that reaches the next unit moves up to it (60 minutes read "in 1 hour", 7 days "last week", 12 months "last year"). A bare date has no time of day: it counts whole calendar days between the date and today's date in the host zone, so it reads "today", "yesterday", "tomorrow" or "in N days" and "N days ago", moving up to weeks, months and years by the same rule. `absolute` writes the date as the host language writes it (`Intl.DateTimeFormat`), with the time of day for a date-time and none for a bare date, which reads as its UTC midnight. The delivered string stays the item's machine-readable `datetime`; the shown text is by the render.
+- Paging: the feed shows the first `page_size` items (10 without the field, 3 to 50), and its Show more button, the widget's own English text (gears-frontx-templates#105), reveals the next `page_size` items in the delivered order; the button hides when everything is shown, and new data starts over at the first page. After each Show more the focus moves to the first revealed item (its link, or the item itself when it has none), so the keyboard stays in the list after the button goes and the revealed items are announced from their first one.
+- Tone: with `show_tone`, its default, an item of a tone carries a mark beside its title painted by the tone's kit token, and the row names the tone in text before the title for assistive technology, so the tone never rides on colour alone; a neutral item draws no mark, and `show_tone: false` draws none anywhere.
+- Checks: the widget fails its own cell with its own cannot-be-shown state, writing the reason to the console, when an item's time is neither an ISO 8601 date-time nor a `YYYY-MM-DD` date of the calendar, naming the item by its position (`data.items[1] needs an ISO 8601 date-time or a YYYY-MM-DD date as its time`) and never by its content, and, like every catalog widget, when a number is not finite. A refused link target shows the title as text and does not fail the cell.
+- Accessibility: the list is the accessible content, named by the widget's own English "Activity" (the root passes the renderer no cell label, gears-frontx-templates#105): one list item per item, each `<time>` element carrying the delivered string, so no text alternative and no data view stand beside it, and there is no drill_down. An empty list is the empty state, the widget's own English "No data to show" (gears-frontx-templates#105).
+
 ### funnel_chart
 
 **GTS ID**: `gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.funnel_chart.v1~`
@@ -2099,7 +2217,7 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
 
 ## 7. Acceptance Criteria
 
-- [ ] The 14 widget types ship, each closed with `unevaluatedProperties: false`; `markdown_card` forbids `data`; the 13 data types derive from the widget-data base.
+- [ ] The 15 widget types ship, each closed with `unevaluatedProperties: false`; `markdown_card` forbids `data`; the 14 data types derive from the widget-data base.
 - [ ] A misspelled render field on a concrete widget type fails validation and the widget gets the cannot-be-shown state.
 - [ ] The grid sorts and pages client-side over the rows the transform delivered, up to the 500-row cap, with page sizes defaulting to `[10, 25, 50, 100, 500]`, sending no request.
 - [ ] `markdown_card` renders CommonMark as `cpt-frontx-dashboard-algo-widget-catalog-markdown` specifies.
@@ -2153,6 +2271,7 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
 - [ ] Given a `treemap_chart` with items a 3, b 1 in a cell whose box is twice as wide as it is high, when it renders, then the first tile is three quarters of the box and the second one quarter, each writes its label and value while its tile fits them, and a tile too small for its label writes neither but keeps its name and value in its tooltip. Given `show_share` `true`, each tile writes its share of the total beside its value (75%, 25%). Given items a 4 in "Web", b 3 with no group, c 2 in "Web" and d 1 in "Data", the tiles nest one level by group in first-seen order with b under "Other", each tile in its group's colour, and a group whose box fits the name writes it over its tiles. Given a value of 0 or null, it draws no tile and the item stays in the text alternative and the data view. Given a negative value on the second item, the cell shows its own cannot-be-shown state and the console names `data.items[1].value`, not the value. Given every value 0 or null, it shows the empty state. Given `value_labels` `inside` or a render field it does not declare, the cell fails its render type.
 - [ ] Given a `waterfall_chart` with the steps Coding +4.1, Review +17, CI +3.2, Waiting to deploy +2.1 and the total Lead time 26.4, when it renders, then the deltas climb one after another, the total bar spans the whole sum from zero, a thin line joins one bar's end to the next bar's start, the legend names Increase and Total (no step decreases), and in a 1280 px wide page every bar writes its label, the +17.0 hr of Review included. Given the steps Start 10 (a total), Up +4, Down -3 and End 11 (a total), then the first total sets the sum the deltas move from, the decrease hangs below the level it starts at, the last total equals the running sum, and the legend names Increase, Decrease and Total in that order. Given a total whose value is not the running sum, or a step that moves the sum out of the finite range, the cell shows its own cannot-be-shown state and the console names `data.steps[N]`, not the value. Given a null delta, it draws no bar and the sum stays, the text alternative showing an empty change. Given every delta null, it shows the empty state. Given `value_labels` `sometimes` or a render field it does not declare, the cell fails its render type.
 - [ ] Given a `waterfall_chart` with the steps 10, -15, +12 and the total 7, when it renders, then the decrease spans 10 down to -5 across zero, the increase -5 up to 7, the total stands on zero up to 7, and each connector leaves at the level the bar before it ends at (10, -5, 7). Given the steps 5, -8 and the total -3, then the total hangs from zero down to -3, its bare label -3 stands over zero and the decrease's label -8 over 5, each above its bar and never inside it (`value_labels` `always`).
+- [ ] Given an `activity_feed` with `time_style` `absolute` and five of twelve items shown (`page_size` 5), when it renders, then the items stand in the delivered order, each row its title beside its time (the delivered string as the machine-readable `datetime`, the date as the host language writes it, with the time of day for a date-time and none for a bare date) and its text under them, and the Show more button reveals the next five and hides once all twelve stand. Given `time_style` `relative` (its default), a time three days before the host clock reads "3 days ago" in the host language. Given an item of a tone with `show_tone` on (its default), the row carries the tone's mark and names the tone in text before the title; a neutral item draws no mark. Given an item whose target the shared link rule refuses, the title shows as text and the cell does not fail. Given an item whose time is neither an ISO 8601 date-time nor a `YYYY-MM-DD` date, the cell shows its own cannot-be-shown state and the console names `data.items[N]`, not the value. Given `items` [], it shows the empty state. Given `page_size` 2 or a render field it does not declare, the cell fails its render type.
 - [ ] Given a `cartesian_chart` with `orientation` `horizontal` and bars over three categories, when it renders, then the categories stand down the vertical axis in delivered order and each bar's length follows its value; with a `value` or `time` x axis the widget shows its own cannot-be-shown state.
 - [ ] Given a `cartesian_chart` with `stack_mode` `percent` and two bar series in one stack group, when it renders, then each x's segments fill the plot to 100%, the axis shows percents and the tooltip shows each value with its share; an x where both values are 0 draws both at 0%, and a negative value in the group shows the widget's own cannot-be-shown state.
 - [ ] Given a line series with `mark_extremes` `both`, when it renders, then its first lowest and first highest values carry a dot and their value; on a bar series the widget shows its own cannot-be-shown state.
@@ -2170,7 +2289,7 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
 - [ ] Given a widget, when it conveys meaning, then colour is never the only signal: the heatmap's numeric scale, progress values as text, the trend icon, and series and segment naming in legends and tooltips all carry the meaning.
 - [ ] Given the dashboard root, when it is inspected, then it has no chart-library dependency.
 - [ ] Given a widget, when the host theme id maps to dark, then it uses the dark ui-kit scope; an unknown id gives light. The set of dark theme ids is enumerated and updated when the host adds a dark theme.
-- [ ] Given the reference dashboard, when all 14 widget types are inspected in both scopes, in a cell and in the larger view, against the design-system reference, then every colour, font, and spacing value comes from kit tokens (`cpt-frontx-dashboard-nfr-visual-quality`), and no widget conveys meaning by colour alone (`cpt-frontx-dashboard-nfr-accessibility`).
+- [ ] Given the reference dashboard, when all 15 widget types are inspected in both scopes, in a cell and in the larger view, against the design-system reference, then every colour, font, and spacing value comes from kit tokens (`cpt-frontx-dashboard-nfr-visual-quality`), and no widget conveys meaning by colour alone (`cpt-frontx-dashboard-nfr-accessibility`).
 - [ ] Given a dashboard with one cell of each data widget type, when one cell's transform output breaks its data type, then that cell shows the cannot-be-shown state and every other cell is unaffected. Each of these fixtures, run on its own, gives this result:
   - `summary_card`: a row `{"label": "A", "value": "12"}` (wrong type); a row `{"label": "A"}` (missing `value`); a row `{"label": "A", "value": 1, "unit": "x"}` (extra field).
   - `metric_card`: `{"value": "12"}` (wrong type); `{"previous_value": 1}` (missing `value`); `{"value": 1, "trend": "up"}` (extra field).
@@ -2184,10 +2303,11 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
   - `funnel_chart`: a stage `{"label": "A", "value": "12"}` (wrong type); `{}` (missing `stages`); 13 stages (too many); a label of 81 characters (too long); a stage `{"label": "a", "value": 1, "color": "red"}` (extra field).
   - `treemap_chart`: an item `{"label": "A", "value": "12", "group": null}` (wrong type); `{}` (missing `items`); 61 items (too many); an item without a `group`; a label of 81 characters (too long); an item `{"label": "a", "value": 1, "group": null, "color": "red"}` (extra field).
   - `waterfall_chart`: a step `{"label": "A", "value": "12"}` (wrong type); `{}` (missing `steps`); 25 steps (too many); a step `{"label": "A"}` (missing `value`); a step `{"label": "A", "value": 1, "kind": "sum"}` (kind outside its values); a step `{"label": "a", "value": 1, "color": "red"}` (extra field).
+  - `activity_feed`: an item `{"time": "2026-11-04", "title": 7}` (wrong type); `{}` (missing `items`); 201 items (too many); an item `{"time": "2026-11-04"}` (missing `title`); an item `{"title": "A"}` (missing `time`); an item `{"time": "2026-11-04", "title": "A", "tone": "purple"}` (tone outside its values); an item `{"time": "2026-11-04", "title": "A", "color": "red"}` (extra field). A time that is no date, such as `Monday`, is legal here: the widget's own check fails the cell naming the item by its position.
   - `heatmap`: a row `{"x": "Mon", "y": "09:00", "value": "3"}` (wrong type); a row `{"x": "Mon", "y": "09:00"}` (missing `value`); a row `{"x": "Mon", "y": "09:00", "value": 3, "color": "red"}` (extra field).
-- [ ] Given each data widget type with data that meets its empty condition (`summary_card`, `ranked_list_card`, `progress_list_card`, `grid` and `heatmap` with `rows` [], `pie_chart` with `slices` [], `cartesian_chart` with `series` [] or only series with no points, `radial_progress` with a null `current` or `target`, `funnel_chart`, `radar_chart` and `treemap_chart` with every value 0 or null, `waterfall_chart` with no step that draws a bar, and `metric_card` with a null `value`), when it renders, then the widget shows its own English "No data to show" (gears-frontx-templates#105) inside its cell, and the cell frame stays.
+- [ ] Given each data widget type with data that meets its empty condition (`summary_card`, `ranked_list_card`, `progress_list_card`, `grid` and `heatmap` with `rows` [], `pie_chart` with `slices` [], `cartesian_chart` with `series` [] or only series with no points, `radial_progress` with a null `current` or `target`, `funnel_chart`, `radar_chart` and `treemap_chart` with every value 0 or null, `waterfall_chart` with no step that draws a bar, `activity_feed` with `items` [], and `metric_card` with a null `value`), when it renders, then the widget shows its own English "No data to show" (gears-frontx-templates#105) inside its cell, and the cell frame stays.
 - [ ] Given a `summary_card` and a `grid` each showing the number 1234.5, when `value_format` is absent or `value_type` is `number`, then both show 1,234.5 for host language English. When `value_type` is `percent` and the value is 0.25, then both show 25%. When `value_type` is `duration` with `unit` `s` and the value is 90, then both show 90 with the localized unit for seconds, not converted to another unit. When `value_type` is `currency` with `currency` `USD`, then both show $1,234.50; with `decimals` 0 a `number` shows 1,235; with `unit_label` `lines` a `number` shows 1,234.5 lines, the label after a no-break space. The same formatting applies to the values of `metric_card`, `ranked_list_card`, `progress_list_card`, the chart tooltips and text alternatives, and the heatmap scale and cell values.
 - [ ] Given a `cartesian_chart`, a `pie_chart`, a `radar_chart`, a `treemap_chart`, a `waterfall_chart`, a `funnel_chart`, and a `heatmap`, when they are inspected with assistive technology, then each has an accessible name (the widget's own English default "Chart": the root passes the renderer no cell label, gears-frontx-templates#105) and a text alternative that lists the delivered values (series, x and y; slice labels and values; radar axes and series values; treemap item labels, groups and values; waterfall step labels, changes and running totals; stage labels, values and conversions; heatmap x, y and values, or dates and values in calendar mode).
-- [ ] Given the reference dashboard, when a keyboard-only walkthrough covers all 14 widget types in their cells in the light and in the dark theme, then every widget passes the host's accessibility checks (`cpt-frontx-dashboard-nfr-accessibility`).
-- [ ] Given the reference dashboard, when a screen-reader walkthrough covers all 14 widget types in their cells and in the larger view, in the light and in the dark theme, then every control announces its name, role and state, each widget's empty and own cannot-be-shown states are read as text, the charts and the heatmap read their accessible name and text alternative, and every widget passes the host's accessibility checks (`cpt-frontx-dashboard-nfr-accessibility`).
+- [ ] Given the reference dashboard, when a keyboard-only walkthrough covers all 15 widget types in their cells in the light and in the dark theme, then every widget passes the host's accessibility checks (`cpt-frontx-dashboard-nfr-accessibility`).
+- [ ] Given the reference dashboard, when a screen-reader walkthrough covers all 15 widget types in their cells and in the larger view, in the light and in the dark theme, then every control announces its name, role and state, each widget's empty and own cannot-be-shown states are read as text, the charts and the heatmap read their accessible name and text alternative, and every widget passes the host's accessibility checks (`cpt-frontx-dashboard-nfr-accessibility`).
 - [ ] Given the dashboard-author guide, when it is reviewed, then it covers writing a dashboard JSON, the grid, the binding, the catalog, the layout checks, that the product owns dashboard and data size, that every viewer who may see a dashboard must be able to get its widgets' data, that the product's API owns errors and access, what the host must provide, and the documented limitations (the limitations of PRD §6.3 and the DESIGN limits of DESIGN §5). When a dashboard author who did not build the template and has not used it before follows the guide alone, then they write a first working dashboard in one working session.

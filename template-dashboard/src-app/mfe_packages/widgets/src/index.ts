@@ -10,6 +10,7 @@ export { MetricCard } from './cards/MetricCard';
 export { SummaryCard } from './cards/SummaryCard';
 export { RankedListCard } from './cards/RankedListCard';
 export { ProgressListCard } from './cards/ProgressListCard';
+export { ActivityFeed, checkActivityFeed } from './cards/ActivityFeed';
 export { RadialProgress, checkRadialProgress } from './cards/RadialProgress';
 export { DataView, type ValuesTable } from './chart/DataView';
 export { RadarChart, checkRadar } from './chart/RadarChart';

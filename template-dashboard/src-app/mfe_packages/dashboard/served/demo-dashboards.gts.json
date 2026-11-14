@@ -635,6 +635,26 @@
             "size": "large",
             "height": "high",
             "widget": {
+              "id": "gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.activity_feed.v1~5145a513-7e2f-5864-8a47-f4da74a69acf",
+              "title": "Recently opened pull requests",
+              "description": "The newest open pull request of each of the last 12 days, the newest first. Not period-bound.",
+              "render": {
+                "time_style": "absolute",
+                "page_size": 5
+              },
+              "data": {
+                "request": {
+                  "method": "GET",
+                  "path": "/api/demo/pulls/recent"
+                },
+                "transform": "{'items': response.items}"
+              }
+            }
+          },
+          {
+            "size": "large",
+            "height": "high",
+            "widget": {
               "id": "gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.grid.v1~3d8a4b2c-6e0f-4a43-9c5d-7f9b3e1a4c02",
               "title": "Repository health",
               "render": {
