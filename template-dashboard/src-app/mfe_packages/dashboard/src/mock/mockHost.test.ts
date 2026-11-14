@@ -208,6 +208,26 @@ describe('the mock host', () => {
     }
   });
 
+  it('answers the lead time stages whose deltas add up to the total, which equals the lead time the summary reports, with the review stage the median review time', async () => {
+    const [leadtime, summary] = (await Promise.all([askDemo('/api/demo/delivery/leadtime'), askDemo('/api/demo/delivery/summary')])) as [
+      { steps: { label: string; value: number | null; kind: 'delta' | 'total' }[] },
+      { lead_time_h: Pair; review_h: Pair },
+    ];
+    const steps = leadtime.steps;
+    expect(steps.length).toBe(5);
+    // Every step carries its kind, and the last step is the total, equal to the lead time the summary reports.
+    expect(steps.every((step) => step.kind === 'delta' || step.kind === 'total')).toBe(true);
+    expect(steps.at(-1)).toEqual({ label: 'Lead time', value: summary.lead_time_h.value, kind: 'total' });
+    expect(steps.every((step) => step.value === null || Number.isFinite(step.value))).toBe(true);
+    // The review stage is the median review time of the summary.
+    const total = steps.at(-1)!.value!;
+    expect(steps.find((step) => step.label === 'Review')?.value).toBe(summary.review_h.value);
+    // The deltas of one decimal add up to the total exactly to that decimal.
+    const deltas = steps.filter((step) => step.kind === 'delta').map((step) => step.value!);
+    expect(deltas.every((value) => Number(value.toFixed(1)) === value)).toBe(true);
+    expect(Number(deltas.reduce((sum, value) => sum + value, 0).toFixed(1))).toBe(total);
+  });
+
   it('answers the weekday and hour heatmap with cells that add up to the commits of the daily rows', async () => {
     const [{ cells }, daily] = (await Promise.all([askDemo('/api/demo/commits/heatmap'), askDemo('/api/demo/delivery/daily')])) as [{ cells: { count: number }[] }, Daily];
     const cellTotal = cells.reduce((sum, cell) => sum + cell.count, 0);

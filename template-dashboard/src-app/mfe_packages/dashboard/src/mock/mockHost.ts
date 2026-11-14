@@ -50,6 +50,8 @@ const REPOS = ['payments-api', 'web-console', 'mobile-app', 'search-service', 'b
 const TEAMS = ['Platform', 'Web', 'Mobile', 'Search', 'Billing', 'Identity', 'Data', 'Design', 'Platform', 'Web', 'Infra', 'Docs'];
 /** The review time in hours of each repository: the bubble chart draws it, the summary takes the median of it. */
 const REVIEW_H = REPOS.map((_, index) => 4 + ((index * 37) % 30));
+/** The lead time in hours the summary reports and the lead time stages of the waterfall add up to. */
+const LEAD_TIME_H = 26.4;
 const PEOPLE = ['A. Novak', 'M. Petrova', 'J. Smith', 'L. Garcia', 'K. Ivanov', 'S. Chen', 'D. Kovac', 'R. Silva', 'T. Muller', 'E. Rossi'];
 /** The repositories' shares of the work: of each day's commits (with a daily factor) and of each day's opened pull requests. */
 const REPO_SHARE = [20, 16, 13, 11, 9, 8, 7, 6, 5, 4, 3, 2];
@@ -183,11 +185,25 @@ const FUNNEL = (() => {
   return { opened, reviewed: merged + Math.round(2 * third), approved: merged + Math.round(third), merged };
 })();
 
+/**
+ * The stages of the lead time in hours, one change per stage and the total the summary's lead time card shows: the
+ * review step is the median review time of the repositories, and the other stages split the rest of the lead time.
+ * Not period-bound, like the lead time card itself: the stage mix is a fixture, not a query over the period.
+ */
+const LEAD_TIME_STEPS = [
+  { label: 'Coding', value: 4.1, kind: 'delta' },
+  { label: 'Review', value: median(REVIEW_H), kind: 'delta' },
+  { label: 'CI', value: 3.2, kind: 'delta' },
+  { label: 'Waiting to deploy', value: 2.1, kind: 'delta' },
+  { label: 'Lead time', value: LEAD_TIME_H, kind: 'total' },
+];
+
 const FIXTURES: Record<string, (body: unknown, query: URLSearchParams) => unknown> = {
   '/api/demo/delivery/daily': () => ({
     daily: DAYS.map((day, index) => ({ day, commits: COMMITS[index], prs_merged: PRS_MERGED[index], prs_opened: PRS_OPENED[index], deploys: DEPLOYS[index] })),
   }),
   '/api/demo/delivery/funnel': () => FUNNEL,
+  '/api/demo/delivery/leadtime': () => ({ steps: LEAD_TIME_STEPS }),
   '/api/demo/delivery/summary': () => ({
     commits: { value: sum(COMMITS.slice(-7)), previous: sum(COMMITS.slice(-14, -7)), daily: COMMITS.slice(-14) },
     deploys: { value: sum(DEPLOYS.slice(-7)), previous: sum(DEPLOYS.slice(-14, -7)), daily: DEPLOYS.slice(-14) },
@@ -197,7 +213,7 @@ const FIXTURES: Record<string, (body: unknown, query: URLSearchParams) => unknow
     open_prs: { value: PULL_REQUESTS.length, median_age_days: median(PULL_REQUESTS.map((pull) => pull.age_days)) },
     // The median of the repositories' review times the activity request lists.
     review_h: { value: median(REVIEW_H) },
-    lead_time_h: { value: 26.4, previous: 31.9 },
+    lead_time_h: { value: LEAD_TIME_H, previous: 31.9 },
     // The deploys that caused an incident over the deploys, in the last 7 days and in the 7 days before.
     change_failure_rate: {
       value: FAILED_DEPLOYS / sum(DEPLOYS.slice(-7)),

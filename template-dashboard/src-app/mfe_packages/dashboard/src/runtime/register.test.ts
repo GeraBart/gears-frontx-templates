@@ -65,8 +65,8 @@ describe('registration order under reference lookup', () => {
         return [/\.([a-z_]+)_render\.v1~$/.exec(String(type.$id))![1], { fields: Object.keys(own.properties ?? {}), required: own.required ?? [] }] as const;
       }),
   );
-  it('finds the thirteen shipped widget types and their thirteen render types in the catalog, so the table below is not empty', () => {
-    expect(shipped).toHaveLength(13);
+  it('finds the fourteen shipped widget types and their fourteen render types in the catalog, so the table below is not empty', () => {
+    expect(shipped).toHaveLength(14);
     expect([...renderTypes.keys()].sort()).toEqual(shipped.map((type) => /\.([a-z_]+)\.v1~$/.exec(type)![1]).sort());
   });
   // Pinned on purpose: the required render fields are the published render contract (ADR-0009), so the rows
@@ -93,6 +93,7 @@ describe('registration order under reference lookup', () => {
       pie_chart: [],
       radar_chart: [],
       treemap_chart: [],
+      waterfall_chart: [],
       funnel_chart: [],
       heatmap: [],
       markdown_card: ['body'],
@@ -109,6 +110,7 @@ describe('registration order under reference lookup', () => {
     pie_chart: { radius: '50%' },
     radar_chart: { scale_max: 'high' },
     treemap_chart: { show_share: 'yes' },
+    waterfall_chart: { connectors: 'yes' },
     funnel_chart: { show_conversion: 'yes' },
     heatmap: { show_cell_values: 'yes' },
     markdown_card: { body: 5 },
@@ -210,6 +212,16 @@ describe('registration order under reference lookup', () => {
     const { types } = loaded();
     const withLabels = (uuid: string, value_labels: unknown) => ({ size: 'small', widget: { ...treemap, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...treemap.render, value_labels } } });
     const result = registerDashboard(types, dashboardOf([withLabels('60', 'auto'), withLabels('61', 'always'), withLabels('62', 'never'), withLabels('63', 'inside')]));
+    expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(3, 'cell')]);
+    expect(result.ok && result.failed.get(slotOf(3, 'cell'))).toMatch(/\/render\/value_labels/);
+  });
+
+  it('accepts each waterfall_chart value_labels, and fails one outside the catalog values', () => {
+    const type = shipped.find((id) => id.endsWith('.waterfall_chart.v1~'))!;
+    const waterfall = demoWidgets.find((widget) => widget.id.startsWith(type))!;
+    const { types } = loaded();
+    const withLabels = (uuid: string, value_labels: unknown) => ({ size: 'small', widget: { ...waterfall, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...waterfall.render, value_labels } } });
+    const result = registerDashboard(types, dashboardOf([withLabels('70', 'auto'), withLabels('71', 'always'), withLabels('72', 'never'), withLabels('73', 'sometimes')]));
     expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(3, 'cell')]);
     expect(result.ok && result.failed.get(slotOf(3, 'cell'))).toMatch(/\/render\/value_labels/);
   });
@@ -747,7 +759,7 @@ describe('the render type of a widget type', () => {
 
   // The render base only groups render types, so the render_widget action can name one type for every render;
   // each catalog widget type names its own render type, read by the root's own rule. The type count and the
-  // closed render types are checked in 'registration order under reference lookup' (the thirteen shipped types,
+  // closed render types are checked in 'registration order under reference lookup' (the fourteen shipped types,
   // and an extra render field failing each of them).
   it('is, for every catalog widget type, its own render type, one to one with the catalog render types', () => {
     const types = loaded().types;
@@ -950,6 +962,44 @@ describe('the treemap_chart data type', () => {
     ['an item without a group', { items: [{ label: 'a', value: 1 }] }, /required property 'group'/],
     ['a string value', { items: [{ label: 'a', value: '3', group: null }] }, /\/items\/0\/value is not of type/],
     ['an extra item field', { items: [{ label: 'a', value: 1, group: null, color: 'red' }] }, /\/items\/0 Additional property `color`/],
+  ])('fails %s', (_name, data, reason) => {
+    expect(problemOf(data)).toMatch(reason);
+  });
+});
+
+// The waterfall_chart data type on the real store: what a transform result must carry, as the root registers it.
+describe('the waterfall_chart data type', () => {
+  const WATERFALL_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.waterfall_chart.v1~';
+  const problemOf = (data: Record<string, unknown>) => {
+    const { types } = loaded();
+    try {
+      types.register({ ...data, id: `${WATERFALL_DATA}1a2b3c4d-0000-4000-8000-0000000000f1` });
+    } catch (error) {
+      return String(error);
+    }
+    const { valid, errors } = types.validateInstance(`${WATERFALL_DATA}1a2b3c4d-0000-4000-8000-0000000000f1`);
+    return valid ? null : JSON.stringify(errors);
+  };
+  const steps = (count: number) => Array.from({ length: count }, (_, index) => ({ label: `s${index}`, value: index % 4 - 1, kind: index % 3 === 2 ? 'total' : 'delta' }));
+
+  it.each([
+    ['two steps, the first a total that starts the sum', { steps: [{ label: 'Start', value: 5, kind: 'total' }, { label: 'a', value: -2, kind: 'delta' }] }],
+    ['24 steps with kinds, a null delta and a null-value total', { steps: [...steps(21), { label: 'n', value: null, kind: 'delta' }, { label: 'm', value: null, kind: 'total' }, { label: 'End', value: 3, kind: 'total' }] }],
+  ])('takes %s', (_name, data) => {
+    expect(problemOf(data)).toBeNull();
+  });
+
+  it.each([
+    ['no steps field', {}, /required property 'steps'/],
+    ['no step', { steps: [] }, /\/steps Too few items in `#\/steps`, should be at least `2`/],
+    ['25 steps', { steps: steps(25) }, /\/steps Too many items in `#\/steps`, should be `24` at most/],
+    ['a number label', { steps: [{ label: 7, value: 1 }] }, /\/steps\/0\/label is not of type/],
+    ['a label over 80 characters', { steps: [{ label: 'x'.repeat(81), value: 1 }] }, /\/steps\/0\/label .* maximum length of `80`/],
+    ['an empty label', { steps: [{ label: '', value: 1 }] }, /\/steps\/0\/label .* minimum length of `1`/],
+    ['a string value', { steps: [{ label: 'a', value: '3' }] }, /\/steps\/0\/value is not of type/],
+    ['a step without a value', { steps: [{ label: 'a' }] }, /required property 'value'/],
+    ['a kind outside its values', { steps: [{ label: 'a', value: 1, kind: 'sum' }] }, /\/steps\/0\/kind .* one of/],
+    ['an extra step field', { steps: [{ label: 'a', value: 1, color: 'red' }] }, /\/steps\/0 Additional property `color`/],
   ])('fails %s', (_name, data, reason) => {
     expect(problemOf(data)).toMatch(reason);
   });

@@ -310,3 +310,27 @@ export interface TreemapData {
    */
   items: { label: string; value: number | null; group: string | null }[];
 }
+
+/** The `waterfall_chart` render. */
+export interface WaterfallRender {
+  /** A thin line from one bar's end to the next bar's start. Without it, true. */
+  connectors?: boolean;
+  /**
+   * Where a bar writes its change over its top edge, a delta's signed and a total's bare: `auto` when it fits the
+   * band the bar stands in, estimated from its length, and never in a low cell; `always` whatever the band fits;
+   * `never` nowhere. Without it, auto.
+   */
+  value_labels?: 'auto' | 'always' | 'never';
+  /** Bars open the data view with the picked row expanded, and a button opens the whole data view. */
+  drill_down?: boolean;
+}
+
+export interface WaterfallData {
+  /**
+   * Two to 24 steps in the delivered order, of the running sum the chart starts at 0. A delta moves the running sum
+   * by its value (a negative one down); a null delta draws nothing and leaves the sum unchanged. A total draws the
+   * running sum from 0, its own value staying null or the running sum itself (the widget cross-checks the two).
+   * A running sum that leaves the finite range fails the cell, naming the step that moved it.
+   */
+  steps: { label: string; value: number | null; kind?: 'delta' | 'total' }[];
+}

@@ -2,7 +2,7 @@
   "$id": "gts://gts.frontx.dashboard.widget.widget.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Widget",
-  "description": "Abstract base of the 13 template widget types.",
+  "description": "Abstract base of the 14 template widget types.",
   "x-gts-abstract": true,
   "type": "object",
   "required": ["id", "render"],

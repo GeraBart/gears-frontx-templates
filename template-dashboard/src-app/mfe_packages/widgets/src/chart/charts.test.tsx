@@ -2,13 +2,14 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CartesianData, CartesianRender, FunnelData, FunnelRender, RadarData, RadarRender, TreemapData, TreemapRender } from '../types';
+import type { CartesianData, CartesianRender, FunnelData, FunnelRender, RadarData, RadarRender, TreemapData, TreemapRender, WaterfallData, WaterfallRender } from '../types';
 import { DEFAULT_WIDGET_TEXTS, type WidgetTexts } from '../states';
 import { CartesianChart, checkCartesian } from './CartesianChart';
 import { PieChart, checkPie } from './PieChart';
 import { FunnelChart, checkFunnel } from './FunnelChart';
 import { RadarChart, checkRadar } from './RadarChart';
 import { TreemapChart, checkTreemap } from './TreemapChart';
+import { WaterfallChart, checkWaterfall } from './WaterfallChart';
 
 const DATA: CartesianData = {
   series: [
@@ -1504,5 +1505,345 @@ describe('treemap_chart', () => {
     const { container } = draw(ITEMS);
     expect(screen.queryByRole('button', { name: 'Show data' })).toBeNull();
     expect(container.querySelector('button[class*="treemapTile"]')).toBeNull();
+  });
+});
+
+describe('waterfall_chart', () => {
+  // Coding 4.1, review 17, CI 3.2, waiting 2.1: the lead time of 26.4 the demo cell shows.
+  const STEPS: WaterfallData['steps'] = [
+    { label: 'Coding', value: 4.1 },
+    { label: 'Review', value: 17 },
+    { label: 'CI', value: 3.2 },
+    { label: 'Waiting to deploy', value: 2.1 },
+    { label: 'Lead time', value: 26.4, kind: 'total' },
+  ];
+  const draw = (steps: WaterfallData['steps'], options: WaterfallRender = {}, extra: object = {}) =>
+    render(<WaterfallChart payload={{ render: options, data: { steps }, ...extra }} label="Lead time" />);
+  const rowsOf = () => within(alternative('Lead time')).getAllByRole('row', { hidden: true }).map((row) => [...row.children].map((cell) => cell.textContent));
+  // A drawn bar: the transparent base of the stack renders its own shapes, and is not a bar of the chart.
+  const bars = (container: HTMLElement) => [...container.querySelectorAll('.recharts-bar-rectangle path')].filter((path) => path.getAttribute('fill') !== 'transparent');
+  const connectors = (container: HTMLElement) => [...container.querySelectorAll('[class*="waterfallConnector"]')] as SVGLineElement[];
+  const labels = (container: HTMLElement) => [...container.querySelectorAll('text[class*="valueLabel"]')].map((text) => text.textContent);
+  const xTicks = (container: HTMLElement) => [...container.querySelectorAll('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value')].map((tick) => tick.textContent);
+  // The drawn bars left to right, each by its edges: the top and the bottom on the screen, the plot's y growing down.
+  const edgesOf = (container: HTMLElement) =>
+    bars(container)
+      .map((bar) => {
+        const [x, y, width, height] = ['x', 'y', 'width', 'height'].map((name) => Number(bar.getAttribute(name)));
+        return { left: x!, right: x! + width!, top: Math.min(y!, y! + height!), bottom: Math.max(y!, y! + height!) };
+      })
+      .sort((one, other) => one.left - other.left);
+  const levelsOf = (container: HTMLElement) => connectors(container).map((line) => Number(line.getAttribute('y1')));
+  const labelYs = (container: HTMLElement) => [...container.querySelectorAll('text[class*="valueLabel"]')].map((text) => Number(text.getAttribute('y')));
+  const legendOf = (container: HTMLElement) => [...container.querySelectorAll('.recharts-legend-wrapper [class*="legendItem"]')].map((item) => item.textContent);
+
+  // The widget's body as the ResizeObserver reports it.
+  const original = globalThis.ResizeObserver;
+  const sized = (width: number, height: number) => {
+    globalThis.ResizeObserver = class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        this.callback([{ target, contentRect: { width, height } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  };
+  beforeEach(() => sized(600, 300));
+  afterEach(() => {
+    globalThis.ResizeObserver = original;
+    vi.restoreAllMocks();
+  });
+
+  it('draws one bar per step that draws, the deltas stacked from the running sum and the total from zero', () => {
+    const { container } = draw(STEPS);
+    // Four deltas and the total of the whole sum: five bars, every step named on the x axis.
+    expect(bars(container)).toHaveLength(5);
+    expect(xTicks(container)).toEqual(['Coding', 'Review', 'CI', 'Waiting to deploy', 'Lead time']);
+    // The total bar reaches the running sum the deltas moved to; its own top is the highest of the chart.
+    const tops = bars(container).map((bar) => Number(bar.getAttribute('y')));
+    expect(tops[4]).toBeLessThan(tops[0]);
+    expect(tops[4]).toBeLessThan(tops[1]);
+    expect(container.textContent).not.toMatch(/NaN|Infinity/);
+  });
+
+  it('paints an increase, a decrease and a total in their tones, named in a legend at the bottom', () => {
+    const steps: WaterfallData['steps'] = [
+      { label: 'Start', value: 10, kind: 'total' },
+      { label: 'Up', value: 4 },
+      { label: 'Down', value: -3 },
+      { label: 'End', value: 11, kind: 'total' },
+    ];
+    const { container } = draw(steps);
+    // The library draws one series per tone, so the bars stand in the tree per series; the tones as a multiset
+    // say the increase, the decrease and the two totals take their own tone.
+    const fills = bars(container).map((bar) => bar.getAttribute('fill')).sort();
+    expect(fills).toEqual(['var(--color-decrease)', 'var(--color-increase)', 'var(--color-total)', 'var(--color-total)']);
+    expect(legendOf(container)).toEqual(['Increase', 'Decrease', 'Total']);
+  });
+
+  it('names in its legend only the tones its steps take, in the order increase, decrease, total', () => {
+    // Four increases and a total: no decrease to name.
+    expect(legendOf(draw(STEPS).container)).toEqual(['Increase', 'Total']);
+    cleanup();
+    expect(legendOf(draw([{ label: 'Down', value: -3 }, { label: 'Up', value: 4 }]).container)).toEqual(['Increase', 'Decrease']);
+  });
+
+  it('stands each bar at the running sum across zero, and each connector at the end of the bar before it', () => {
+    // 10, then -15 down through zero to -5, then +12 back up to 7, and the total 7 drawn from zero.
+    const { container } = draw([
+      { label: 'Start', value: 10 },
+      { label: 'Down', value: -15 },
+      { label: 'Up', value: 12 },
+      { label: 'End', value: 7, kind: 'total' },
+    ]);
+    const [start, down, up, end] = edgesOf(container);
+    // The first delta and the total stand on zero; the decrease spans 10 to -5, the increase -5 to 7.
+    expect(end!.bottom).toBeCloseTo(start!.bottom, 6);
+    expect(down!.top).toBeCloseTo(start!.top, 6);
+    expect(down!.bottom).toBeGreaterThan(start!.bottom);
+    expect(up!.bottom).toBeCloseTo(down!.bottom, 6);
+    expect(up!.top).toBeCloseTo(end!.top, 6);
+    expect(end!.top).toBeGreaterThan(start!.top);
+    // A connector leaves at the sum the bar before it ends at: 10 (its top), -5 (its bottom), 7 (its top).
+    expect(levelsOf(container)).toHaveLength(3);
+    expect(levelsOf(container)[0]).toBeCloseTo(start!.top, 6);
+    expect(levelsOf(container)[1]).toBeCloseTo(down!.bottom, 6);
+    expect(levelsOf(container)[2]).toBeCloseTo(up!.top, 6);
+  });
+
+  it('draws a negative total down from zero, and writes its label and the label of a decrease above the bar', () => {
+    // 5, then -8 down to -3, and the total -3 drawn from zero down.
+    const { container } = draw(
+      [
+        { label: 'Start', value: 5 },
+        { label: 'Down', value: -8 },
+        { label: 'End', value: -3, kind: 'total' },
+      ],
+      { value_labels: 'always' },
+    );
+    const [start, down, end] = edgesOf(container);
+    expect(end!.top).toBeCloseTo(start!.bottom, 6);
+    expect(end!.bottom).toBeCloseTo(down!.bottom, 6);
+    expect(down!.top).toBeCloseTo(start!.top, 6);
+    // Each label stands over its bar's top edge, never inside it: the total's over zero, the decrease's over 5.
+    expect(labels(container)).toEqual(['+5', '-8', '-3']);
+    const [, downLabel, endLabel] = labelYs(container);
+    expect(endLabel).toBeLessThan(end!.top);
+    expect(downLabel).toBeLessThan(down!.top);
+  });
+
+  it('moves the running sum by each delta, a null delta drawing nothing and leaving the sum unchanged', () => {
+    const steps: WaterfallData['steps'] = [
+      { label: 'First', value: 5 },
+      { label: 'Gap', value: null },
+      { label: 'Down', value: -2 },
+      { label: 'End', value: 3, kind: 'total' },
+    ];
+    const { container } = draw(steps);
+    // Three bars: the null delta draws none, and the total after it is still the sum of 5 and -2.
+    expect(bars(container)).toHaveLength(3);
+    expect(xTicks(container)).toEqual(['First', 'Gap', 'Down', 'End']);
+    expect(rowsOf()).toEqual([
+      ['Label', 'Change', 'Running total'],
+      ['First', '+5', '5'],
+      ['Gap', '', '5'],
+      ['Down', '-2', '3'],
+      ['End', '3', '3'],
+    ]);
+  });
+
+  it('writes the change with a sign on a delta and without one on a total, in the labels and the text alternative', () => {
+    const { container } = draw(STEPS, { value_labels: 'always' }, { value_format: { value_type: 'duration', unit: 'h', decimals: 1 } });
+    expect(labels(container)).toEqual(['+4.1 hr', '+17.0 hr', '+3.2 hr', '+2.1 hr', '26.4 hr']);
+    expect(rowsOf()).toEqual([
+      ['Label', 'Change', 'Running total'],
+      ['Coding', '+4.1 hr', '4.1 hr'],
+      ['Review', '+17.0 hr', '21.1 hr'],
+      ['CI', '+3.2 hr', '24.3 hr'],
+      ['Waiting to deploy', '+2.1 hr', '26.4 hr'],
+      ['Lead time', '26.4 hr', '26.4 hr'],
+    ]);
+  });
+
+  it('lays a thin connector from the end of one bar to the start of the next, level, and none after the last or with connectors off', () => {
+    const connected = draw(STEPS).container;
+    // Four connectors between the five bars: none before the first or after the last.
+    expect(connectors(connected)).toHaveLength(4);
+    for (const line of connectors(connected)) expect(line.getAttribute('y1')).toBe(line.getAttribute('y2'));
+    cleanup();
+    const bare = draw(STEPS, { connectors: false }).container;
+    expect(connectors(bare)).toHaveLength(0);
+  });
+
+  it('joins the bars across a null delta with one connector, at the unchanged level', () => {
+    const steps: WaterfallData['steps'] = [
+      { label: 'First', value: 5 },
+      { label: 'Gap', value: null },
+      { label: 'Down', value: -2 },
+      { label: 'End', value: 3, kind: 'total' },
+    ];
+    // The visible bars are First, Down and End: two connectors join the three, across the empty gap.
+    expect(connectors(draw(steps).container)).toHaveLength(2);
+  });
+
+  it('touches the end of one bar and the start of the next with its connector, as the bars are laid out', () => {
+    const { container } = draw(STEPS);
+    const rects = bars(container).map((bar) => ({ x: Number(bar.getAttribute('x')), width: Number(bar.getAttribute('width')) }));
+    const lines = connectors(container);
+    // The connector out of a bar leaves its right edge and arrives at the next bar's left edge.
+    expect(Number(lines[0]!.getAttribute('x1'))).toBeCloseTo(rects[0]!.x + rects[0]!.width, 6);
+    expect(Number(lines[0]!.getAttribute('x2'))).toBeCloseTo(rects[1]!.x, 6);
+    expect(Number(lines[3]!.getAttribute('x1'))).toBeCloseTo(rects[3]!.x + rects[3]!.width, 6);
+    expect(Number(lines[3]!.getAttribute('x2'))).toBeCloseTo(rects[4]!.x, 6);
+  });
+
+  it('touches the bars with its connectors in a cell so narrow the chart thins its bars below their width', () => {
+    // A 64 px cell leaves a plot of about 8 px: a band under 2 px, where the library draws each bar 0.9 of its band.
+    sized(64, 300);
+    const { container } = draw(STEPS);
+    const edges = edgesOf(container);
+    const lines = connectors(container);
+    expect(edges).toHaveLength(5);
+    expect(lines).toHaveLength(4);
+    for (const [index, line] of lines.entries()) {
+      expect(Number(line.getAttribute('x1'))).toBeCloseTo(edges[index]!.right, 6);
+      expect(Number(line.getAttribute('x2'))).toBeCloseTo(edges[index + 1]!.left, 6);
+    }
+  });
+
+  it('writes a value label above its bar when it fits the band the bar stands in, and keeps it in the text alternative below that', () => {
+    // The bands of a five-step 600 px chart are wide enough for every label: auto writes them.
+    expect(labels(draw(STEPS).container)).toEqual(['+4.1', '+17', '+3.2', '+2.1', '26.4']);
+    cleanup();
+    // A label wider than its bar but not its band still shows: "+17.0 hr" is wider than the 56 px a bar is at most.
+    expect(labels(draw(STEPS, {}, { value_format: { value_type: 'duration', unit: 'h', decimals: 1 } }).container)).toContain('+17.0 hr');
+    cleanup();
+    // A three-step 240 px chart has bands of about 61 px and bars of 35: "+1,234.56" (about 56 px) is wider than its
+    // bar and fits its band, and a value wider than its band stays out of the drawing only.
+    sized(240, 300);
+    const wide = draw(
+      [
+        { label: 'a', value: 1234.56 },
+        { label: 'b', value: 1234567.89 },
+        { label: 'End', value: 1235802.45, kind: 'total' },
+      ],
+      {},
+      { value_format: { value_type: 'number', decimals: 2 } },
+    ).container;
+    expect(labels(wide)).toEqual(['+1,234.56']);
+    expect(rowsOf().slice(1).map((row) => row[1])).toEqual(['+1,234.56', '+1,234,567.89', '1,235,802.45']);
+  });
+
+  it('writes no value label in a low cell with auto, and still writes one with always; never writes none', () => {
+    sized(300, 150);
+    expect(labels(draw(STEPS).container)).toEqual([]);
+    cleanup();
+    const always = draw(STEPS, { value_labels: 'always' }).container;
+    expect(labels(always)).toHaveLength(5);
+    cleanup();
+    expect(labels(draw(STEPS, { value_labels: 'never' }).container)).toEqual([]);
+  });
+
+  it('names the hovered step in the tooltip header, and its tone and signed change in the entry', async () => {
+    const steps: WaterfallData['steps'] = [
+      { label: 'First', value: 5 },
+      { label: 'Gap', value: null },
+      { label: 'Down', value: -2 },
+    ];
+    const { container } = draw(steps);
+    fireEvent.mouseMove(container.querySelector('.recharts-wrapper')!, { clientX: 150, clientY: 100, pageX: 150, pageY: 100 });
+    const entries = () => [...container.querySelectorAll('.recharts-tooltip-wrapper [class*="tooltipRow"]')].map((row) => row.textContent);
+    await waitFor(() => expect(entries()).not.toEqual([]));
+    // The hovered bar of the first band names its step in the header, and its signed change in the row.
+    expect(container.querySelector('.recharts-tooltip-wrapper')?.textContent).toContain('First');
+    expect(entries()[0]).toContain('Increase');
+    expect(entries()[0]).toContain('+5');
+  });
+
+  it('fails the cell on a total whose value is not the running sum, naming the step and never its value', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    draw([
+      { label: 'First', value: 5 },
+      { label: 'Rest', value: 4.1, kind: 'total' },
+    ]);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] waterfall_chart: data.steps[1] is a total, and its value is not the running sum of the steps before it');
+    expect(String(error.mock.calls[0][0])).not.toContain('4.1');
+    // A total within the relative tolerance, or with no value, is the running sum.
+    expect(checkWaterfall({ steps: [{ label: 'a', value: 5 }, { label: 'b', value: 5.0000000001, kind: 'total' }] })).toBeNull();
+    expect(checkWaterfall({ steps: [{ label: 'a', value: 5 }, { label: 'b', value: null, kind: 'total' }] })).toBeNull();
+    expect(checkWaterfall({ steps: [{ label: 'a', value: 5 }, { label: 'b', value: 4, kind: 'total' }] })).toContain('data.steps[1]');
+    // The first step may be the total the sum starts at: its value is the sum the deltas move from.
+    expect(checkWaterfall({ steps: [{ label: 'a', value: null, kind: 'total' }, { label: 'b', value: 3 }] })).toBeNull();
+    expect(checkWaterfall({ steps: [{ label: 'a', value: 10, kind: 'total' }, { label: 'b', value: -3 }, { label: 'c', value: 7, kind: 'total' }] })).toBeNull();
+  });
+
+  it('fails the cell on a running sum that leaves the finite range, naming the step that moves it out', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const most = Number.MAX_VALUE;
+    draw([
+      { label: 'First', value: most },
+      { label: 'Second', value: most },
+      { label: 'Rest', value: null },
+    ]);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] waterfall_chart: data.steps[1] moves the running sum out of the finite range');
+    // A sum that comes back into the range over the same step never leaves it.
+    expect(checkWaterfall({ steps: [{ label: 'a', value: most }, { label: 'b', value: -most }] })).toBeNull();
+  });
+
+  it.each([
+    ['all null', [{ label: 'a', value: null }, { label: 'b', value: null }] as WaterfallData['steps']],
+    ['a total at the untouched sum', [{ label: 'a', value: 0, kind: 'total' }, { label: 'b', value: null }] as WaterfallData['steps']],
+  ])('shows the empty state when no bar is drawn: %s', (_name, steps) => {
+    draw(steps);
+    expect(screen.getByText('No data to show')).toBeTruthy();
+  });
+
+  it('is a figure named by its label', () => {
+    draw(STEPS);
+    expect(screen.getByRole('figure', { name: 'Lead time' })).toBeTruthy();
+  });
+
+  it('takes its column headings and its legend names from the texts', () => {
+    const texts: WidgetTexts = {
+      ...DEFAULT_WIDGET_TEXTS,
+      chart: 'Diagramm',
+      waterfall: { change: 'Aenderung', running: 'Laufende Summe', increase: 'Mehr', decrease: 'Weniger', total: 'Summe' },
+    };
+    const steps: WaterfallData['steps'] = [
+      { label: 'Start', value: 10, kind: 'total' },
+      { label: 'Up', value: 4 },
+      { label: 'Down', value: -3 },
+      { label: 'End', value: 11, kind: 'total' },
+    ];
+    render(<WaterfallChart payload={{ render: {}, data: { steps } }} texts={texts} />);
+    expect(within(alternative('Diagramm')).getAllByRole('columnheader', { hidden: true }).map((cell) => cell.textContent)).toEqual(['Label', 'Aenderung', 'Laufende Summe']);
+    expect([...screen.getByRole('figure', { hidden: true }).querySelectorAll('[class*="legendItem"]')].map((item) => item.textContent)).toEqual(['Mehr', 'Weniger', 'Summe']);
+  });
+
+  it('opens the data view from the button, with every delivered step, and from a click on a bar with drill_down', async () => {
+    const user = userEvent.setup();
+    const { unmount } = draw(STEPS, { drill_down: true });
+    await user.click(screen.getByRole('button', { name: 'Show data' }));
+    const region = await screen.findByRole('region', { name: 'Data of Lead time' });
+    expect(within(region).getAllByRole('row', { hidden: true }).length).toBeGreaterThan(3);
+    unmount();
+    cleanup();
+    // A click on the second bar opens its row. The bar stands in the second band of a 600 px plot.
+    const picked = draw(STEPS, { drill_down: true });
+    const wrapper = picked.container.querySelector('.recharts-wrapper')!;
+    fireEvent.mouseMove(wrapper, { clientX: 210, clientY: 100, pageX: 210, pageY: 100 });
+    await waitFor(() => expect(picked.container.querySelector('.recharts-tooltip-wrapper [class*="tooltipRow"]')).not.toBeNull());
+    fireEvent.click(wrapper, { clientX: 210, clientY: 100, pageX: 210, pageY: 100 });
+    const opened = await screen.findByRole('region', { name: 'Data of Lead time' });
+    expect(await within(opened).findByText('Review', { selector: '[aria-current="true"]' })).toBeTruthy();
+  });
+
+  it('draws no data view button and no clickable chart with drill-down off', () => {
+    const { container } = draw(STEPS);
+    expect(screen.queryByRole('button', { name: 'Show data' })).toBeNull();
+    expect(container.querySelector('[class*="clickable"]')).toBeNull();
   });
 });

@@ -52,6 +52,11 @@ export interface WidgetTexts {
    * tooltip.
    */
   treemap: { group: string; share: string; other: string; ofTotal: string };
+  /**
+   * A waterfall_chart: the headings of the change and running total columns in its text alternative and data view,
+   * and the names of its three bar tones in its legend, an increase, a decrease and a total.
+   */
+  waterfall: { change: string; running: string; increase: string; decrease: string; total: string };
   /** The accessible note of a link that opens in a new tab. */
   link: { newTab: string };
   /**
@@ -80,6 +85,7 @@ export const DEFAULT_WIDGET_TEXTS: WidgetTexts = {
   funnel: { conversion: 'Conversion', ofPrevious: 'of the previous stage' },
   radar: { axis: 'Axis' },
   treemap: { group: 'Group', share: 'Share', other: 'Other', ofTotal: 'of the total' },
+  waterfall: { change: 'Change', running: 'Running total', increase: 'Increase', decrease: 'Decrease', total: 'Total' },
   link: { newTab: 'opens in a new tab' },
   grid: {
     search: 'Search the table',

@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart as RechartsRadarChart } from 'recharts';
 import { Polygon, usePlotArea, type Coordinate } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@gears-frontx/ui-kit';
-import type { RenderWidgetPayload, ValueFormat } from '@gears-frontx/frontx-dashboard-root/contract';
+import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/contract';
 
 import { formatValue, nonFiniteProblemOf, textOf } from '../format';
 import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
@@ -11,6 +11,7 @@ import { PALETTE, legendOf } from './legend';
 import { ChartShell } from './ChartShell';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
+import { compactTick } from './ticks';
 import styles from '../widgets.module.css';
 
 const FILL = { '--chart-aspect-ratio': 'auto', blockSize: '100%', inlineSize: '100%' } as CSSProperties;
@@ -94,13 +95,6 @@ export function checkRadar(data: RadarData): string | null {
   if (axes.length < MIN_AXES) return `radar_chart: data.points has ${axes.length} distinct ${axes.length === 1 ? 'axis' : 'axes'}, and a radar takes at least ${MIN_AXES}`;
   // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-radar-min-axes
   return null;
-}
-
-// The radius axis ticks follow `value_format`: the chart binds it and the locale when it draws.
-/** A value label of the scale: the number alone, as the tooltip and the data view carry the unit. */
-function compactTick(value_format: ValueFormat | undefined, locale: string) {
-  const bare = value_format ? { ...value_format, unit_label: undefined } : undefined;
-  return (value: number) => `${formatValue(value, bare, locale, 'compact')}`;
 }
 
 /** The scale's value labels sit over the polygons: a halo in the card colour keeps them readable there. */

@@ -3,11 +3,12 @@ import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MetricCard } from '../cards/MetricCard';
-import type { CartesianData, PieData, RadarData, TreemapData } from '../types';
+import type { CartesianData, PieData, RadarData, TreemapData, WaterfallData } from '../types';
 import { CartesianChart } from './CartesianChart';
 import { PieChart } from './PieChart';
 import { RadarChart } from './RadarChart';
 import { TreemapChart } from './TreemapChart';
+import { WaterfallChart } from './WaterfallChart';
 
 // Every observed element reports the current size, at once and again on each `resizeAll`, as a browser reports a
 // widget's elements when a dashboard takes the widget out of the page while its cell reloads (0 by 0) and puts it back.
@@ -52,6 +53,7 @@ afterEach(() => {
 const DAYS: CartesianData = { series: [{ name: 'Commits', points: Array.from({ length: 5 }, (_, day) => ({ x: `2026-10-0${day + 1}`, y: day })) }] };
 const SLICES: PieData = { slices: [{ label: 'Passed', value: 8 }, { label: 'Failed', value: 2 }] };
 const SKILLS: RadarData = { points: ['Speed', 'Range', 'Cost'].map((axis, index) => ({ axis, series: null, value: index + 1 })) };
+const STAGES: WaterfallData = { steps: [{ label: 'Coding', value: 4.1 }, { label: 'Review', value: 17 }, { label: 'Lead time', value: 21.1, kind: 'total' }] };
 
 describe('a chart whose widget is taken out of the page', () => {
   it.each<[string, ReactElement]>([
@@ -59,6 +61,7 @@ describe('a chart whose widget is taken out of the page', () => {
     ['a cartesian chart with drill-down', <CartesianChart payload={{ render: { drill_down: true, series: [{ name: 'Commits', type: 'line' }] }, data: DAYS }} />],
     ['a pie chart', <PieChart payload={{ render: {}, data: SLICES }} />],
     ['a radar chart', <RadarChart payload={{ render: {}, data: SKILLS }} />],
+    ['a waterfall chart', <WaterfallChart payload={{ render: {}, data: STAGES }} />],
     ['a metric sparkline', <MetricCard payload={{ render: {}, data: { value: 3, sparkline: [1, 2, 3] } }} />],
   ])('%s is not drawn at 0 by 0, so the chart library does not warn, and is drawn again once it has a size', (_case, widget) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

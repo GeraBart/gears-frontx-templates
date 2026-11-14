@@ -12,6 +12,7 @@ import { FunnelChart } from './chart/FunnelChart';
 import { PieChart } from './chart/PieChart';
 import { RadarChart } from './chart/RadarChart';
 import { TreemapChart } from './chart/TreemapChart';
+import { WaterfallChart } from './chart/WaterfallChart';
 import { GridWidget } from './grid/GridWidget';
 import { Heatmap } from './heatmap/Heatmap';
 import { METRIC_CARD_SAMPLE, PROGRESS_LIST_CARD_SAMPLE, RANKED_LIST_CARD_SAMPLE, SUMMARY_CARD_SAMPLE } from './samples';
@@ -75,6 +76,16 @@ const WIDGETS: Array<{ widget: string; draw: Draw; payload: Payload; inputs: str
     draw: (payload) => <TreemapChart payload={payload} />,
     payload: { render: {}, value_format: { value_type: 'number', decimals: 0 }, data: { items: [{ label: 'a', value: 3, group: null }, { label: 'b', value: 2, group: null }] } },
     inputs: ['data.items[1].value', 'value_format.decimals'],
+  },
+  {
+    widget: 'waterfall_chart',
+    draw: (payload) => <WaterfallChart payload={payload} />,
+    payload: {
+      render: {},
+      value_format: { value_type: 'duration', unit: 'h', decimals: 1 },
+      data: { steps: [{ label: 'a', value: 3 }, { label: 'b', value: -1 }, { label: 'c', value: null }, { label: 'd', value: 2, kind: 'total' }] },
+    },
+    inputs: ['data.steps[1].value', 'value_format.decimals'],
   },
   {
     widget: 'heatmap',

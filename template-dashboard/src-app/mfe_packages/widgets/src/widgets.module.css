@@ -909,3 +909,13 @@
 .treemapShare {
   color: var(--foreground);
 }
+
+/* A waterfall: the bars the chart library draws, one per step of the running sum, and the thin lines the
+   component lays between one bar's end and the next bar's start over the plot area its scales give it.
+   Layout only: the bar fills and the text colours come from theme tokens in the component and the kit. */
+/* The kit's muted text tone mixed into the card: quiet beside the bars, and at 3:1 or more against the card in both
+   themes, where the border tones measure under 2:1. */
+.waterfallConnector {
+  stroke: color-mix(in oklab, var(--muted-foreground) 60%, var(--card));
+  stroke-width: 1px;
+}
