@@ -1,19 +1,18 @@
 import type { CSSProperties } from 'react';
 import { Area, Bar, CartesianGrid, ComposedChart, LabelList, Line, ReferenceLine, Scatter, ScatterChart, XAxis, YAxis, ZAxis, usePlotArea, useYAxisScale, type LabelProps } from 'recharts';
-import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@gears-frontx/ui-kit';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@gears-frontx/ui-kit';
 import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/contract';
 
 import { formatShare, formatValue, textOf, nonFiniteProblemOf } from '../format';
+import { legendOf, PALETTE } from './legend';
 import { dayOf } from '../heatmap/Heatmap';
 import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
-import type { CartesianData, CartesianRender, CartesianSeriesOption, LegendPosition, ReferenceLineOption } from '../types';
+import type { CartesianData, CartesianRender, CartesianSeriesOption, ReferenceLineOption } from '../types';
 import styles from '../widgets.module.css';
 import { ChartShell } from './ChartShell';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
 
-// The kit's five series colours in an order that keeps neighbours apart; the sixth series wraps to the first.
-export const PALETTE = ['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)', 'var(--chart-1)', 'var(--chart-3)'];
 const FILL = { '--chart-aspect-ratio': 'auto', blockSize: '100%', inlineSize: '100%' } as CSSProperties;
 
 // A bar gets its value written above it from this width up, in `auto` mode.
@@ -27,8 +26,6 @@ const SECONDARY_AXIS_WIDTH = 44;
 const TICK = { fill: 'var(--muted-foreground)' };
 // A rotated tick stays on one line: Recharts wraps tick text to the slot width, which breaks a rotated label into overlapping lines.
 const ROTATED_TICK = { ...TICK, width: 10_000 };
-// Room between the plot and a legend beside it, so an x tick centred on the plot's edge stays clear of the legend.
-const LEGEND_GAP = 16;
 // The heights of a value label and of an end label line, at the micro text size, with the value label's offset.
 const VALUE_LABEL_HEIGHT = 12;
 const END_LABEL_HEIGHT = 12;
@@ -137,22 +134,6 @@ export function checkCartesian(render: CartesianRender, data: CartesianData): st
   }
   // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-reference
   return null;
-}
-
-export function legendOf(position: LegendPosition | undefined, nameKey?: string) {
-  const at = position ?? 'bottom';
-  if (at === 'none') return null;
-  const side = at === 'left' || at === 'right';
-  return (
-    <ChartLegend
-      layout={side ? 'vertical' : 'horizontal'}
-      align={side ? at : 'center'}
-      verticalAlign={side ? 'middle' : at}
-      // A legend never takes more than half the chart, so the plot or the pie keeps room in a short cell; the rest scrolls.
-      wrapperStyle={side ? { maxInlineSize: '50%', maxBlockSize: '100%', overflowY: 'auto', [at === 'right' ? 'paddingInlineStart' : 'paddingInlineEnd']: LEGEND_GAP } : { maxBlockSize: '50%', overflowY: 'auto' }}
-      content={<ChartLegendContent nameKey={nameKey} className={side ? `${styles.legend} ${styles.legendSide}` : styles.legend} />}
-    />
-  );
 }
 
 /**

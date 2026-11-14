@@ -37,7 +37,7 @@ function placeholderPage(): Plugin {
 // Shared with every other bundle: the browser fetches one copy of each for all bundles whose builds agree on its
 // content hash. recharts is shared only by the bundles that draw with it, so a bundle without charts never fetches
 // it; a bundle that imports recharts without being listed here still works and carries its own copy.
-const CHART_BUNDLES = new Set(['metric_card', 'cartesian_chart', 'pie_chart', ...(process.env.WIDGET_CHART_BUNDLES ?? '').split(',')]);
+const CHART_BUNDLES = new Set(['metric_card', 'cartesian_chart', 'pie_chart', 'radar_chart', ...(process.env.WIDGET_CHART_BUNDLES ?? '').split(',')]);
 const REACT = ['react', 'react/jsx-runtime', 'react-dom', 'react-dom/client'];
 const shared = CHART_BUNDLES.has(type) ? [...REACT, 'recharts'] : REACT;
 

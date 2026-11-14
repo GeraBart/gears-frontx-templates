@@ -267,3 +267,23 @@ export interface FunnelData {
   /** One to twelve stages in the delivered order; a null value draws an empty stage. */
   stages: { label: string; value: number | null }[];
 }
+
+/** The `radar_chart` render. */
+export interface RadarRender {
+  /** The top of the value axis at least: a larger value extends it to that value. Without it, the largest value rounded up by the axis tick rule. */
+  scale_max?: number;
+  /** The series draw their area at a low opacity in their tone. Without it, true. */
+  fill?: boolean;
+  legend_position?: LegendPosition;
+  /** Points open the data view with the picked row expanded, and a button opens the whole data view. */
+  drill_down?: boolean;
+}
+
+export interface RadarData {
+  /**
+   * The values of the spokes in the long format of the cartesian chart: one point per series value, 3 to 120 of
+   * them. The axes keep their first-seen order (3 to 12 of them), and so do the series (1 to 6); a null series is
+   * the one unnamed series, and a null value is a gap on that axis.
+   */
+  points: { axis: string; series: string | null; value: number | null }[];
+}

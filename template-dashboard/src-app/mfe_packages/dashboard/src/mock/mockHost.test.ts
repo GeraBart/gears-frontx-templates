@@ -175,6 +175,26 @@ describe('the mock host', () => {
     expect(stages.every((count, index) => Number.isInteger(count) && (index === 0 || count <= stages[index - 1]))).toBe(true);
   });
 
+  it('answers the weekday commits of the three most active repositories, whose series add up to their commits in the activity of the period', async () => {
+    const ask = (path: string) => askDemo(path);
+    for (const query of ['?period=7d', '?period=30d']) {
+      const [weekday, activity] = (await Promise.all([ask(`/api/demo/commits/weekday${query}`), ask(`/api/demo/repos/activity${query}`)])) as [
+        { points: { axis: string; series: string | null; value: number | null }[] },
+        Activity,
+      ];
+      // The seven weekdays in order, and the top three repositories of the activity answer, as the series.
+      expect([...new Set(weekday.points.map((point) => point.axis))]).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+      expect([...new Set(weekday.points.map((point) => point.series))]).toEqual(activity.slice(0, 3).map((row) => row.repo));
+      expect(weekday.points.every((point) => Number.isInteger(point.value) && (point.value as number) >= 0)).toBe(true);
+      // Each series' weekday values sum to that repository's commits over the same period.
+      for (const row of activity.slice(0, 3)) {
+        const values = weekday.points.filter((point) => point.series === row.repo).map((point) => point.value as number);
+        expect(values).toHaveLength(7);
+        expect(values.reduce((sum, value) => sum + value, 0)).toBe(row.commits);
+      }
+    }
+  });
+
   it('answers the weekday and hour heatmap with cells that add up to the commits of the daily rows', async () => {
     const [{ cells }, daily] = (await Promise.all([askDemo('/api/demo/commits/heatmap'), askDemo('/api/demo/delivery/daily')])) as [{ cells: { count: number }[] }, Daily];
     const cellTotal = cells.reduce((sum, cell) => sum + cell.count, 0);

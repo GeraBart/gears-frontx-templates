@@ -6,7 +6,7 @@ import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/co
 import { formatValue, textOf, nonFiniteProblemOf } from '../format';
 import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
 import type { PieData, PieRender } from '../types';
-import { PALETTE, legendOf } from './CartesianChart';
+import { PALETTE, legendOf } from './legend';
 import { ChartShell } from './ChartShell';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';

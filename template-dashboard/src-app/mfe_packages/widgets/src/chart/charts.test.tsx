@@ -2,11 +2,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CartesianData, CartesianRender, FunnelData, FunnelRender } from '../types';
+import type { CartesianData, CartesianRender, FunnelData, FunnelRender, RadarData, RadarRender } from '../types';
 import { DEFAULT_WIDGET_TEXTS, type WidgetTexts } from '../states';
 import { CartesianChart, checkCartesian } from './CartesianChart';
 import { PieChart, checkPie } from './PieChart';
 import { FunnelChart, checkFunnel } from './FunnelChart';
+import { RadarChart, checkRadar } from './RadarChart';
 
 const DATA: CartesianData = {
   series: [
@@ -843,5 +844,234 @@ describe('funnel_chart', () => {
     const { container } = draw(STAGES);
     expect(screen.queryByRole('button', { name: 'Show data' })).toBeNull();
     expect(container.querySelector('[class*="funnelPick"]')).toBeNull();
+  });
+});
+
+describe('radar_chart', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const POINTS: RadarData['points'] = [
+    { axis: 'Mon', series: 'Web', value: 12 },
+    { axis: 'Mon', series: 'API', value: 8 },
+    { axis: 'Tue', series: 'Web', value: 7 },
+    { axis: 'Tue', series: 'API', value: null },
+    { axis: 'Wed', series: 'Web', value: 0 },
+    { axis: 'Wed', series: 'API', value: 5 },
+  ];
+  const draw = (points: RadarData['points'], options: RadarRender = {}, extra: object = {}) =>
+    render(<RadarChart payload={{ render: options, data: { points }, ...extra }} label="Commits" />);
+  const axisTicks = (container: HTMLElement) => [...container.querySelectorAll('.recharts-polar-angle-axis-tick-value')].map((tick) => tick.textContent);
+  const polygons = (container: HTMLElement) => [...container.querySelectorAll('.recharts-radar-polygon path')];
+  const rowsOf = () => within(alternative('Commits')).getAllByRole('row', { hidden: true }).map((row) => [...row.children].map((cell) => cell.textContent));
+  const radiusTicks = (container: HTMLElement) => [...container.querySelectorAll('.recharts-polar-radius-axis-tick-value')].map((tick) => tick.textContent);
+
+  // The widget's body as the ResizeObserver reports it.
+  const original = globalThis.ResizeObserver;
+  const sized = (width: number, height: number) => {
+    globalThis.ResizeObserver = class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        this.callback([{ target, contentRect: { width, height } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  };
+  beforeEach(() => sized(600, 300));
+  afterEach(() => {
+    globalThis.ResizeObserver = original;
+    vi.restoreAllMocks();
+  });
+
+  it('draws one polygon per series in first-seen axis order, each in its series colour', () => {
+    const { container } = draw(POINTS);
+    expect(axisTicks(container)).toEqual(['Mon', 'Tue', 'Wed']);
+    expect(polygons(container)).toHaveLength(2);
+    expect(polygons(container).map((polygon) => polygon.getAttribute('fill'))).toEqual(['var(--color-s0)', 'var(--color-s1)']);
+    // A gap of a null value draws no vertex: the API series, with no value on Tuesday, keeps three of four.
+    const vertices = (polygon: Element) => (polygon.getAttribute('d') ?? '').match(/[ML]/g)?.length ?? 0;
+    expect(polygons(container).map(vertices)).toEqual([4, 3]);
+    // A zero value draws one at the centre: both stay inside the plot.
+    expect(container.textContent).not.toMatch(/NaN|Infinity/);
+  });
+
+  it('draws the area at a low opacity by fill, and none with fill off, the stroke staying', () => {
+    const filled = draw(POINTS);
+    expect(polygons(filled.container).map((polygon) => polygon.getAttribute('fill-opacity'))).toEqual(['0.25', '0.25']);
+    filled.unmount();
+    const bare = draw(POINTS, { fill: false });
+    expect(polygons(bare.container).map((polygon) => polygon.getAttribute('fill-opacity'))).toEqual(['0', '0']);
+    expect(polygons(bare.container).map((polygon) => polygon.getAttribute('stroke'))).toEqual(['var(--color-s0)', 'var(--color-s1)']);
+    bare.unmount();
+  });
+
+  it('names the series in a legend at the bottom or beside the plot; a single series draws none, and none hides it', () => {
+    const named = draw(POINTS);
+    expect(named.container.querySelector('.recharts-legend-wrapper')).not.toBeNull();
+    named.unmount();
+    const side = draw(POINTS, { legend_position: 'right' });
+    expect(side.container.querySelector('.recharts-legend-wrapper')).not.toBeNull();
+    expect(side.container.querySelector('[class*="legendSide"]')).not.toBeNull();
+    side.unmount();
+    const hidden = draw(POINTS, { legend_position: 'none' });
+    expect(hidden.container.querySelector('.recharts-legend-wrapper')).toBeNull();
+    hidden.unmount();
+    const single = draw([{ axis: 'Mon', series: null, value: 3 }, { axis: 'Tue', series: null, value: 2 }, { axis: 'Wed', series: null, value: 1 }]);
+    expect(single.container.querySelector('.recharts-legend-wrapper')).toBeNull();
+    single.unmount();
+  });
+
+  it('writes the scale as bare numbers, the unit staying in the tooltip and the data view', () => {
+    const { container } = draw(
+      [{ axis: 'Mon', series: null, value: 80 }, { axis: 'Tue', series: null, value: 41 }, { axis: 'Wed', series: null, value: 8 }],
+      {},
+      { value_format: { value_type: 'number', unit_label: 'commits' } },
+    );
+    const ticks = radiusTicks(container);
+    expect(ticks.length).toBeGreaterThan(1);
+    expect(ticks.filter((tick) => tick?.includes('commits'))).toEqual([]);
+  });
+
+  it('takes scale_max as the top of the value axis, a larger value extending it, and rounds the largest value up without it', () => {
+    const pinned = draw([{ axis: 'Mon', series: null, value: 93 }, { axis: 'Tue', series: null, value: 41 }, { axis: 'Wed', series: null, value: 8 }], { scale_max: 100 });
+    expect(radiusTicks(pinned.container).at(-1)).toBe('100');
+    pinned.unmount();
+    // A value above scale_max extends the circle to that value: the outer circle is at least scale_max.
+    const exceeded = draw([{ axis: 'Mon', series: null, value: 93 }, { axis: 'Tue', series: null, value: 41 }, { axis: 'Wed', series: null, value: 8 }], { scale_max: 50 });
+    expect(radiusTicks(exceeded.container).at(-1)).toBe('93');
+    exceeded.unmount();
+    // Without it the axis takes the chart library's nice ticks over 0 to 9.3: five ticks 3 apart, the top one 12.
+    const free = draw([{ axis: 'Mon', series: null, value: 9.3 }, { axis: 'Tue', series: null, value: 4.1 }, { axis: 'Wed', series: null, value: 8 }]);
+    expect(radiusTicks(free.container)).toEqual(['0', '3', '6', '9', '12']);
+    free.unmount();
+    // A value already on a tick stays the top of the axis.
+    const whole = draw([{ axis: 'Mon', series: null, value: 12 }, { axis: 'Tue', series: null, value: 4 }, { axis: 'Wed', series: null, value: 7 }]);
+    expect(radiusTicks(whole.container).at(-1)).toBe('12');
+    whole.unmount();
+  });
+
+  it('hides the axis labels of a compact cell that cannot fit them, and keeps them in the tooltip and text alternative', () => {
+    const wide = [{ axis: 'Mon', series: null, value: 3 }, { axis: 'Wednesdays', series: null, value: 2 }, { axis: 'Fri', series: null, value: 1 }];
+    // 300 by 195 px is compact and fits "Wednesdays" beside the circle: the labels stay.
+    sized(300, 195);
+    const fitted = draw(wide).container;
+    expect(fitted.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(3);
+    cleanup();
+    // A label that would not fit hides every label, in the drawing only.
+    const longest = [{ axis: 'Mon', series: null, value: 3 }, { axis: 'Wednesday overflow', series: null, value: 2 }, { axis: 'Fri', series: null, value: 1 }];
+    const hidden = draw(longest).container;
+    expect(hidden.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(0);
+    expect(within(alternative('Commits')).getAllByRole('row', { hidden: true }).map((row) => row.children[0]?.textContent)).toEqual(['Axis', 'Mon', 'Wednesday overflow', 'Fri']);
+    cleanup();
+    // The same label in a high cell keeps the labels: only a compact cell hides them.
+    sized(300, 300);
+    expect(draw(longest).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(3);
+  });
+
+  it('judges the fit of the axis labels from the plot area the legend leaves, not from the whole cell', () => {
+    // Two series with "Wednesdays": in a 300 by 195 px cell the labels fit with no legend, and not beside a bottom legend
+    // 40 px high, which leaves the circle a lower plot area.
+    const wide = ['Mon', 'Wednesdays', 'Fri'].flatMap((axis) => [{ axis, series: 'Web', value: 3 }, { axis, series: 'API', value: 2 }]);
+    const rect = Element.prototype.getBoundingClientRect;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return this.classList.contains('recharts-legend-wrapper') ? ({ width: 290, height: 40, top: 0, left: 0, right: 290, bottom: 40, x: 0, y: 0 } as DOMRect) : rect.call(this);
+    });
+    sized(300, 195);
+    expect(draw(wide, { legend_position: 'none' }).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(3);
+    cleanup();
+    expect(draw(wide, { legend_position: 'bottom' }).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(0);
+  });
+
+  it('fails the cell on a negative value, naming its position and never its value', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    draw([{ axis: 'Mon', series: 'Web', value: 3 }, { axis: 'Tue', series: 'Web', value: -1 }, { axis: 'Wed', series: 'Web', value: 2 }]);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] radar_chart: data.points[1].value is below 0');
+    expect(String(error.mock.calls[0][0])).not.toContain('1 is');
+    expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 0 }, { axis: 'Tue', series: null, value: null }, { axis: 'Wed', series: null, value: 1 }] })).toBeNull();
+  });
+
+  it('fails the cell on more than 12 axes or 6 series, naming the point that crosses the bound', () => {
+    const axes = Array.from({ length: 13 }, (_, index) => ({ axis: `a${index}`, series: null, value: 1 }));
+    expect(checkRadar({ points: axes })).toBe('radar_chart: data.points[12].axis would be a 13th axis, and a radar takes at most 12');
+    const sixes = Array.from({ length: 6 }, (_, index) => ({ axis: ['Mon', 'Tue', 'Wed'][index % 3], series: `s${index}`, value: 1 }));
+    expect(checkRadar({ points: [...sixes] })).toBeNull();
+    expect(checkRadar({ points: [...sixes, { axis: 'Mon', series: 's6', value: 1 }] })).toBe('radar_chart: data.points[6].series would be a 7th series, and a radar takes at most 6');
+    // A point that repeats an axis and a series crosses no bound: the last one wins.
+    expect(checkRadar({ points: [...sixes, { axis: 'Mon', series: 's0', value: 2 }] })).toBeNull();
+  });
+
+  it('fails the cell on fewer than 3 distinct axes, which draw a dot or a line and no polygon', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Three points on two axes: the schema counts the points, the widget counts the axes.
+    draw([{ axis: 'Mon', series: 'Web', value: 3 }, { axis: 'Tue', series: 'Web', value: 2 }, { axis: 'Mon', series: 'API', value: 1 }]);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] radar_chart: data.points has 2 distinct axes, and a radar takes at least 3');
+    expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 1 }, { axis: 'Mon', series: 'API', value: 2 }, { axis: 'Mon', series: null, value: 3 }] })).toBe('radar_chart: data.points has 1 distinct axis, and a radar takes at least 3');
+    expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 1 }, { axis: 'Tue', series: null, value: 2 }, { axis: 'Wed', series: null, value: 3 }] })).toBeNull();
+  });
+
+  it.each([
+    ['all zero', [{ axis: 'Mon', series: null, value: 0 }, { axis: 'Tue', series: null, value: 0 }, { axis: 'Wed', series: null, value: 0 }]],
+    ['all null', [{ axis: 'Mon', series: null, value: null }, { axis: 'Tue', series: null, value: null }, { axis: 'Wed', series: null, value: null }]],
+    ['zero and null', [{ axis: 'Mon', series: null, value: 0 }, { axis: 'Tue', series: null, value: null }, { axis: 'Wed', series: null, value: null }]],
+  ])('shows the empty state when the values are %s', (_name, points) => {
+    draw(points);
+    expect(screen.getByText('No data to show')).toBeTruthy();
+  });
+
+  it('is a figure named by its label, with a text alternative of every axis and series, formatted by value_format', () => {
+    draw(POINTS, {}, { value_format: { value_type: 'number', decimals: 0 } });
+    expect(screen.getByRole('figure', { name: 'Commits' })).toBeTruthy();
+    expect(rowsOf()).toEqual([
+      ['Axis', 'Web', 'API'],
+      ['Mon', '12', '8'],
+      ['Tue', '7', ''],
+      ['Wed', '0', '5'],
+    ]);
+  });
+
+  it('takes its axis heading and the headings of unnamed series from the texts', () => {
+    const texts: WidgetTexts = { ...DEFAULT_WIDGET_TEXTS, chart: 'Diagramm', columns: { ...DEFAULT_WIDGET_TEXTS.columns, series: 'Reihe' }, radar: { axis: 'Achse' } };
+    render(<RadarChart payload={{ render: {}, data: { points: [{ axis: 'Mon', series: null, value: 3 }, { axis: 'Tue', series: null, value: 2 }, { axis: 'Wed', series: null, value: 1 }] } }} texts={texts} />);
+    expect(within(alternative('Diagramm')).getAllByRole('columnheader', { hidden: true }).map((cell) => cell.textContent)).toEqual(['Achse', 'Reihe']);
+  });
+
+  it('opens the data view from the button, with every delivered value, and from a click on a point with drill_down', async () => {
+    const user = userEvent.setup();
+    const { unmount } = draw(POINTS, { drill_down: true });
+    await user.click(screen.getByRole('button', { name: 'Show data' }));
+    const region = await screen.findByRole('region', { name: 'Data of Commits' });
+    expect(within(region).getAllByRole('row', { hidden: true }).length).toBeGreaterThan(3);
+    unmount();
+    cleanup();
+    // A click near the first axis' vertex opens its row. The vertex stands above the centre of a 600 by 300 px plot.
+    const picked = draw(POINTS, { drill_down: true });
+    const wrapper = picked.container.querySelector('.recharts-wrapper')!;
+    fireEvent.mouseMove(wrapper, { clientX: 300, clientY: 92, pageX: 300, pageY: 92 });
+    // Recharts settles its tooltip state after the move, and the click reads it: wait until the tooltip shows a row.
+    await waitFor(() => expect(picked.container.querySelector('.recharts-tooltip-wrapper [class*="tooltipRow"]')).not.toBeNull());
+    fireEvent.click(wrapper, { clientX: 300, clientY: 92, pageX: 300, pageY: 92 });
+    const opened = await screen.findByRole('region', { name: 'Data of Commits' });
+    expect(await within(opened).findByText('Mon', { selector: '[aria-current="true"]' })).toBeTruthy();
+  });
+
+  it('leaves out of the tooltip the entry of a series with a gap at the hovered axis', async () => {
+    // Tuesday's spoke points down and to the right of the centre of a 600 by 300 px plot; the API series has a null
+    // value there, and with its Tuesday point left out no point at all.
+    for (const points of [POINTS, POINTS.filter((point) => !(point.axis === 'Tue' && point.series === 'API'))]) {
+      cleanup();
+      const { container } = draw(points);
+      fireEvent.mouseMove(container.querySelector('.recharts-wrapper')!, { clientX: 343, clientY: 175, pageX: 343, pageY: 175 });
+      const entries = () => [...container.querySelectorAll('.recharts-tooltip-wrapper [class*="tooltipRow"]')].map((row) => row.textContent);
+      await waitFor(() => expect(entries()).not.toEqual([]));
+      expect(entries()).toEqual(['Web7']);
+    }
+  });
+
+  it('draws no data view button and no clickable chart with drill-down off', () => {
+    const { container } = draw(POINTS);
+    expect(screen.queryByRole('button', { name: 'Show data' })).toBeNull();
+    expect(container.querySelector('[class*="clickable"]')).toBeNull();
   });
 });

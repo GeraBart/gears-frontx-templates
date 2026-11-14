@@ -273,6 +273,33 @@
             "size": "medium",
             "height": "high",
             "widget": {
+              "id": "gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.radar_chart.v1~9d4e0f8a-2c6b-4a51-8d93-7e5b3c1f6a02",
+              "title": "Commits by weekday, top repositories",
+              "description": "The three most active repositories of the period",
+              "render": {
+                "legend_position": "bottom",
+                "drill_down": true
+              },
+              "value_format": {
+                "value_type": "number",
+                "unit_label": "commits"
+              },
+              "data": {
+                "request": {
+                  "method": "GET",
+                  "path": "/api/demo/commits/weekday",
+                  "variables": {
+                    "period": "period"
+                  }
+                },
+                "transform": "{'points': response.points.map(p, {'axis': p.axis, 'series': p.series, 'value': p.value})}"
+              }
+            }
+          },
+          {
+            "size": "medium",
+            "height": "high",
+            "widget": {
               "id": "gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.heatmap.v1~8c3f9a7b-1d5e-4f98-8ba2-4e5a8d6f9b02",
               "title": "Commits per day",
               "description": "Daily commits over five months; click a day for its row",

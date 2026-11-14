@@ -44,6 +44,8 @@ export interface WidgetTexts {
    * stage's conversion in its tooltip.
    */
   funnel: { conversion: string; ofPrevious: string };
+  /** A radar_chart: the heading of the axis column in its text alternative and data view. */
+  radar: { axis: string };
   /** The accessible note of a link that opens in a new tab. */
   link: { newTab: string };
   /**
@@ -70,6 +72,7 @@ export const DEFAULT_WIDGET_TEXTS: WidgetTexts = {
   metric: { reference: 'Reference', difference: (reference) => `Difference from ${reference}` },
   pie: { total: 'Total' },
   funnel: { conversion: 'Conversion', ofPrevious: 'of the previous stage' },
+  radar: { axis: 'Axis' },
   link: { newTab: 'opens in a new tab' },
   grid: {
     search: 'Search the table',

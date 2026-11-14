@@ -10,6 +10,7 @@ import { SummaryCard } from './cards/SummaryCard';
 import { CartesianChart } from './chart/CartesianChart';
 import { FunnelChart } from './chart/FunnelChart';
 import { PieChart } from './chart/PieChart';
+import { RadarChart } from './chart/RadarChart';
 import { GridWidget } from './grid/GridWidget';
 import { Heatmap } from './heatmap/Heatmap';
 import { METRIC_CARD_SAMPLE, PROGRESS_LIST_CARD_SAMPLE, RANKED_LIST_CARD_SAMPLE, SUMMARY_CARD_SAMPLE } from './samples';
@@ -61,6 +62,12 @@ const WIDGETS: Array<{ widget: string; draw: Draw; payload: Payload; inputs: str
     draw: (payload) => <FunnelChart payload={payload} />,
     payload: { render: {}, value_format: { value_type: 'number', decimals: 0 }, data: { stages: [{ label: 'a', value: 3 }, { label: 'b', value: 2 }] } },
     inputs: ['data.stages[1].value', 'value_format.decimals'],
+  },
+  {
+    widget: 'radar_chart',
+    draw: (payload) => <RadarChart payload={payload} />,
+    payload: { render: {}, value_format: { value_type: 'number', decimals: 0 }, data: { points: [{ axis: 'Mon', series: 'a', value: 3 }, { axis: 'Tue', series: 'a', value: 2 }, { axis: 'Wed', series: 'a', value: 1 }] } },
+    inputs: ['data.points[1].value', 'value_format.decimals'],
   },
   {
     widget: 'heatmap',
@@ -207,6 +214,12 @@ const DERIVED: Array<{ name: string; draw: Draw; payload: Payload; shows: string
       data: { series: [{ name: 'a', points: [{ x: 'p', y: 1e308 }, { x: 'q', y: 1 }] }, { name: 'b', points: [{ x: 'p', y: 1e308 }, { x: 'q', y: 1 }] }] },
     },
     shows: ['.recharts-line-curve'],
+  },
+  {
+    name: 'a radar whose axis rounds 1.5e308 up to its ticks',
+    draw: (payload) => <RadarChart payload={payload} />,
+    payload: { render: {}, data: { points: [{ axis: 'a', series: null, value: BIG }, { axis: 'b', series: null, value: 1 }, { axis: 'c', series: null, value: 2 }] } },
+    shows: ['.recharts-radar-polygon path', '.recharts-polar-radius-axis-tick-value'],
   },
   { name: 'a line from 1.5e308 to -1.5e308', draw: (payload) => <CartesianChart payload={payload} />, payload: lines([[{ x: 1, y: BIG }, { x: 2, y: -BIG }]]), shows: ['svg.recharts-surface'] },
   {

@@ -65,8 +65,8 @@ describe('registration order under reference lookup', () => {
         return [/\.([a-z_]+)_render\.v1~$/.exec(String(type.$id))![1], { fields: Object.keys(own.properties ?? {}), required: own.required ?? [] }] as const;
       }),
   );
-  it('finds the eleven shipped widget types and their eleven render types in the catalog, so the table below is not empty', () => {
-    expect(shipped).toHaveLength(11);
+  it('finds the twelve shipped widget types and their twelve render types in the catalog, so the table below is not empty', () => {
+    expect(shipped).toHaveLength(12);
     expect([...renderTypes.keys()].sort()).toEqual(shipped.map((type) => /\.([a-z_]+)\.v1~$/.exec(type)![1]).sort());
   });
   // Pinned on purpose: the required render fields are the published render contract (ADR-0009), so the rows
@@ -91,6 +91,7 @@ describe('registration order under reference lookup', () => {
       grid: ['columns'],
       cartesian_chart: [],
       pie_chart: [],
+      radar_chart: [],
       funnel_chart: [],
       heatmap: [],
       markdown_card: ['body'],
@@ -105,6 +106,7 @@ describe('registration order under reference lookup', () => {
     grid: { columns: 'key' },
     cartesian_chart: { drill_down: 'yes' },
     pie_chart: { radius: '50%' },
+    radar_chart: { scale_max: 'high' },
     funnel_chart: { show_conversion: 'yes' },
     heatmap: { show_cell_values: 'yes' },
     markdown_card: { body: 5 },
@@ -188,6 +190,16 @@ describe('registration order under reference lookup', () => {
     const result = registerDashboard(types, dashboardOf([withLabels('40', 'auto'), withLabels('41', 'always'), withLabels('42', 'never'), withLabels('43', 'inside')]));
     expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(3, 'cell')]);
     expect(result.ok && result.failed.get(slotOf(3, 'cell'))).toMatch(/\/render\/value_labels/);
+  });
+
+  it('accepts each radar_chart legend_position, and fails one outside the catalog values', () => {
+    const type = shipped.find((id) => id.endsWith('.radar_chart.v1~'))!;
+    const radar = demoWidgets.find((widget) => widget.id.startsWith(type))!;
+    const { types } = loaded();
+    const withLegend = (uuid: string, legend_position: unknown) => ({ size: 'small', widget: { ...radar, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...radar.render, legend_position } } });
+    const result = registerDashboard(types, dashboardOf([withLegend('50', 'top'), withLegend('51', 'right'), withLegend('52', 'bottom'), withLegend('53', 'left'), withLegend('54', 'none'), withLegend('55', 'outside')]));
+    expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(5, 'cell')]);
+    expect(result.ok && result.failed.get(slotOf(5, 'cell'))).toMatch(/\/render\/legend_position/);
   });
 
   it('accepts ranked status tones from the shared tones type, and fails a tone outside its closed values or an empty status', () => {
@@ -723,7 +735,7 @@ describe('the render type of a widget type', () => {
 
   // The render base only groups render types, so the render_widget action can name one type for every render;
   // each catalog widget type names its own render type, read by the root's own rule. The type count and the
-  // closed render types are checked in 'registration order under reference lookup' (the eleven shipped types,
+  // closed render types are checked in 'registration order under reference lookup' (the twelve shipped types,
   // and an extra render field failing each of them).
   it('is, for every catalog widget type, its own render type, one to one with the catalog render types', () => {
     const types = loaded().types;
@@ -812,6 +824,46 @@ describe('the radial_progress data type', () => {
     ['a missing target', { current: 3 }, /required property 'target'/],
     ['a string current', { current: '3', target: 10 }, /\/current is not of type/],
     ['a field it does not declare', { current: 3, target: 10, label: 'a' }, /unevaluated property/i],
+  ])('fails %s', (_name, data, reason) => {
+    expect(problemOf(data)).toMatch(reason);
+  });
+});
+
+// The radar_chart data type on the real store: what a transform result must carry, as the root registers it.
+describe('the radar_chart data type', () => {
+  const RADAR_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.radar_chart.v1~';
+  const problemOf = (data: Record<string, unknown>) => {
+    const { types } = loaded();
+    try {
+      types.register({ ...data, id: `${RADAR_DATA}1a2b3c4d-0000-4000-8000-0000000000d1` });
+    } catch (error) {
+      return String(error);
+    }
+    const { valid, errors } = types.validateInstance(`${RADAR_DATA}1a2b3c4d-0000-4000-8000-0000000000d1`);
+    return valid ? null : JSON.stringify(errors);
+  };
+  const points = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({ axis: `a${index}`, series: null, value: index % 3 }));
+
+  it.each([
+    ['three points of one unnamed series', { points: points(3) }],
+    // 12 axes, and six series: the unnamed one and s1 to s5.
+    ['120 points of six series, a null value and a null series', { points: [...Array.from({ length: 119 }, (_, index) => ({ axis: `a${index % 12}`, series: index % 6 === 0 ? null : `s${index % 6}`, value: index % 3 })), { axis: 'a11', series: 's5', value: null }] }],
+  ])('takes %s', (_name, data) => {
+    expect(problemOf(data)).toBeNull();
+  });
+
+  it.each([
+    ['no points field', {}, /required property 'points'/],
+    ['two points', { points: points(2) }, /\/points Too few items in `#\/points`, should be at least `3`/],
+    ['121 points', { points: points(121) }, /\/points Too many items in `#\/points`, should be `120` at most/],
+    ['a number axis', { points: [{ axis: 7, series: null, value: 1 }] }, /\/points\/0\/axis is not of type/],
+    ['an axis over 40 characters', { points: [{ axis: 'x'.repeat(41), series: null, value: 1 }] }, /\/points\/0\/axis .* maximum length of `40`/],
+    ['an empty axis', { points: [{ axis: '', series: null, value: 1 }] }, /\/points\/0\/axis .* minimum length of `1`/],
+    ['a series over 40 characters', { points: [{ axis: 'a', series: 'x'.repeat(41), value: 1 }] }, /\/points\/0\/series .* maximum length of `40`/],
+    ['a point without a series', { points: [{ axis: 'a', value: 1 }] }, /required property 'series'/],
+    ['a string value', { points: [{ axis: 'a', series: null, value: '3' }] }, /\/points\/0\/value is not of type/],
+    ['an extra point field', { points: [{ axis: 'a', series: null, value: 1, color: 'red' }] }, /\/points\/0 Additional property `color`/],
   ])('fails %s', (_name, data, reason) => {
     expect(problemOf(data)).toMatch(reason);
   });

@@ -231,6 +231,24 @@ const FIXTURES: Record<string, (body: unknown, query: URLSearchParams) => unknow
   '/api/demo/commits/heatmap': () => ({
     cells: WEEKDAYS.flatMap((weekday, day) => BLOCKS.map((block, index) => ({ weekday, block: `${block}:00`, count: HEATMAP_COUNTS[day * BLOCKS.length + index] }))),
   }),
+  // The commits of the three most active repositories of the period, one point per repository and weekday, in the long
+  // format a radar_chart takes: the weekday groups of its daily counts, which add up to its commits in the activity
+  // answer above. Each weekday of a period holds a reported day of each of them, so no value is null.
+  '/api/demo/commits/weekday': (_body, query) => {
+    const days = daysOf(query);
+    const top = REPOS.map((repo, index) => ({ repo, index, commits: sum(REPO_DAILY[index].slice(-days).map((count) => count ?? 0)) }))
+      .sort((a, b) => b.commits - a.commits)
+      .slice(0, 3);
+    const daily = top.map(({ index }) => REPO_DAILY[index].slice(-days));
+    return {
+      points: WEEKDAYS.flatMap((axis, weekday) =>
+        top.map(({ repo }, position) => {
+          const ofWeekday = daily[position].filter((_, day) => (CALENDAR_DAYS[CALENDAR_DAYS.length - days + day].getUTCDay() + 6) % 7 === weekday);
+          return { axis, series: repo, value: sum(ofWeekday.map((count) => count ?? 0)) };
+        }),
+      ),
+    };
+  },
   '/api/demo/commits/calendar': () => ({ days: CALENDAR }),
   '/api/demo/ci/daily': () => ({ daily: CI_DAILY }),
   '/api/demo/broken': () => {
