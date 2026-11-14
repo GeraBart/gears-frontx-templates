@@ -637,7 +637,7 @@
             "widget": {
               "id": "gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.activity_feed.v1~5145a513-7e2f-5864-8a47-f4da74a69acf",
               "title": "Recently opened pull requests",
-              "description": "The newest open pull request of each of the last 12 days, the newest first. Not period-bound.",
+              "description": "The newest open pull request of each day",
               "render": {
                 "time_style": "absolute",
                 "page_size": 5
@@ -799,7 +799,7 @@
             "widget": {
               "id": "gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.waterfall_chart.v1~6b0c4e8a-3d5f-4a7b-9c2d-4e6f8a0b2c01",
               "title": "Lead time by stage, hours",
-              "description": "The stages of the lead time the Lead time card reports: how each stage moves the hours from a commit to a deploy, to the lead time total.",
+              "description": "How each stage adds to the lead time",
               "render": {
                 "connectors": true,
                 "value_labels": "auto",
