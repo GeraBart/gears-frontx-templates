@@ -277,6 +277,14 @@ describe('cartesian_chart', () => {
     expect(within(alternative('Bare')).getAllByRole('row', { hidden: true }).slice(1).map((row) => row.textContent?.replace(/\s/g, ' '))).toEqual(['Nov 9, 20261', 'Nov 10, 20261']);
   });
 
+  it('fails a date-time on a time axis whose day the calendar does not have, naming the series and the point', () => {
+    const payload = (xs: string[]) => ({ render: { x_axis: { type: 'time' as const }, series: [{ name: 'A', type: 'line' as const }, { name: 'B', type: 'line' as const }] }, data: { series: [{ name: 'A', points: [{ x: '2026-11-09T10:00:00Z', y: 1 }] }, { name: 'B', points: xs.map((x) => ({ x, y: 1 })) }] } });
+    expect(checkCartesian(payload(['2026-02-28T10:00:00Z']).render, payload(['2026-02-28T10:00:00Z']).data)).toBeNull();
+    expect(checkCartesian(payload(['2026-02-28T10:00:00Z', '2026-02-30T10:00:00Z']).render, payload(['2026-02-28T10:00:00Z', '2026-02-30T10:00:00Z']).data)).toBe(
+      'cartesian_chart: series 1 point 1 needs an ISO 8601 date-time, a YYYY-MM-DD date or epoch milliseconds',
+    );
+  });
+
   it('names the day on time ticks that cross a midnight within two days', () => {
     const data: CartesianData = { series: [{ name: 'A', points: [{ x: '2026-11-09T22:00:00Z', y: 1 }, { x: '2026-11-10T02:00:00Z', y: 2 }] }] };
     const { container } = render(<CartesianChart payload={{ render: { x_axis: { type: 'time' }, series: [{ name: 'A', type: 'line' }] }, data }} />);

@@ -1075,6 +1075,13 @@ describe('activity_feed', () => {
     expect(error).toHaveBeenCalledWith('[widget] activity_feed: data.items[0] needs an ISO 8601 date-time or a YYYY-MM-DD date as its time');
   });
 
+  it('fails its cell naming the item whose date-time is on a day the calendar does not have', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<ActivityFeed payload={{ render: {}, data: { items: [item('first', '2026-02-28T10:00:00Z'), item('second', '2026-02-30T10:00:00Z')] } }} />);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] activity_feed: data.items[1] needs an ISO 8601 date-time or a YYYY-MM-DD date as its time');
+  });
+
   it('draws with a locale that is not a BCP-47 tag, without throwing', () => {
     render(<ActivityFeed payload={{ render: {}, data: { items: [item('a', '2026-11-01T12:00:00Z')] } }} locale="pt_BR" />);
     expect(screen.getByText('a')).toBeTruthy();

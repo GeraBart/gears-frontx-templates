@@ -7,7 +7,7 @@ import { nonFiniteProblemOf } from '../format';
 import { SafeLink } from '../links';
 import { DEFAULT_WIDGET_TEXTS, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
 import type { ActivityFeedData, ActivityFeedRender, Tone } from '../types';
-import { dayOf } from '../heatmap/Heatmap';
+import { ISO_DATE_TIME, timeOf } from '../time';
 import { useDataVersion } from '../grid/useDataVersion';
 import styles from '../widgets.module.css';
 
@@ -19,21 +19,6 @@ import styles from '../widgets.module.css';
  */
 
 const DAY_MS = 86_400_000;
-// An ISO 8601 date-time: a calendar date, a T, a time of day, an optional second with its fraction and an optional zone.
-const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/;
-
-/**
- * A time as epoch milliseconds: an ISO 8601 date-time as it reads, and a bare `YYYY-MM-DD` date as its UTC midnight
- * by the heatmap calendar's rule (the one date rule of the widgets). Null for anything else, including a date the
- * calendar does not have.
- */
-const timeOf = (time: string): number | null => {
-  if (ISO_DATE_TIME.test(time)) {
-    const parsed = Date.parse(time);
-    return Number.isNaN(parsed) ? null : parsed;
-  }
-  return dayOf(time);
-};
 
 /** The relative units, longest first, with the length of each in milliseconds: a mean year and a mean month. */
 const UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [

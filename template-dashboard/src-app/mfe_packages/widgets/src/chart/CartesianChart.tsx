@@ -5,7 +5,7 @@ import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/co
 
 import { formatShare, formatValue, textOf, nonFiniteProblemOf } from '../format';
 import { legendOf, PALETTE } from './legend';
-import { dayOf } from '../heatmap/Heatmap';
+import { timeOf as timeOfText } from '../time';
 import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
 import type { CartesianData, CartesianRender, CartesianSeriesOption, ReferenceLineOption } from '../types';
 import styles from '../widgets.module.css';
@@ -38,14 +38,13 @@ const BUBBLE_RADIUS = { min: 3, max: 18, compactMax: 9 };
 // The axis of a category value: a horizontal chart's categories stand on this y axis.
 const CATEGORY_AXIS = 'category';
 
-const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/;
-
 /**
- * A place on a time axis in epoch milliseconds: a number as it is, an ISO 8601 date-time string read as one, and a bare
- * `YYYY-MM-DD` date as its UTC midnight by the heatmap calendar's rule. NaN for any other string, a date the calendar
- * does not have such as 2026-02-30, and a time a date cannot hold (Date takes only ±8.64e15 milliseconds around 1970).
+ * A place on a time axis in epoch milliseconds: a number as it is, and a string by the widgets' one time reader (an
+ * ISO 8601 date-time, or a bare `YYYY-MM-DD` date as its UTC midnight by the heatmap calendar's rule). NaN for any other
+ * string, a day the calendar does not have such as 2026-02-30 (alone or before a time of day), and a time a date
+ * cannot hold (Date takes only ±8.64e15 milliseconds around 1970).
  */
-const timeOf = (x: string | number) => (typeof x === 'number' ? new Date(x).getTime() : ISO_DATE_TIME.test(x) ? Date.parse(x) : (dayOf(x) ?? NaN));
+const timeOf = (x: string | number) => (typeof x === 'number' ? new Date(x).getTime() : (timeOfText(x) ?? NaN));
 /** A point's place on its x axis: on a time axis an ISO x becomes epoch milliseconds, so it keys and draws as a number. */
 const placeOf = (x: string | number | null, axis: 'category' | 'value' | 'time') => (axis === 'time' && typeof x === 'string' ? timeOf(x) : x);
 /** The key of an x place: its kind and text, so "1" and 1 stay apart. */
