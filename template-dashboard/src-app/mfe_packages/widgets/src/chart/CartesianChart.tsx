@@ -1,4 +1,3 @@
-import type { CSSProperties } from 'react';
 import { Area, Bar, CartesianGrid, ComposedChart, LabelList, Line, ReferenceLine, Scatter, ScatterChart, XAxis, YAxis, ZAxis, usePlotArea, useYAxisScale, type LabelProps } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@gears-frontx/ui-kit';
 import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/contract';
@@ -10,20 +9,14 @@ import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, typ
 import type { CartesianData, CartesianRender, CartesianSeriesOption, ReferenceLineOption } from '../types';
 import styles from '../widgets.module.css';
 import { ChartShell } from './ChartShell';
+import { FILL, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
 
-const FILL = { '--chart-aspect-ratio': 'auto', blockSize: '100%', inlineSize: '100%' } as CSSProperties;
-
 // A bar gets its value written above it from this width up, in `auto` mode.
 const MIN_LABELLED_BAR = 28;
-// About the width of one tick character at the kit chart's tick size, and the height of a tick line with a gap.
-const TICK_CHAR_WIDTH = 6.5;
-const TICK_TEXT_HEIGHT = 15;
 const PRIMARY_AXIS_WIDTH = 44;
 const SECONDARY_AXIS_WIDTH = 44;
-// Tick text in the chart's chrome colour: Recharts paints it #666, which fails contrast on a dark card.
-const TICK = { fill: 'var(--muted-foreground)' };
 // A rotated tick stays on one line: Recharts wraps tick text to the slot width, which breaks a rotated label into overlapping lines.
 const ROTATED_TICK = { ...TICK, width: 10_000 };
 // The heights of a value label and of an end label line, at the micro text size, with the value label's offset.

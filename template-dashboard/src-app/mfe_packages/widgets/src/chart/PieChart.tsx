@@ -1,4 +1,3 @@
-import type { CSSProperties } from 'react';
 import { Label, Pie, PieChart as RechartsPieChart } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@gears-frontx/ui-kit';
 import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/contract';
@@ -8,11 +7,10 @@ import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, typ
 import type { PieData, PieRender } from '../types';
 import { PALETTE, legendOf } from './legend';
 import { ChartShell } from './ChartShell';
+import { FILL } from './chrome';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
 import styles from '../widgets.module.css';
-
-const FILL = { '--chart-aspect-ratio': 'auto', blockSize: '100%', inlineSize: '100%' } as CSSProperties;
 
 /** The narrowest compact pie that keeps its legend beside it. */
 const PIE_SIDE_LEGEND_WIDTH = 240;

@@ -1,6 +1,4 @@
-import type { CSSProperties } from 'react';
-import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart as RechartsRadarChart } from 'recharts';
-import { Polygon, usePlotArea, type Coordinate } from 'recharts';
+import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Polygon, Radar, RadarChart as RechartsRadarChart, usePlotArea, type Coordinate } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@gears-frontx/ui-kit';
 import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/contract';
 
@@ -9,12 +7,11 @@ import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, typ
 import type { RadarData, RadarRender } from '../types';
 import { PALETTE, legendOf } from './legend';
 import { ChartShell } from './ChartShell';
+import { FILL, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
 import { compactTick } from './ticks';
 import styles from '../widgets.module.css';
-
-const FILL = { '--chart-aspect-ratio': 'auto', blockSize: '100%', inlineSize: '100%' } as CSSProperties;
 
 /** The bounds the widget checks itself, as the data type cannot count the distinct axes and series of the long format. */
 const MIN_AXES = 3;
@@ -22,8 +19,6 @@ const MAX_AXES = 12;
 // One series per tone of the palette: polygons overlap by design, so no two series may share a colour.
 const MAX_SERIES = PALETTE.length;
 
-// Tick text in the chart's chrome colour: Recharts paints it #666, which fails contrast on a dark card.
-const TICK = { fill: 'var(--muted-foreground)' };
 // The area of a series, over its stroke of the same tone, when `fill` keeps it.
 const AREA_OPACITY = 0.25;
 
@@ -34,10 +29,6 @@ const AREA_OPACITY = 0.25;
 const OUTER_SHARE = 0.8;
 const CHART_MARGIN = 5;
 const TICK_SIZE = 8;
-// About the width of one tick character at the kit chart's tick size, and the height of a tick line, the estimates
-// the cartesian chart judges its ticks with.
-const TICK_CHAR_WIDTH = 6.5;
-const TICK_TEXT_HEIGHT = 15;
 
 /**
  * Whether the axis labels fit between the circle and the edge of the plot area with its margins: the widest label

@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, useXAxisScale, useYAxisScale } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@gears-frontx/ui-kit';
 import type { RenderWidgetPayload, ValueFormat } from '@gears-frontx/frontx-dashboard-root/contract';
@@ -8,6 +8,7 @@ import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, typ
 import type { WaterfallData, WaterfallRender } from '../types';
 import { legendOf } from './legend';
 import { ChartShell } from './ChartShell';
+import { FILL, TICK } from './chrome';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
 import { compactTick } from './ticks';
@@ -21,11 +22,6 @@ import styles from '../widgets.module.css';
  * from the library, as the cartesian chart takes them; the funnel and the treemap, which show no axis, draw
  * without one.
  */
-
-const FILL = { '--chart-aspect-ratio': 'auto', blockSize: '100%', inlineSize: '100%' } as CSSProperties;
-
-// Tick text in the chart's chrome colour: Recharts paints it #666, which fails contrast on a dark card.
-const TICK = { fill: 'var(--muted-foreground)' };
 
 // A bar is at most this wide, and never under 2 px; the bands of a narrow cell thin the bars, not the steps.
 const BAR_CEILING = 56;
