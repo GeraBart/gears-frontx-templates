@@ -96,6 +96,7 @@ const PULL_REQUESTS = Array.from({ length: OPEN.length }, (_, index) => {
  * the title names the pull request and its repository, the text is the pull request's own title, and the href is the
  * row's link. A tone only where the state means one: open is info, blocked is warning, the other states none.
  */
+const TONE_OF_STATE: Partial<Record<string, 'info' | 'warning'>> = { open: 'info', blocked: 'warning' };
 const RECENT_ITEMS = [...PULL_REQUESTS]
   .sort((a, b) => a.age_days - b.age_days)
   .filter((pull, index, sorted) => index === 0 || sorted[index - 1].age_days !== pull.age_days)
@@ -104,7 +105,7 @@ const RECENT_ITEMS = [...PULL_REQUESTS]
     time: new Date(new Date(`${DAYS[DAYS.length - 1]}T00:00:00Z`).getTime() - pull.age_days * 86_400_000).toISOString().slice(0, 10),
     title: `${pull.id} in ${pull.repo}`,
     text: pull.title,
-    ...(pull.state === 'open' ? { tone: 'info' as const } : pull.state === 'blocked' ? { tone: 'warning' as const } : {}),
+    ...(TONE_OF_STATE[pull.state] ? { tone: TONE_OF_STATE[pull.state] } : {}),
     href: pull.url,
   }));
 
@@ -160,6 +161,8 @@ const daysOf = (query: URLSearchParams) => {
  * The pull requests each repository opened in the last `days` days: the sums of its daily split when the daily series
  * covers them; beyond it (90 days) the 30-day count scaled and split by the shares, as no page shows a longer series.
  */
+/** The commits each repository made in the last `days` days: the sums of its daily split, a gap counting as none. */
+const repoCommitsIn = (days: number) => REPOS.map((_, repo) => sum(REPO_DAILY[repo].slice(-days).map((count) => count ?? 0)));
 const repoOpenedIn = (days: number) =>
   days <= DAYS.length
     ? REPOS.map((_, repo) => sum(REPO_OPENED.slice(-days).map((opened) => opened[repo])))
@@ -206,14 +209,17 @@ const FUNNEL = (() => {
 
 /**
  * The stages of the lead time in hours, one change per stage and the total the summary's lead time card shows: the
- * review step is the median review time of the repositories, and the other stages split the rest of the lead time.
+ * review step is the median review time of the repositories, coding and CI are fixed, and waiting to deploy is the rest.
  * Not period-bound, like the lead time card itself: the stage mix is a fixture, not a query over the period.
  */
+const REVIEW_STAGE_H = median(REVIEW_H);
+// The last stage takes what the others leave of the lead time, so the deltas always add up to the total.
+const WAITING_STAGE_H = Number((LEAD_TIME_H - 4.1 - REVIEW_STAGE_H - 3.2).toFixed(1));
 const LEAD_TIME_STEPS = [
   { label: 'Coding', value: 4.1, kind: 'delta' },
-  { label: 'Review', value: median(REVIEW_H), kind: 'delta' },
+  { label: 'Review', value: REVIEW_STAGE_H, kind: 'delta' },
   { label: 'CI', value: 3.2, kind: 'delta' },
-  { label: 'Waiting to deploy', value: 2.1, kind: 'delta' },
+  { label: 'Waiting to deploy', value: WAITING_STAGE_H, kind: 'delta' },
   { label: 'Lead time', value: LEAD_TIME_H, kind: 'total' },
 ];
 
@@ -251,10 +257,11 @@ const FIXTURES: Record<string, (body: unknown, query: URLSearchParams) => unknow
   '/api/demo/repos/activity': (_body, query) => {
     const days = daysOf(query);
     const prs = repoOpenedIn(days);
+    const commits = repoCommitsIn(days);
     return REPOS.map((repo, index) => ({
       repo,
       team: TEAMS[index],
-      commits: sum(REPO_DAILY[index].slice(-days).map((count) => count ?? 0)),
+      commits: commits[index],
       prs: prs[index],
       review_h: REVIEW_H[index],
     })).sort((a, b) => b.commits - a.commits);
@@ -273,7 +280,8 @@ const FIXTURES: Record<string, (body: unknown, query: URLSearchParams) => unknow
   // answer above. Each weekday of a period holds a reported day of each of them, so no value is null.
   '/api/demo/commits/weekday': (_body, query) => {
     const days = daysOf(query);
-    const top = REPOS.map((repo, index) => ({ repo, index, commits: sum(REPO_DAILY[index].slice(-days).map((count) => count ?? 0)) }))
+    const commits = repoCommitsIn(days);
+    const top = REPOS.map((repo, index) => ({ repo, index, commits: commits[index] }))
       .sort((a, b) => b.commits - a.commits)
       .slice(0, 3);
     const daily = top.map(({ index }) => REPO_DAILY[index].slice(-days));
@@ -290,9 +298,9 @@ const FIXTURES: Record<string, (body: unknown, query: URLSearchParams) => unknow
   // The commits of each repository over the period's days, in the format a treemap_chart takes: the labels and
   // values of the activity answer above, the treemap cell beside it draws.
   '/api/demo/repos/commits': (_body, query) => {
-    const days = daysOf(query);
+    const commits = repoCommitsIn(daysOf(query));
     return {
-      items: REPOS.map((repo, index) => ({ label: repo, value: sum(REPO_DAILY[index].slice(-days).map((count) => count ?? 0)), group: null })).sort((a, b) => (b.value ?? 0) - (a.value ?? 0)),
+      items: REPOS.map((repo, index) => ({ label: repo, value: commits[index], group: null })).sort((a, b) => b.value - a.value),
     };
   },
   '/api/demo/ci/daily': () => ({ daily: CI_DAILY }),

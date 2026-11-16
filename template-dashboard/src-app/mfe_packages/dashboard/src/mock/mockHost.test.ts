@@ -226,6 +226,8 @@ describe('the mock host', () => {
     const deltas = steps.filter((step) => step.kind === 'delta').map((step) => step.value!);
     expect(deltas.every((value) => Number(value.toFixed(1)) === value)).toBe(true);
     expect(Number(deltas.reduce((sum, value) => sum + value, 0).toFixed(1))).toBe(total);
+    // The demo stages as the dashboard shows them.
+    expect(steps.map((step) => step.value)).toEqual([4.1, 17, 3.2, 2.1, 26.4]);
   });
 
   it('answers the recently opened pull requests as feed items of the newest open pull request of each of the last 12 days that has one, youngest first, matching the open pull requests rows', async () => {
@@ -251,7 +253,8 @@ describe('the mock host', () => {
     expect(new Set(times).size).toBe(12);
     expect([...times].sort().reverse()).toEqual(times);
     // A tone only where the state means one: open is info, blocked is warning, the other states carry none.
-    expect(recent.items.map((item) => item.tone ?? null)).toEqual(youngest.map((pull) => (pull.state === 'open' ? 'info' : pull.state === 'blocked' ? 'warning' : null)));
+    const toneOf: Record<string, string> = { open: 'info', blocked: 'warning' };
+    expect(recent.items.map((item) => item.tone ?? null)).toEqual(youngest.map((pull) => toneOf[pull.state] ?? null));
   });
 
   it('answers the weekday and hour heatmap with cells that add up to the commits of the daily rows', async () => {
