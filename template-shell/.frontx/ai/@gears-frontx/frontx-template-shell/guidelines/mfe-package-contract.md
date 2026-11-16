@@ -139,7 +139,8 @@ what the package owns:
 1. **No package-owned CSS.**
    `ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot()` clones every host
    `<style>`/`<link>` into the shadow root. A package that only composes UI-kit
-   components needs no stylesheet of its own.
+   components writes no stylesheet itself; its kit component CSS still
+   reaches the shadow root through its manifest (path 2).
    The copy is taken once, at mount, from the host `<head>` as it is then. A
    stylesheet the host adds or changes later — a lazily loaded chunk's CSS, a
    rule a CSS-in-JS library inserts after mount, a Vite dev-mode update —

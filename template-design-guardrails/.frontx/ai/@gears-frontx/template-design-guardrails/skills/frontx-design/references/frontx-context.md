@@ -80,11 +80,11 @@ When a statement here and one of those files differ, the file wins.
   surface inside dark chrome.
 - A CSS Module imported plainly is delivered by the host into the shadow root
   from the package's build manifest. This is the path for screen styles.
-- Kit component styles reach the shadow root through the host's stylesheet
-  copy at mount. Utility classes from the host are not a styling path for a
-  screen: their colour utilities break against the kit's full-colour tokens,
-  and a class no rule defines renders as nothing (SYS-004, `dead-spacing-class`
-  in `references/verify.md`).
+- The kit component CSS a screen uses comes with the screen's own build
+  manifest, like its CSS Modules. Utility classes from the host are not a
+  styling path for a screen: their colour utilities break against the kit's
+  full-colour tokens, and a class no rule defines renders as nothing (SYS-004,
+  `dead-spacing-class` in `references/verify.md`).
 - Package CSS never carries a CSS reset of its own; the lifecycle already
   provides the box-model resets a shadow root needs.
 
