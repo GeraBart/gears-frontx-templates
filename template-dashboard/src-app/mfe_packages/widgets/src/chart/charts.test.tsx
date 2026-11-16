@@ -1009,8 +1009,9 @@ describe('radar_chart', () => {
   });
 
   it('keeps the axis labels of the demo radar on a phone, a chart 316 by 214 px over a bottom legend 28 px high', () => {
-    // Seven weekdays and three series: the circle sits in the middle of the chart, so the labels have 36 px above it, and
-    // the lowest ones end 4 px clear of the legend's entries, under the legend's own top padding.
+    // Seven weekdays and three series: the circle, radius 70.4 px, sits in the middle of the chart, so the labels have
+    // 36.6 px above it, and by this geometry the lowest ones end at about 190.4 px, 2.6 px clear of the legend's entries
+    // at 193 px, in the legend's own top padding (a browser measure of the drawn chart gave about 4 px).
     const week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].flatMap((axis) => ['payments-api', 'web-console', 'mobile-app'].map((series, index) => ({ axis, series, value: index + 1 })));
     const rect = Element.prototype.getBoundingClientRect;
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
@@ -1020,10 +1021,12 @@ describe('radar_chart', () => {
     expect(draw(week).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(7);
   });
 
-  it('judges the fit of the axis labels from the plot area the legend leaves, not from the whole cell', () => {
-    // Two series over four axes with "Wednesdays": in a 300 by 195 px cell the labels fit with no legend, and not beside
-    // a bottom legend 40 px high, which leaves the axis pointing down too little room above the legend.
-    const wide = ['Mon', 'Wednesdays', 'Fri', 'Sun'].flatMap((axis) => [{ axis, series: 'Web', value: 3 }, { axis, series: 'API', value: 2 }]);
+  it('judges the fit of the axis labels from the plot area the legend leaves, around the circle centred in the whole chart', () => {
+    // A 300 by 195 px chart with a legend 40 px high leaves a plot area 290 by 145 px: a circle of radius 58 centred at
+    // 97.5 px from the top of the whole chart. A label needs 80 px above the centre (58 + 22) and, for four axes, 80 px
+    // under it; for three axes the lowest vertex is 29 px under the centre, so 51 px.
+    const twoSeries = (axes: string[]) => axes.flatMap((axis) => [{ axis, series: 'Web', value: 3 }, { axis, series: 'API', value: 2 }]);
+    const wide = twoSeries(['Mon', 'Wednesdays', 'Fri', 'Sun']);
     const rect = Element.prototype.getBoundingClientRect;
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
       return this.classList.contains('recharts-legend-wrapper') ? ({ width: 290, height: 40, top: 0, left: 0, right: 290, bottom: 40, x: 0, y: 0 } as DOMRect) : rect.call(this);
@@ -1031,7 +1034,17 @@ describe('radar_chart', () => {
     sized(300, 195);
     expect(draw(wide, { legend_position: 'none' }).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(4);
     cleanup();
+    // A bottom legend leaves 64.5 px under the centre, down to its top padding, short of the 80 px the axis pointing
+    // down needs; the 97.5 px above and the 150 px beside (133 px needed for "Wednesdays") would hold the labels.
     expect(draw(wide, { legend_position: 'bottom' }).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(0);
+    cleanup();
+    // Three axes over the same bottom legend: the 97.5 px above the circle's centre hold the 80 px the label pointing up
+    // needs. Centred in the plot area instead, the circle would leave only 77.5 px above it, and hide the labels.
+    expect(draw(twoSeries(['Mon', 'Wed', 'Fri']), { legend_position: 'bottom' }).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(3);
+    cleanup();
+    // A top legend leaves 64.5 px above the centre, down from its bottom padding, short of the 80 px the label pointing
+    // up needs, while the 97.5 px under the centre and the 150 px beside (87.5 px needed) would hold the labels.
+    expect(draw(twoSeries(['Mon', 'Wed', 'Fri', 'Sun']), { legend_position: 'top' }).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(0);
   });
 
   it('fails the cell on a negative value, naming its position and never its value', () => {
