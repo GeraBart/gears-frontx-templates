@@ -841,7 +841,8 @@ describe('radial_progress', () => {
 
 describe('activity_feed', () => {
   // The clock the expected relative times are written against: the fake now stands on Wednesday 2026-11-04 at noon UTC,
-  // so the tests hold whatever wall clock and zone they run on.
+  // so the tests hold whatever wall clock they run on; the suite runs in UTC (vitest.config.ts), and the tests that read
+  // the host zone set their own.
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-11-04T12:00:00Z'));
@@ -854,27 +855,33 @@ describe('activity_feed', () => {
   const item = (title: string, time: string, rest: object = {}) => ({ title, time, ...rest });
 
   it('shows one item per data item, in the delivered order, each with its time element, title and text', () => {
-    const { container } = render(
-      <ActivityFeed
-        payload={{
-          render: { time_style: 'absolute' },
-          data: {
-            items: [
-              item('REQ-1042 in payments-api', '2026-11-04T09:24:00Z', { text: 'Fix retry policy' }),
-              item('Deploy of 2026-11-01', '2026-11-01', { text: 'payments-api and web-console' }),
-              item('REQ-1040 in web-console', '2026-10-30T18:05:00Z'),
-            ],
-          },
-        }}
-      />,
-    );
-    expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual([
-      'REQ-1042 in payments-apiNov 4, 2026, 9:24 AMFix retry policy',
-      'Deploy of 2026-11-01Nov 1, 2026payments-api and web-console',
-      'REQ-1040 in web-consoleOct 30, 2026, 6:05 PM',
-    ]);
-    const times = [...container.querySelectorAll('time')].map((time) => time.getAttribute('datetime'));
-    expect(times).toEqual(['2026-11-04T09:24:00Z', '2026-11-01', '2026-10-30T18:05:00Z']);
+    // In Los Angeles a date-time reads in Pacific time (PST on Nov 4, PDT on Oct 30), and a bare date keeps its own day.
+    vi.stubEnv('TZ', 'America/Los_Angeles');
+    try {
+      const { container } = render(
+        <ActivityFeed
+          payload={{
+            render: { time_style: 'absolute' },
+            data: {
+              items: [
+                item('REQ-1042 in payments-api', '2026-11-04T09:24:00Z', { text: 'Fix retry policy' }),
+                item('Deploy of 2026-11-01', '2026-11-01', { text: 'payments-api and web-console' }),
+                item('REQ-1040 in web-console', '2026-10-30T18:05:00Z'),
+              ],
+            },
+          }}
+        />,
+      );
+      expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual([
+        'REQ-1042 in payments-apiNov 4, 2026, 1:24 AMFix retry policy',
+        'Deploy of 2026-11-01Nov 1, 2026payments-api and web-console',
+        'REQ-1040 in web-consoleOct 30, 2026, 11:05 AM',
+      ]);
+      const times = [...container.querySelectorAll('time')].map((time) => time.getAttribute('datetime'));
+      expect(times).toEqual(['2026-11-04T09:24:00Z', '2026-11-01', '2026-10-30T18:05:00Z']);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('writes a relative time from the host clock: past and future items, and one of the moment', () => {
@@ -965,8 +972,24 @@ describe('activity_feed', () => {
   });
 
   it('draws an absolute date-time in the host zone, with its time of day', () => {
-    render(<ActivityFeed payload={{ render: { time_style: 'absolute' }, data: { items: [item('a date-time', '2026-11-01T23:05:00Z')] } }} />);
-    expect(screen.getByText('Nov 1, 2026, 11:05 PM')).toBeTruthy();
+    // 23:05 UTC on Nov 1 is 3:05 PM PST in Los Angeles; the bare date of the same day stays Nov 1 there.
+    vi.stubEnv('TZ', 'America/Los_Angeles');
+    try {
+      render(<ActivityFeed payload={{ render: { time_style: 'absolute' }, data: { items: [item('a date-time', '2026-11-01T23:05:00Z'), item('a date', '2026-11-01')] } }} />);
+      expect(screen.getByText('Nov 1, 2026, 3:05 PM')).toBeTruthy();
+      expect(screen.getByText('Nov 1, 2026')).toBeTruthy();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('starts over at the first page when the page size changes and the items stay', () => {
+    const items = Array.from({ length: 12 }, (_, index) => item(`t${index}`, '2026-11-01'));
+    const { container, rerender } = render(<ActivityFeed payload={{ render: { page_size: 4 }, data: { items } }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(container.querySelectorAll('ul > li')).toHaveLength(8);
+    rerender(<ActivityFeed payload={{ render: { page_size: 3 }, data: { items } }} />);
+    expect(container.querySelectorAll('ul > li')).toHaveLength(3);
   });
 
   it('shows more items on Show more, in delivered order, and hides the button when everything is shown', () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Text, VisuallyHidden } from '@gears-frontx/ui-kit';
 import { intlLocaleOf, type RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/contract';
 import { CircleAlertIcon, CircleCheckIcon, CircleXIcon, InfoIcon, type LucideIcon } from 'lucide-react';
@@ -49,15 +49,27 @@ const countOf = (diff: number, shortest: number): [number, Intl.RelativeTimeForm
 };
 
 /**
+ * The formatters of one locale, built once per locale rather than per row: the relative wording, a date-time with its
+ * time of day in the host zone, and a bare date read at its UTC midnight. The locale property is a free string, so a
+ * tag no Intl constructor takes falls back to English, like every formatter of the widgets.
+ */
+const formatsOf = (locale: string) => {
+  const tag = intlLocaleOf(locale);
+  return {
+    relative: new Intl.RelativeTimeFormat(tag, { numeric: 'auto' }),
+    dateTime: new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeStyle: 'short' }),
+    date: new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeZone: 'UTC' }),
+  };
+};
+type Formats = ReturnType<typeof formatsOf>;
+
+/**
  * A time as the host locale writes it against the host clock ("3 days ago", "now", "in 2 hours", "yesterday"), by
  * Intl's relative wording. A date-time counts its distance from the clock in the longest unit it fills; the moment
  * itself is "now". A bare date has no time of day: it counts whole calendar days from today's date in the host zone,
  * so the day itself is "today", the one before "yesterday", and longer distances move up to weeks, months and years.
- * The locale property is a free string, so a tag no Intl constructor takes falls back to English, like every
- * formatter of the widgets.
  */
-const relativeOf = (time: number, dateTime: boolean, now: number, locale: string): string => {
-  const format = new Intl.RelativeTimeFormat(intlLocaleOf(locale), { numeric: 'auto' });
+const relativeOf = (time: number, dateTime: boolean, now: number, format: Intl.RelativeTimeFormat): string => {
   if (dateTime) return format.format(...countOf(time - now, UNITS.length - 1));
   const clock = new Date(now);
   const today = Date.UTC(clock.getFullYear(), clock.getMonth(), clock.getDate());
@@ -65,8 +77,7 @@ const relativeOf = (time: number, dateTime: boolean, now: number, locale: string
 };
 
 /** A time as the host locale writes it: a bare date alone, a date-time with its time of day in the host zone. */
-const absoluteOf = (time: number, dateTime: boolean, locale: string): string =>
-  new Intl.DateTimeFormat(intlLocaleOf(locale), dateTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium', timeZone: 'UTC' }).format(time);
+const absoluteOf = (time: number, dateTime: boolean, formats: Formats): string => (dateTime ? formats.dateTime : formats.date).format(time);
 
 /** The icon of each tone an item may carry; a neutral item draws no mark, as a grid row of no colour does. */
 const FEED_MARKS: Partial<Record<Tone, LucideIcon>> = { success: CircleCheckIcon, warning: CircleAlertIcon, danger: CircleXIcon, info: InfoIcon };
@@ -100,10 +111,11 @@ export function ActivityFeed({
   container?: HTMLElement | ShadowRoot | null;
 }) {
   const { render, data } = payload;
-  // The hooks run on every render, before any early return: a new payload starts over at the first page, and the
-  // version keeps the paging state from one the new data outlives.
-  const version = useDataVersion(JSON.stringify(data?.items ?? null));
+  // The hooks run on every render, before any early return: new items or a new page size start over at the first page,
+  // and the version keeps the paging state from one the new data outlives.
   const pageSize = render.page_size ?? 10;
+  const version = useDataVersion(JSON.stringify([pageSize, data?.items ?? null]));
+  const formats = useMemo(() => formatsOf(locale), [locale]);
   const [paging, setPaging] = useState({ shown: pageSize, version });
   const list = useRef<HTMLUListElement>(null);
   // The index of the first item a Show more revealed, which takes the focus once it stands, so the keyboard stays in
@@ -158,7 +170,7 @@ export function ActivityFeed({
                 {/* The delivered string stays the machine-readable datetime; the shown text is by the render. */}
                 <time className={styles.feedTime} dateTime={item.time}>
                   <Text typography="meta" tone="muted" render={<span />}>
-                    {relative ? relativeOf(time, dateTime, now, locale) : absoluteOf(time, dateTime, locale)}
+                    {relative ? relativeOf(time, dateTime, now, formats.relative) : absoluteOf(time, dateTime, formats)}
                   </Text>
                 </time>
               </div>
