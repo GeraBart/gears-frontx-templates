@@ -1836,6 +1836,20 @@ describe('waterfall_chart', () => {
     expect(checkWaterfall({ steps: [{ label: 'a', value: most }, { label: 'b', value: -most }] })).toBeNull();
   });
 
+  it('fails the cell on a step whose drawn extent leaves the finite range while the running sum stays in it', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // A start of one and a half units in the last place of the largest number, then a delta of minus the largest
+    // number: the sum rounds to a finite value, and the extent from the start to it rounds beyond the largest number.
+    const start = 3 * 2 ** 970;
+    draw([
+      { label: 'First', value: start },
+      { label: 'Second', value: -Number.MAX_VALUE },
+    ]);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] waterfall_chart: data.steps[1] draws a bar whose extent is beyond the finite range');
+    expect(String(error.mock.calls[0][0])).not.toMatch(/\d\.\d|e\+/);
+  });
+
   it.each([
     ['all null', [{ label: 'a', value: null }, { label: 'b', value: null }] as WaterfallData['steps']],
     ['a total at the untouched sum', [{ label: 'a', value: 0, kind: 'total' }, { label: 'b', value: null }] as WaterfallData['steps']],

@@ -80,8 +80,9 @@ function runningAfter(running: number, step: WaterfallData['steps'][number], ind
 // @cpt-algo:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2
 /**
  * The waterfall's own check of its data: the first total after the first step whose delivered value is not the
- * running sum of the steps before it, and the first step that moves the running sum out of the finite range, each
- * named by its position and never by its value, or null. A total within the relative tolerance is the running sum;
+ * running sum of the steps before it, the first step that moves the running sum out of the finite range, and the
+ * first step whose drawn extent (a total's whole sum, a delta's move from where it starts) rounds beyond the largest
+ * number while the sum stays in range, each named by its position and never by its value, or null. A total within the relative tolerance is the running sum;
  * one with no value draws the sum the steps before it moved to. The first step may be a total: the start of the
  * sum, its value the sum begins at.
  */
@@ -90,6 +91,7 @@ export function checkWaterfall(data: WaterfallData): string | null {
   // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-for-step
   for (const [index, step] of data.steps.entries()) {
     const total = (step.kind ?? 'delta') === 'total';
+    const before = running;
     // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-total
     if (total && index > 0 && step.value !== null && Math.abs(step.value - running) > TOTAL_TOLERANCE * Math.max(Math.abs(step.value), Math.abs(running))) {
       return `waterfall_chart: data.steps[${index}] is a total, and its value is not the running sum of the steps before it`;
@@ -100,6 +102,9 @@ export function checkWaterfall(data: WaterfallData): string | null {
     // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-sum
     // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-finite
     if (!Number.isFinite(running)) return `waterfall_chart: data.steps[${index}] moves the running sum out of the finite range`;
+    // The extent the chart draws, as stepsOf takes it: a finite sum and a finite start can still lie further apart
+    // than the largest number when the sum rounds away from the start.
+    if (!Number.isFinite(total ? Math.abs(running) : Math.abs(running - before))) return `waterfall_chart: data.steps[${index}] draws a bar whose extent is beyond the finite range`;
     // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-finite
   }
   // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-for-step
