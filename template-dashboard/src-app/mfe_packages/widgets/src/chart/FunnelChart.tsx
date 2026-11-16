@@ -8,6 +8,7 @@ import type { FunnelData, FunnelRender } from '../types';
 import { ChartShell } from './ChartShell';
 import type { ValuesTable } from './DataView';
 import { isCompact, useElementSize } from './size';
+import { estimateWidth } from '../textFit';
 import styles from '../widgets.module.css';
 
 // The one fill of every stage: the first colour of the chart palette, as the radial ring and the first series take it.
@@ -43,13 +44,11 @@ function funnelLayout(listHeight: number, count: number): { textAt: 'over' | 'be
   if (stage >= BESIDE_STAGE) return { textAt: 'beside', bar: bar(stage) };
   return { textAt: null, bar: bar(stage) };
 }
-// The estimate of a text's width: about 0.62 of its font size per character (the label, the value and the conversion
-// are all 12 px).
-const CHAR_EM = 0.62;
+// The font size the width estimate (`estimateWidth`) counts with: the label, the value and the conversion are all 12 px.
 const TEXT_PX = 12;
 // The gap between the parts of the line (the `.funnelLine` gap, var(--space-2), in widgets.module.css).
 const PART_GAP = 8;
-// The least of a label kept beside a conversion: about four characters by CHAR_EM (2.5 em) plus the ellipsis, 3 em in
+// The least of a label kept beside a conversion: about four characters by CHAR_WIDTH (2.5 em) plus the ellipsis, 3 em in
 // all. A stage without a readable name says less than a stage without its conversion, so the conversion yields first.
 const LABEL_MIN_EM = 3;
 const HYPHEN = '-';
@@ -117,7 +116,7 @@ export function FunnelChart({
   const compact = isCompact(height);
   const { textAt, bar } = funnelLayout(list.height, stages.length);
   const room = list.width > 0 ? list.width * (textAt === 'beside' ? BESIDE_SHARE : 1) : Infinity;
-  const widthOf = (text: string, px: number) => (text === '' ? 0 : text.length * CHAR_EM * px + PART_GAP);
+  const widthOf = (text: string, px: number) => (text === '' ? 0 : estimateWidth(text, px) + PART_GAP);
 
   const columns = [texts.columns.label, texts.columns.value, ...(showConversion ? [texts.funnel.conversion] : [])];
   const table: ValuesTable = { columns, rows: stages.map((stage, index) => [stage.label, stage.value, ...(showConversion ? [conversions[index] ?? null] : [])]) };

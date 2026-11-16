@@ -7,7 +7,7 @@ import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, typ
 import type { RadarData, RadarRender } from '../types';
 import { PALETTE, legendOf } from './legend';
 import { ChartShell } from './ChartShell';
-import { FILL, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
+import { FILL, pickIndexOf, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
 import { compactTick } from './ticks';
@@ -163,10 +163,8 @@ export function RadarChart({
               onClick={
                 onPick
                   ? (state) => {
-                      // A click outside the circle carries no axis, and must not pick row 0.
-                      if (state.activeTooltipIndex === null || state.activeTooltipIndex === undefined) return;
-                      const index = Number(state.activeTooltipIndex);
-                      if (Number.isInteger(index) && index >= 0) onPick(index);
+                      const index = pickIndexOf(state);
+                      if (index !== null) onPick(index);
                     }
                   : undefined
               }

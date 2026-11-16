@@ -3,11 +3,14 @@ import { useLayoutEffect, useRef, useState } from 'react';
 // About the width of one character and the height of one line for their font size, and the share of the hole's radius
 // the centre text may reach: the text block's corners stay inside that circle. The character width is only the first
 // guess: each drawn line is then measured, and its measured width replaces the guess.
-const CHAR_WIDTH = 0.62;
+export const CHAR_WIDTH = 0.62;
 export const LINE_HEIGHT = 1.2;
 const HOLE_ROOM = 0.9;
 // Smaller than this, a centre line is left out.
 const FLOOR_SIZE = 9;
+
+/** The estimated width in px of a text drawn at a font size of px: CHAR_WIDTH of the size per character. */
+export const estimateWidth = (text: string, px: number) => text.length * CHAR_WIDTH * px;
 
 /** One line of centre text: its role (the `data-role` it is drawn with), its text and its largest font size. */
 export interface CentreLine {

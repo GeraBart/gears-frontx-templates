@@ -11,3 +11,13 @@ export const TICK = { fill: 'var(--muted-foreground)' };
 // estimates the cartesian and the radar charts judge their tick labels with.
 export const TICK_CHAR_WIDTH = 6.5;
 export const TICK_TEXT_HEIGHT = 15;
+
+/**
+ * The row a click on a chart picks: the index of the hovered band, axis or point, or null for a click outside any,
+ * which carries no index and must not pick row 0.
+ */
+export function pickIndexOf(state: { activeTooltipIndex?: number | string | null }): number | null {
+  if (state.activeTooltipIndex === null || state.activeTooltipIndex === undefined) return null;
+  const index = Number(state.activeTooltipIndex);
+  return Number.isInteger(index) && index >= 0 ? index : null;
+}

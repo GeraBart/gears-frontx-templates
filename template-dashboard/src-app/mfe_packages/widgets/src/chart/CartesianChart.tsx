@@ -9,7 +9,7 @@ import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, typ
 import type { CartesianData, CartesianRender, CartesianSeriesOption, ReferenceLineOption } from '../types';
 import styles from '../widgets.module.css';
 import { ChartShell } from './ChartShell';
-import { FILL, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
+import { FILL, pickIndexOf, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
 
@@ -780,10 +780,8 @@ export function CartesianChart({
               onClick={
                 onPick
                   ? (state) => {
-                      // A click outside any point carries no index, and must not pick row 0.
-                      if (state.activeTooltipIndex === null || state.activeTooltipIndex === undefined) return;
-                      const index = Number(state.activeTooltipIndex);
-                      if (Number.isInteger(index) && index >= 0) onPick(index);
+                      const index = pickIndexOf(state);
+                      if (index !== null) onPick(index);
                     }
                   : undefined
               }

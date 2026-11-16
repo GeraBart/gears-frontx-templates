@@ -8,10 +8,11 @@ import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, typ
 import type { WaterfallData, WaterfallRender } from '../types';
 import { legendOf } from './legend';
 import { ChartShell } from './ChartShell';
-import { FILL, TICK } from './chrome';
+import { FILL, pickIndexOf, TICK } from './chrome';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
 import { compactTick } from './ticks';
+import { estimateWidth } from '../textFit';
 import styles from '../widgets.module.css';
 
 /*
@@ -31,11 +32,9 @@ const AXIS_ROOM = 64;
 // The share of a band a bar takes, so the estimate stays under the band the cell actually gives the bar.
 const BAR_SHARE = 0.6;
 
-// The estimate of a text's width: about 0.62 of its font size per character, at the 10 px the value labels draw at
-// (the kit's `--text-micro-size`, 0.625rem).
-const CHAR_EM = 0.62;
+// The width estimate of a value label, at the 10 px the labels draw at (the kit's `--text-micro-size`, 0.625rem).
 const TEXT_PX = 10;
-const widthOf = (text: string) => text.length * CHAR_EM * TEXT_PX;
+const widthOf = (text: string) => estimateWidth(text, TEXT_PX);
 // The share of its band the chart library draws a bar at when the asked bar size does not fit the band. This rule,
 // and the centring `barOf` rounds by, mirror the bar layout of the pinned recharts 3.10.1 (widgets/package.json):
 // re-check both against the library's bar placement on any recharts upgrade.
@@ -275,10 +274,8 @@ export function WaterfallChart({
               onClick={
                 onPick
                   ? (state) => {
-                      // A click outside any bar carries no index, and must not pick row 0.
-                      if (state.activeTooltipIndex === null || state.activeTooltipIndex === undefined) return;
-                      const index = Number(state.activeTooltipIndex);
-                      if (Number.isInteger(index) && index >= 0) onPick(index);
+                      const index = pickIndexOf(state);
+                      if (index !== null) onPick(index);
                     }
                   : undefined
               }

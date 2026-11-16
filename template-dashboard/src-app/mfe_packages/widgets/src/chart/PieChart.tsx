@@ -10,6 +10,7 @@ import { ChartShell } from './ChartShell';
 import { FILL } from './chrome';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
+import { CHAR_WIDTH } from '../textFit';
 import styles from '../widgets.module.css';
 
 /** The narrowest compact pie that keeps its legend beside it. */
@@ -33,9 +34,8 @@ export function checkPie(render: PieRender): string | null {
   return null;
 }
 
-// About the width of one character and the height of one line for their font size, and the share of the hole's radius the
-// centre text may reach: the text block's corners stay inside that circle.
-const CHAR_WIDTH = 0.62;
+// The height of one line for its font size, and the share of the hole's radius the centre text may reach: the text
+// block's corners stay inside that circle. The width of one character is the shared estimate, CHAR_WIDTH.
 const LINE_HEIGHT = 1.2;
 const HOLE_ROOM = 0.9;
 // The text sizes of the centre: the total at most as large as a card's headline, the caption as a meta line; smaller than the floor, a line is left out.

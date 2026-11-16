@@ -10,6 +10,7 @@ import { ChartShell } from './ChartShell';
 import type { ValuesTable } from './DataView';
 import { PALETTE } from './palette';
 import { isLaidOut, useElementSize } from './size';
+import { estimateWidth } from '../textFit';
 import styles from '../widgets.module.css';
 
 /*
@@ -27,9 +28,8 @@ interface TileBox {
   height: number;
 }
 
-// The estimate of a text's width: about 0.62 of its font size per character (the label, the value and the share
-// are all 12 px), as the funnel judges its row.
-const CHAR_EM = 0.62;
+// The font size the width estimate (`estimateWidth`) counts with: the label, the value and the share are all 12 px,
+// as the funnel judges its row.
 const TEXT_PX = 12;
 // One text line's height, and the gap between a tile's label line and its value line (`--treemap-gap`, which the box
 // sets for `.treemapText`).
@@ -43,7 +43,7 @@ const PAD = 8;
 // at least the least tile height (8 px, the funnel bar's floor) under it.
 const HEADER = LINE + LINE_GAP;
 const LEAST_TILE = 8;
-const widthOf = (text: string) => text.length * CHAR_EM * TEXT_PX;
+const widthOf = (text: string) => estimateWidth(text, TEXT_PX);
 // The text room the fit above counts with, handed to the styles, so the two cannot drift apart.
 const TEXT_ROOM = { '--treemap-pad': `${PAD}px`, '--treemap-gap': `${LINE_GAP}px` } as CSSProperties;
 
