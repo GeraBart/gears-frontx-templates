@@ -1850,6 +1850,24 @@ describe('waterfall_chart', () => {
     expect(String(error.mock.calls[0][0])).not.toMatch(/\d\.\d|e\+/);
   });
 
+  it('reads a total accepted within the tolerance as the running sum it draws, on its label, its text alternative row and its data view cell', async () => {
+    const user = userEvent.setup();
+    const { container } = draw(
+      [
+        { label: 'First', value: 5 },
+        { label: 'Sum', value: 5.000000001, kind: 'total' },
+      ],
+      { value_labels: 'always', drill_down: true },
+      { value_format: { value_type: 'number', decimals: 9 } },
+    );
+    expect(labels(container)).toEqual(['+5.000000000', '5.000000000']);
+    expect(rowsOf()[2]).toEqual(['Sum', '5.000000000', '5.000000000']);
+    await user.click(screen.getByRole('button', { name: 'Show data' }));
+    const region = await screen.findByRole('region', { name: 'Data of Lead time' });
+    const rows = within(region).getAllByRole('row', { hidden: true }).map((row) => [...row.children].map((cell) => cell.textContent));
+    expect(rows.find((row) => row.includes('Sum'))).toEqual(['Sum', '5.000000000', '5.000000000']);
+  });
+
   it.each([
     ['all null', [{ label: 'a', value: null }, { label: 'b', value: null }] as WaterfallData['steps']],
     ['a total at the untouched sum', [{ label: 'a', value: 0, kind: 'total' }, { label: 'b', value: null }] as WaterfallData['steps']],

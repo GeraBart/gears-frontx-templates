@@ -148,7 +148,7 @@ function changeOf(step: WaterfallData['steps'][number], drawn: Step | undefined,
     const formatted = formatValue(step.value, value_format, locale);
     return step.value > 0 ? `+${formatted}` : formatted;
   }
-  return formatValue(step.value ?? drawn?.end ?? 0, value_format, locale);
+  return formatValue(drawn?.end ?? step.value ?? 0, value_format, locale);
 }
 
 /**
