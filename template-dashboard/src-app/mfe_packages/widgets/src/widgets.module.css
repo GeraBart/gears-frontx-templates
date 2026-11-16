@@ -928,8 +928,9 @@
 
 /* The treemap: squarified tiles over the measured box, no chart library, like the funnel and the heatmap. A tile
    mixes its palette colour over the card surface as the heatmap's tile does, and the hairline of the same colour
-   keeps two tiles of one group apart. The component fits the text by estimated widths (its PAD, LINE); what turns
-   out wider than its tile anyway is clipped here instead of painting over the neighbour. */
+   keeps two tiles of one group apart. The component fits the text by estimated widths (its PAD, LINE) and sets the
+   room around the text on the box (--treemap-pad, --treemap-gap); what turns out wider than its tile anyway is
+   clipped here instead of painting over the neighbour. */
 .treemapBox {
   position: relative;
   flex: 1;
@@ -953,8 +954,7 @@
 .treemapGroupHead {
   display: flex;
   align-items: center;
-  /* The component's PAD. */
-  padding-inline: 8px;
+  padding-inline: var(--treemap-pad);
   overflow: hidden;
   white-space: nowrap;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
@@ -987,17 +987,17 @@
   outline-offset: -2px;
 }
 
-/* The text a tile writes, with the component's PAD around it and its LINE_GAP between label and value; the tile
-   clips what does not fit (value_labels always). */
+/* The text a tile writes, with the component's PAD around it and its LINE_GAP between label and value, as the box
+   sets them; the tile clips what does not fit (value_labels always). */
 .treemapText {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: var(--treemap-gap);
   box-sizing: border-box;
   min-inline-size: 0;
   max-inline-size: 100%;
-  padding: 8px;
+  padding: var(--treemap-pad);
 }
 
 .treemapLabel {

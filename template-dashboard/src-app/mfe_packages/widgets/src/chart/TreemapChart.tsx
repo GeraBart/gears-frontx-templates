@@ -31,17 +31,21 @@ interface TileBox {
 // are all 12 px), as the funnel judges its row.
 const CHAR_EM = 0.62;
 const TEXT_PX = 12;
-// One text line's height, and the gap between a tile's label line and its value line (the `.treemapTile` gap).
+// One text line's height, and the gap between a tile's label line and its value line (`--treemap-gap`, which the box
+// sets for `.treemapText`).
 const LINE = 16;
 const LINE_GAP = 2;
-// The room a tile keeps around its text (the `.treemapText` padding in widgets.module.css): the tile itself keeps
-// exactly its slot, so a tile too small for any text draws at its slot's size.
+// The room a tile keeps around its text and a group header beside its name (`--treemap-pad`, which the box sets for
+// `.treemapText` and `.treemapGroupHead`): the tile itself keeps exactly its slot, so a tile too small for any text
+// draws at its slot's size.
 const PAD = 8;
 // A group's header band is one text line plus its gap, and it takes that room only while its group's tiles keep
 // at least the least tile height (8 px, the funnel bar's floor) under it.
 const HEADER = LINE + LINE_GAP;
 const LEAST_TILE = 8;
 const widthOf = (text: string) => text.length * CHAR_EM * TEXT_PX;
+// The text room the fit above counts with, handed to the styles, so the two cannot drift apart.
+const TEXT_ROOM = { '--treemap-pad': `${PAD}px`, '--treemap-gap': `${LINE_GAP}px` } as CSSProperties;
 
 /** The treemap's own check of its data: the first item with a negative value, by its position, or null. */
 export function checkTreemap(data: TreemapData): string | null {
@@ -323,7 +327,7 @@ export function TreemapChart({
         locale={locale}
         container={container}
         draw={(onPick) => (
-          <div ref={measureBox} className={styles.treemapBox}>
+          <div ref={measureBox} className={styles.treemapBox} style={TEXT_ROOM}>
             {grouped
               ? groups.map((group) => (
                   <Fragment key={group.key === null ? 'null' : `group:${group.key}`}>
