@@ -667,6 +667,34 @@ describe('radial_progress', () => {
     expect(ring().getAttribute('aria-valuetext')).toBe('0%, 0 of 40, Goal: 0');
   });
 
+  it('stands a caption that does not fit the hole under the ring when the cell is taller than wide', () => {
+    // A high small cell of a 390 px wide page: 137 px wide, 258 px high, so the hole is too small for the caption.
+    const original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        const rect = { width: 137, height: 258, top: 0, left: 0, right: 137, bottom: 258, x: 0, y: 0 };
+        this.callback([{ target, contentRect: rect } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      const { container } = draw({ current: 34, target: 48 }, { display: 'both', center_label: "of the quarter's plan" });
+      expect(centreOf(container)).toEqual(['70%', '34', "of the quarter's plan"]);
+      const [, , width, height] = container.querySelector('svg')!.getAttribute('viewBox')!.split(' ').map(Number);
+      // The ring keeps the square of the cell's width; the caption stands under it, inside the cell.
+      expect(width).toBe(137);
+      expect(height).toBeGreaterThan(137);
+      expect(height).toBeLessThanOrEqual(258);
+      const caption = container.querySelector('text[data-role="caption"]')!;
+      expect(Number(caption.getAttribute('y'))).toBeGreaterThan(137);
+      expect(Number(caption.getAttribute('font-size'))).toBeGreaterThanOrEqual(9);
+    } finally {
+      globalThis.ResizeObserver = original;
+    }
+  });
+
   it('leaves a caption that does not fit the hole out, keeping the numbers', () => {
     const { container } = draw({ current: 30, target: 40 }, { display: 'both', center_label: 'of the quarterly roadmap items shipped so far' });
     expect(centreOf(container)).toEqual(['75%', '30']);

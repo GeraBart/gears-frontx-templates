@@ -3,7 +3,7 @@ import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/co
 import { isCompact, useElementSize } from '../chart/size';
 import { formatValue, isOutsideRange, nonFiniteProblemOf, percentInRange, percentOfShare, progressOf } from '../format';
 import { DEFAULT_WIDGET_TEXTS, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
-import { fitCentreLines, LINE_HEIGHT, useMeasuredLines } from '../textFit';
+import { fitCentreLines, fitLine, LINE_HEIGHT, useMeasuredLines } from '../textFit';
 import type { RadialProgressData, RadialProgressRender } from '../types';
 import styles from '../widgets.module.css';
 
@@ -21,6 +21,8 @@ const TICK_OVERHANG = 3;
 const MAIN_SIZE = 32;
 const SECOND_SIZE = 14;
 const CAPTION_SIZE = 12;
+// The room between the ring and a caption that stands under it.
+const CAPTION_GAP = 4;
 
 /** The ring's own check of its data: the problem, or null. A null `current` or `target` is no problem: the ring is empty. */
 export function checkRadialProgress(data: RadialProgressData): string | null {
@@ -101,6 +103,13 @@ export function RadialProgress({
         measured,
       )
     : [];
+  // A caption the hole cannot fit stands under the ring when the cell is taller than the ring by its line: a narrow
+  // high cell, whose hole is small for its width. The ring keeps the square of the cell's width.
+  const captionLine = { role: 'caption', text: caption, size: CAPTION_SIZE, className: styles.radialCaption };
+  const under =
+    drawn && caption !== '' && width > 0 && height > 0 && !lines.some((line) => line.role === 'caption') ? fitLine(side, captionLine, measured) : null;
+  const below = under !== null && height - side >= CAPTION_GAP + under.size * LINE_HEIGHT ? under : null;
+  const drawnHeight = below ? side + CAPTION_GAP + below.size * LINE_HEIGHT : side;
   const block = lines.reduce((total, line) => total + line.size * LINE_HEIGHT, 0);
   // The goal tick crosses the ring, clockwise from the top; a goal outside the ring stands at its nearer end.
   const tick = goalAt === null ? null : ((goalAt / 100) * 2 - 0.5) * Math.PI;
@@ -118,7 +127,7 @@ export function RadialProgress({
       aria-valuetext={valueText}
       title={goalText || undefined}
     >
-      <svg ref={svg} className={styles.radialRing} viewBox={`0 0 ${side} ${side}`} aria-hidden>
+      <svg ref={svg} className={styles.radialRing} viewBox={`0 0 ${side} ${drawnHeight}`} aria-hidden>
         {drawn ? <circle className={styles.radialTrack} cx={centre} cy={centre} r={outer - ring / 2} strokeWidth={ring} /> : null}
         {/* The fill runs clockwise from the top over the share of a ring of path length 100. */}
         {drawn ? (
@@ -144,6 +153,19 @@ export function RadialProgress({
             </text>
           );
         })}
+        {below ? (
+          <text
+            data-role={below.role}
+            className={below.className}
+            x={centre}
+            y={side + CAPTION_GAP + (below.size * LINE_HEIGHT) / 2}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={below.size}
+          >
+            {below.text}
+          </text>
+        ) : null}
       </svg>
     </div>
   );

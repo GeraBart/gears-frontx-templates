@@ -936,7 +936,7 @@
             },
             "center_label": {
               "type": "string",
-              "description": "Optional short caption under the centre number. Left out in a low cell, and wherever it does not fit the hole."
+              "description": "Optional short caption under the centre number. Left out in a low cell. Where it does not fit the hole, it stands under the ring when the cell is taller than the ring by its line, and is left out otherwise."
             },
             "goal_label": {
               "type": "string",

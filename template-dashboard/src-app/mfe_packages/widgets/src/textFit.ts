@@ -27,7 +27,7 @@ export type MeasuredLines = Partial<Record<string, { text: string; em: number }>
  */
 export function fitCentreLines<Line extends CentreLine>(hole: number, wanted: Line[], measured: MeasuredLines): Line[] {
   const room = hole * HOLE_ROOM;
-  const emOf = ({ role, text }: Line) => (measured[role]?.text === text ? measured[role].em : text.length * CHAR_WIDTH);
+  const emOf = (line: Line) => emOfLine(line, measured);
   let lines = wanted.filter((line) => line.text !== '');
   while (lines.length > 0) {
     const width = Math.max(...lines.map((line) => emOf(line) * line.size));
@@ -38,6 +38,22 @@ export function fitCentreLines<Line extends CentreLine>(hole: number, wanted: Li
     lines = lines.slice(0, -1);
   }
   return [];
+}
+
+/** A line's width in em of its font size: its measured width when the same text was measured, else the estimate. */
+function emOfLine({ role, text }: CentreLine, measured: MeasuredLines) {
+  const known = measured[role];
+  return known?.text === text ? known.em : text.length * CHAR_WIDTH;
+}
+
+/**
+ * One line set in a straight run `width` wide: at its own size, or smaller when it is wider than the run, by the same
+ * measured or estimated width as the centre lines. Null when it would fall under the readable floor.
+ */
+export function fitLine<Line extends CentreLine>(width: number, line: Line, measured: MeasuredLines): Line | null {
+  const em = emOfLine(line, measured);
+  const size = em > 0 ? Math.min(line.size, width / em) : line.size;
+  return line.text !== '' && size >= FLOOR_SIZE ? { ...line, size } : null;
 }
 
 /**
