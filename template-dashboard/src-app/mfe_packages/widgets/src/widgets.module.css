@@ -518,11 +518,25 @@
   padding-inline-end: var(--space-2);
 }
 
-/* The x categories stand under their columns. */
+/* The x categories stand under their columns, each centred and as wide as its text, at most its column, so its width
+   is its text's width while it fits. */
 .heatColumnAxis {
+  inline-size: max-content;
+  max-inline-size: 100%;
   align-self: start;
-  justify-self: stretch;
+  justify-self: center;
   text-align: center;
+}
+
+/* Labels wider than their columns: every step-th stands whole under its own column, centred over the unnamed columns
+   beside it, at most as wide as the room the component sets. The labels between are kept in the layout, unseen, so
+   every label is measured again when the cell changes its width. */
+.heatColumnAxisThin {
+  max-inline-size: none;
+}
+
+.heatColumnAxisSkipped {
+  visibility: hidden;
 }
 
 .heatTitle {

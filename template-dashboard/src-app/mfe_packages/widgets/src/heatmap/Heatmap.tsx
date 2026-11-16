@@ -11,6 +11,33 @@ import styles from '../widgets.module.css';
 
 /** From this much of the scale up, a tile's fill is dark enough for its value to read in the foreground over it. */
 const STRONG_FROM = 60;
+/** The least room between two x labels of a matrix that names only every second (or third, ...) column. */
+const LABEL_SPACE = 4;
+
+/** Which x categories a matrix names under its columns: every `step`-th from the first, each at most `room` px wide. */
+interface ColumnLabels {
+  step: number;
+  room: number;
+  /** Whether the first named label starts at its column instead of centring under it, as centring would cross the grid's start. */
+  firstAtStart: boolean;
+}
+
+/**
+ * The x labels of a matrix with columns `track` px wide, `gap` px apart, under labels as wide as `widths`: every one
+ * while the widest fits its column; otherwise every `step`-th, the smallest step that lets the widest label stand whole
+ * under its own column, centred, clear of the next named one. `before` is the room left of the first column.
+ */
+function columnLabelsOf(track: number, gap: number, widths: number[], before = Number.POSITIVE_INFINITY): ColumnLabels {
+  const widest = widths.reduce((most, width) => Math.max(most, width), 0);
+  // A width is read in whole pixels: half a pixel over the column still fits it.
+  if (!(track > 0) || widest - 0.5 <= track) return { step: 1, room: track, firstAtStart: false };
+  let step = 2;
+  while (step < widths.length && widest + LABEL_SPACE > step * (track + gap) - gap) step += 1;
+  const room = step * (track + gap) - gap;
+  return { step, room, firstAtStart: (Math.min(widest, room) - track) / 2 > before };
+}
+
+const sameLabels = (a: ColumnLabels, b: ColumnLabels) => a.step === b.step && a.room === b.room && a.firstAtStart === b.firstAtStart;
 
 /** A cell's key: kind and text of a value, so 1 and "1" stay different cells. */
 const keyOf = (value: string | number | null) => `${typeof value}:${String(value)}`;
@@ -97,6 +124,25 @@ export function Heatmap({
   // Calendar mode measures its box as it is laid out: whether it scrolls sideways, and which values fit their tiles.
   const [calendarBox, setCalendarBox] = useState<HTMLDivElement | null>(null);
   const [calendarScrolls, setCalendarScrolls] = useState(false);
+  // Matrix mode measures its columns and x labels as they are laid out: a label wider than its column names fewer columns.
+  const [matrixGrid, setMatrixGrid] = useState<HTMLDivElement | null>(null);
+  const [columnLabels, setColumnLabels] = useState<ColumnLabels>({ step: 1, room: 0, firstAtStart: false });
+  useLayoutEffect(() => {
+    if (!matrixGrid) return;
+    const fit = () => {
+      const tile = matrixGrid.querySelector<HTMLElement>(`.${styles.heatCell}`);
+      const labels = [...matrixGrid.querySelectorAll<HTMLElement>(`.${styles.heatColumnAxis}`)];
+      if (!tile || labels.length === 0) return;
+      const box = tile.getBoundingClientRect();
+      const gap = Number.parseFloat(getComputedStyle(matrixGrid).columnGap) || 0;
+      // Every label stays in the layout, the skipped ones unseen, so its whole text width reads at every step.
+      const next = columnLabelsOf(box.width, gap, labels.map((label) => label.scrollWidth), box.left - matrixGrid.getBoundingClientRect().left);
+      setColumnLabels((current) => (sameLabels(current, next) ? current : next));
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(matrixGrid);
+    return () => observer.disconnect();
+  }, [matrixGrid, payload]);
   useLayoutEffect(() => {
     if (!calendarBox) return;
     const fit = () => {
@@ -260,6 +306,7 @@ export function Heatmap({
     const place = (x: string | number | null, y: string | number | null) => [textOf(x, undefined, locale), textOf(y, undefined, locale)].filter(Boolean).join(', ');
     draw = (onPick) => (
       <div
+        ref={setMatrixGrid}
         className={render.show_cell_values === true ? `${styles.heatGrid} ${styles.heatValues}` : styles.heatGrid}
         style={{ gridTemplateColumns: `auto repeat(${xs.length}, minmax(0, 1fr))` }}
       >
@@ -288,11 +335,27 @@ export function Heatmap({
           </Fragment>
         ))}
         <span aria-hidden="true" />
-        {xs.map((x) => (
-          <Text key={keyOf(x)} typography="micro" tone="muted" render={<span />} className={styles.heatColumnAxis} title={textOf(x, undefined, locale)}>
-            {textOf(x, undefined, locale)}
-          </Text>
-        ))}
+        {xs.map((x, index) => {
+          // Labels wider than their columns name every step-th column: each named one stands whole under its own
+          // column, centred over the unnamed ones beside it; the last column's label ends at the grid's end.
+          const thin = columnLabels.step > 1;
+          const named = index % columnLabels.step === 0;
+          const className = !thin ? styles.heatColumnAxis : named ? `${styles.heatColumnAxis} ${styles.heatColumnAxisThin}` : `${styles.heatColumnAxis} ${styles.heatColumnAxisSkipped}`;
+          const align = index === xs.length - 1 ? 'end' : index === 0 && columnLabels.firstAtStart ? 'start' : undefined;
+          return (
+            <Text
+              key={keyOf(x)}
+              typography="micro"
+              tone="muted"
+              render={<span />}
+              className={className}
+              style={thin && named ? { maxInlineSize: columnLabels.room, justifySelf: align } : undefined}
+              title={textOf(x, undefined, locale)}
+            >
+              {textOf(x, undefined, locale)}
+            </Text>
+          );
+        })}
         {render.x_axis_label !== undefined ? (
           <>
             <span aria-hidden="true" />

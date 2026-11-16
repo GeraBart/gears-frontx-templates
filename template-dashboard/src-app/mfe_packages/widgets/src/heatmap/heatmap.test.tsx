@@ -127,6 +127,50 @@ describe('heatmap', () => {
     expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
   });
 
+  describe('x labels wider than their columns', () => {
+    // Twelve two-hour blocks, as the hour heatmap of the reference dashboard.
+    const HOURS: HeatmapData = { rows: Array.from({ length: 12 }, (_, block) => ({ x: `${String(block * 2).padStart(2, '0')}:00`, y: 'Mon', value: block })) };
+    /** jsdom lays nothing out: a tile measures `tile` px wide and every x label `label` px, as on a page of the given width. */
+    const measure = (tile: number, label: number) => {
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+        const width = this.classList.contains('heatCell') ? tile : 0;
+        return { width, height: 0, top: 0, left: 0, right: width, bottom: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+      });
+      vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockImplementation(function (this: Element) {
+        return this.classList.contains('heatColumnAxis') ? label : 0;
+      });
+    };
+    const named = (container: HTMLElement) =>
+      [...container.querySelectorAll<HTMLElement>('.heatColumnAxis')].filter((label) => !label.classList.contains('heatColumnAxisSkipped')).map((label) => label.textContent);
+
+    it('names every second column when a label is wider than its column, each label whole under its own column', () => {
+      // A 390 px wide page: 20 px tiles under 30 px labels.
+      measure(20, 30);
+      const { container } = render(<Heatmap payload={{ render: { x_axis_label: 'Hour' }, data: HOURS }} label="Commits by hour" />);
+      expect(named(container)).toEqual(['00:00', '04:00', '08:00', '12:00', '16:00', '20:00']);
+      const first = container.querySelector<HTMLElement>('.heatColumnAxisThin')!;
+      // Room for the label under its own column and the unnamed one beside it, never more: it is not cut, nor does it reach the next named one.
+      expect(parseFloat(first.style.maxInlineSize)).toBeGreaterThanOrEqual(30);
+      expect(parseFloat(first.style.maxInlineSize)).toBeLessThanOrEqual(44);
+      // The skipped labels stay in the layout, so they are measured again when the cell grows.
+      expect(container.querySelectorAll('.heatColumnAxis')).toHaveLength(12);
+    });
+
+    it('names a third of the columns when even two columns are too narrow for a label', () => {
+      measure(12, 30);
+      const { container } = render(<Heatmap payload={{ render: {}, data: HOURS }} label="Commits by hour" />);
+      expect(named(container)).toEqual(['00:00', '06:00', '12:00', '18:00']);
+    });
+
+    it('names every column whose label fits it', () => {
+      // A 1440 px wide page: 48 px tiles.
+      measure(48, 30);
+      const { container } = render(<Heatmap payload={{ render: {}, data: HOURS }} label="Commits by hour" />);
+      expect(named(container)).toHaveLength(12);
+      expect(container.querySelector('.heatColumnAxisThin')).toBeNull();
+    });
+  });
+
   it('treats a row without y like a null y in matrix mode', () => {
     const { container } = render(<Heatmap payload={{ render: {}, data: { rows: [{ x: 'a', value: 1 }, { x: 'b', y: null, value: 2 }] } }} label="No y" />);
     expect([...container.querySelectorAll('[role="img"]')].map((tile) => tile.getAttribute('aria-label'))).toEqual(['a: 1', 'b: 2']);
