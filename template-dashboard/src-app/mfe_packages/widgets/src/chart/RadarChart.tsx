@@ -33,8 +33,10 @@ const TICK_SIZE = 8;
 // A label above or under the circle ends one tick text line out of its vertex, its box starting 5 px out.
 const LABEL_REACH = 5 + TICK_TEXT_HEIGHT;
 // The kit legend pads its entries 12 px on the side that faces the plot; a label above or under the circle may reach
-// into that padding. Beside the circle it may not, on purpose: the label's width there is a coarse per-character
-// estimate, and the browser measure shows a side legend counted from the chart centre to the plot edge with no padding.
+// into that padding. The 12 px is the padding measured in the browser for the pinned ui-kit 0.5.0
+// (widgets/package.json), not a spacing the kit promises: a change of the kit's legend spacing must measure it again.
+// Beside the circle it may not, on purpose: the label's width there is a coarse per-character estimate, and the
+// browser measure shows a side legend counted from the chart centre to the plot edge with no padding.
 const LEGEND_PADDING = 12;
 // The room a label keeps clear of an edge or a legend.
 const FIT_MARGIN = 2;
@@ -173,6 +175,10 @@ export function RadarChart({
   // A legend for two series at least: with one it only repeats the cell's title.
   const legend = names.length > 1 ? render.legend_position ?? 'bottom' : 'none';
   const longest = Math.max(...axes.map((axis) => axis.length));
+  // The outer circle is at least scale_max, and a larger delivered value extends it to that value; without a
+  // scale_max the chart library's ticks round the largest value up.
+  const largest = Math.max(...data.points.map((point) => point.value ?? 0));
+  const radiusTop = render.scale_max === undefined ? 'auto' : Math.max(render.scale_max, largest);
 
   return (
     <div ref={measure} className={styles.fill} role="figure" aria-label={label}>
@@ -207,7 +213,7 @@ export function RadarChart({
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={compactTick(value_format, locale)}
-                domain={[0, render.scale_max ?? 'auto']}
+                domain={[0, radiusTop]}
               />
               <ChartTooltip
                 content={(props) => (

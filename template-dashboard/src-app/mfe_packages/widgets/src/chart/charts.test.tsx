@@ -961,7 +961,7 @@ describe('radar_chart', () => {
     expect(rowsOf()[0]).toEqual(['Axis', 'Web', 'Series']);
   });
 
-  it('writes the scale as bare numbers, the unit staying in the tooltip and the data view', () => {
+  it('writes the scale as bare numbers, the unit staying in the text alternative', () => {
     const { container } = draw(
       [{ axis: 'Mon', series: null, value: 80 }, { axis: 'Tue', series: null, value: 41 }, { axis: 'Wed', series: null, value: 8 }],
       {},
@@ -970,6 +970,8 @@ describe('radar_chart', () => {
     const ticks = radiusTicks(container);
     expect(ticks.length).toBeGreaterThan(1);
     expect(ticks.filter((tick) => tick?.includes('commits'))).toEqual([]);
+    // The text alternative, which the data view shares its cells with, writes each delivered value with its unit.
+    expect(rowsOf().slice(1).map((row) => row[1])).toEqual(['80\u00a0commits', '41\u00a0commits', '8\u00a0commits']);
   });
 
   it('takes scale_max as the top of the value axis, a larger value extending it, and rounds the largest value up without it', () => {
@@ -1074,7 +1076,9 @@ describe('radar_chart', () => {
     expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 0 }, { axis: 'Tue', series: null, value: null }, { axis: 'Wed', series: null, value: 1 }] })).toBeNull();
   });
 
-  it('fails the cell on more than 12 axes or 5 series, one per palette tone, naming the point that crosses the bound', () => {
+  // A radar takes one series per palette tone, which is why the bound is five; the distinct colours themselves are
+  // covered by 'draws one polygon per series in first-seen axis order'.
+  it('fails the cell on more than 12 axes or 5 series, naming the point that crosses the bound', () => {
     const axes = Array.from({ length: 13 }, (_, index) => ({ axis: `a${index}`, series: null, value: 1 }));
     expect(checkRadar({ points: axes })).toBe('radar_chart: data.points[12].axis would be a 13th axis, and a radar takes at most 12');
     const fives = Array.from({ length: 5 }, (_, index) => ({ axis: ['Mon', 'Tue', 'Wed'][index % 3], series: `s${index}`, value: 1 }));
