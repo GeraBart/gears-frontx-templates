@@ -19,7 +19,8 @@ const FILL = { '--chart-aspect-ratio': 'auto', blockSize: '100%', inlineSize: '1
 /** The bounds the widget checks itself, as the data type cannot count the distinct axes and series of the long format. */
 const MIN_AXES = 3;
 const MAX_AXES = 12;
-const MAX_SERIES = 6;
+// One series per tone of the palette: polygons overlap by design, so no two series may share a colour.
+const MAX_SERIES = PALETTE.length;
 
 // Tick text in the chart's chrome colour: Recharts paints it #666, which fails contrast on a dark card.
 const TICK = { fill: 'var(--muted-foreground)' };
@@ -144,7 +145,7 @@ export function RadarChart({
   const byAxis = new Map(rows.map((row) => [row.axis, row]));
   for (const point of data.points) byAxis.get(point.axis)![`s${names.findIndex((name) => name === point.series)}`] = point.value;
 
-  const config: ChartConfig = Object.fromEntries(names.map((name, index) => [`s${index}`, { label: name ?? '', color: PALETTE[index % PALETTE.length] }]));
+  const config: ChartConfig = Object.fromEntries(names.map((name, index) => [`s${index}`, { label: name ?? texts.columns.series, color: PALETTE[index % PALETTE.length] }]));
   const table: ValuesTable = {
     columns: [texts.radar.axis, ...names.map((name) => name ?? texts.columns.series)],
     rows: rows.map(({ axis, ...values }) => [axis, ...names.map((_, index) => values[`s${index}`] ?? null)]),
@@ -197,7 +198,10 @@ export function RadarChart({
                     // Only the series with a value at the hovered axis: a gap, a null value or no point there, has no entry.
                     // The chart library leaves a gap out as well; the filter holds the rule whatever the library does.
                     // An entry's name is its series key (`s<i>`), the name its Radar carries.
-                    payload={props.payload?.filter((item) => (item.payload as Row | undefined)?.[String(item.name)] != null)}
+                    payload={props.payload?.filter((item) => {
+                      const value = (item.payload as Row | undefined)?.[String(item.name)];
+                      return value !== null && value !== undefined;
+                    })}
                     // The delivered value, not the drawn one, which the scale only shapes.
                     formatter={(value, key) => (
                       <span className={styles.tooltipRow}>

@@ -251,7 +251,7 @@ The pie, the radar, the waterfall and the feed widgets run this check themselves
 3. [ ] - `p1` - **FOR EACH** point of a `radar_chart` in the delivered order - `inst-wc-card-radar-for-point`
    1. [ ] - `p1` - **IF** its `value` is below 0, **RETURN** failure naming the point index. - `inst-wc-card-radar-negative`
    2. [ ] - `p1` - **IF** its `axis` is not among the axes seen before it and 12 axes were seen, **RETURN** failure naming the point index. - `inst-wc-card-radar-axes`
-   3. [ ] - `p1` - **IF** its `series` is not among the series seen before it and 6 series were seen, **RETURN** failure naming the point index. - `inst-wc-card-radar-series`
+   3. [ ] - `p1` - **IF** its `series` is not among the series seen before it and 5 series were seen (one per tone of the kit palette), **RETURN** failure naming the point index. - `inst-wc-card-radar-series`
 4. [ ] - `p1` - **IF** a `radar_chart`'s points have fewer than 3 distinct axes (the data type counts the points, not the axes; one or two axes draw a dot or a line and no polygon), **RETURN** failure naming the number of distinct axes. - `inst-wc-card-radar-min-axes`
 5. [ ] - `p1` - **FOR EACH** step of a `waterfall_chart` in the delivered order, the running sum starting at 0 - `inst-wc-card-waterfall-for-step`
    1. [ ] - `p1` - **IF** it is a total after the first step, its `value` is not null, and its `value` and the running sum differ by more than one part in a billion of the larger of the two, **RETURN** failure naming the step index (the data type cannot add up the steps before a total). - `inst-wc-card-waterfall-total`
@@ -1635,7 +1635,7 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
           "type": "array",
           "minItems": 3,
           "maxItems": 120,
-          "description": "Three to 120 points in the delivered order. The widget shows 3 to 12 distinct axes and at most 6 distinct series, and fails the cell outside them (a cross-check it runs, cpt-frontx-dashboard-algo-widget-catalog-card-checks).",
+          "description": "Three to 120 points in the delivered order. The widget shows 3 to 12 distinct axes and at most 5 distinct series, one per tone of the kit palette, and fails the cell outside them (a cross-check it runs, cpt-frontx-dashboard-algo-widget-catalog-card-checks).",
           "items": {
             "type": "object",
             "required": ["axis", "series", "value"],
@@ -1655,7 +1655,7 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
 ```
 
 **Cross-references**:
-- Presentation: the axes in first-seen order, at most 12 of them, each its own spoke; the series in first-seen order, at most 6 of them, each its own polygon in the series tone of the kit palette, a null series being the one unnamed series. A series with no point on an axis draws a gap there: its polygon skips that vertex, and its tooltip entry is left out. Series colours are kit chart tokens of the active scope (`cpt-frontx-dashboard-algo-widget-catalog-chart-theme`). The chart has an accessible name (the widget's own English default "Chart": the root passes the renderer no cell label, gears-frontx-templates#105) and a text alternative of the delivered axes and series values.
+- Presentation: the axes in first-seen order, at most 12 of them, each its own spoke; the series in first-seen order, at most 5 of them (the palette has five tones, so no two overlapping polygons share one), each its own polygon in the series tone of the kit palette, a null series being the one unnamed series. A series with no point on an axis draws a gap there: its polygon skips that vertex, and its tooltip entry is left out. Series colours are kit chart tokens of the active scope (`cpt-frontx-dashboard-algo-widget-catalog-chart-theme`). The chart has an accessible name (the widget's own English default "Chart": the root passes the renderer no cell label, gears-frontx-templates#105) and a text alternative of the delivered axes and series values.
 - Scale: the outer circle is at least `scale_max` when it is given, and a larger delivered value extends it to that value; without `scale_max` it is the largest delivered value rounded up by the ticks rule of the radius axis. A value below 0, or points on fewer than 3 distinct axes, fail the cell (`cpt-frontx-dashboard-algo-widget-catalog-card-checks`).
 - Compact cells: a low cell hides the axis labels that cannot fit between the circle and the edge of the plot area its legend leaves, and keeps them in the tooltip and the text alternative.
 - Empty state: every value null or 0. The widget shows its own English "No data to show" (gears-frontx-templates#105).

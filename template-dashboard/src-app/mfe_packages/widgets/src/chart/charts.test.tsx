@@ -937,6 +937,13 @@ describe('radar_chart', () => {
     single.unmount();
   });
 
+  it('names the unnamed series beside a named one by the texts, in the legend as in the data view', () => {
+    const mixed = POINTS.map((point) => (point.series === 'API' ? { ...point, series: null } : point));
+    const { container } = draw(mixed);
+    expect([...container.querySelectorAll('.recharts-legend-wrapper [class*="legendItem"]')].map((item) => item.textContent)).toEqual(['Web', 'Series']);
+    expect(rowsOf()[0]).toEqual(['Axis', 'Web', 'Series']);
+  });
+
   it('writes the scale as bare numbers, the unit staying in the tooltip and the data view', () => {
     const { container } = draw(
       [{ axis: 'Mon', series: null, value: 80 }, { axis: 'Tue', series: null, value: 41 }, { axis: 'Wed', series: null, value: 8 }],
@@ -1007,14 +1014,14 @@ describe('radar_chart', () => {
     expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 0 }, { axis: 'Tue', series: null, value: null }, { axis: 'Wed', series: null, value: 1 }] })).toBeNull();
   });
 
-  it('fails the cell on more than 12 axes or 6 series, naming the point that crosses the bound', () => {
+  it('fails the cell on more than 12 axes or 5 series, one per palette tone, naming the point that crosses the bound', () => {
     const axes = Array.from({ length: 13 }, (_, index) => ({ axis: `a${index}`, series: null, value: 1 }));
     expect(checkRadar({ points: axes })).toBe('radar_chart: data.points[12].axis would be a 13th axis, and a radar takes at most 12');
-    const sixes = Array.from({ length: 6 }, (_, index) => ({ axis: ['Mon', 'Tue', 'Wed'][index % 3], series: `s${index}`, value: 1 }));
-    expect(checkRadar({ points: [...sixes] })).toBeNull();
-    expect(checkRadar({ points: [...sixes, { axis: 'Mon', series: 's6', value: 1 }] })).toBe('radar_chart: data.points[6].series would be a 7th series, and a radar takes at most 6');
+    const fives = Array.from({ length: 5 }, (_, index) => ({ axis: ['Mon', 'Tue', 'Wed'][index % 3], series: `s${index}`, value: 1 }));
+    expect(checkRadar({ points: [...fives] })).toBeNull();
+    expect(checkRadar({ points: [...fives, { axis: 'Mon', series: 's5', value: 1 }] })).toBe('radar_chart: data.points[5].series would be a 6th series, and a radar takes at most 5');
     // A point that repeats an axis and a series crosses no bound: the last one wins.
-    expect(checkRadar({ points: [...sixes, { axis: 'Mon', series: 's0', value: 2 }] })).toBeNull();
+    expect(checkRadar({ points: [...fives, { axis: 'Mon', series: 's0', value: 2 }] })).toBeNull();
   });
 
   it('fails the cell on fewer than 3 distinct axes, which draw a dot or a line and no polygon', () => {
