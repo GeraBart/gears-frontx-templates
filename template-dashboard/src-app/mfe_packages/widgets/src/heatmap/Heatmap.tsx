@@ -29,9 +29,10 @@ interface ColumnLabels {
  * under its own column, centred, clear of the next named one. An edge label stands off centre, (widest - track) / 2
  * nearer its named neighbour: the last column's label when it is named (it ends at the grid's end), and the first
  * column's when centring would cross the grid's start, as the room left of the first column, `before`, is less than
- * that shift. The step counts that shift too, so an edge label keeps the same space to its neighbour. With few columns
- * no step may fit: the loop stops at the column count, so only the first label is named, at most `room` wide, and the
- * kit's text cuts it. A single column's label ends at the grid's end, at most its column and `before` wide.
+ * that shift. The step counts that shift too, twice when the two edge labels are neighbours, so an edge label keeps the
+ * same space to its neighbour. With few columns no step may fit: the loop stops at the column count, so only the first
+ * label is named, at most `room` wide, and the kit's text cuts it. A single column's label ends at the grid's end, at
+ * most its column and `before` wide.
  */
 function columnLabelsOf(track: number, gap: number, widths: number[], before: number): ColumnLabels {
   const widest = widths.reduce((most, width) => Math.max(most, width), 0);
@@ -42,10 +43,13 @@ function columnLabelsOf(track: number, gap: number, widths: number[], before: nu
   const fits = (step: number) => {
     const pitch = step * (track + gap);
     if (widest + LABEL_SPACE > pitch - gap) return false;
-    const edge = firstAtStart || (widths.length - 1) % step === 0;
+    const lastNamed = (widths.length - 1) % step === 0;
+    if (!firstAtStart && !lastNamed) return true;
     // Centres a pitch apart, the edge label moved by the shift towards its neighbour: the space between the two is
-    // pitch - shift - widest, which must hold the label space.
-    return !edge || widest + shift + LABEL_SPACE <= pitch;
+    // pitch - shift - widest, which must hold the label space. When the first and the last named labels are
+    // neighbours, both move towards each other, so the space between them loses the shift twice.
+    const shifts = firstAtStart && lastNamed && widths.length - 1 === step ? 2 : 1;
+    return widest + shifts * shift + LABEL_SPACE <= pitch;
   };
   let step = 2;
   while (step < widths.length && !fits(step)) step += 1;
@@ -178,7 +182,7 @@ export function Heatmap({
     observer.observe(calendarBox);
     if (calendarBox.firstElementChild) observer.observe(calendarBox.firstElementChild);
     return () => observer.disconnect();
-  }, [calendarBox, payload]);
+  }, [calendarBox, payload, locale]);
   if (!data) return <WidgetCannotBeShown texts={texts} problem="heatmap: no data" />;
   const nonFinite = nonFiniteProblemOf('heatmap', payload);
   if (nonFinite) return <WidgetCannotBeShown texts={texts} problem={nonFinite} />;

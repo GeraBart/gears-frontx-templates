@@ -220,14 +220,26 @@ describe('heatmap', () => {
     });
 
     it('keeps a first label that starts at its column clear of the next named one, and a named last label at the grid end', () => {
-      // 20 px columns under 54 px labels, no room left of the first: a step of 3 would put the next centred label
-      // over the first's end, so every fourth column is named, and the 13th, named, ends at the grid's end.
+      // Both edge alignments drawn in one render: 20 px columns under 54 px labels, no room left of the first. A step
+      // of 3 would put the next centred label over the first's end, so every fourth column is named, and the 13th,
+      // named, ends at the grid's end; a centred label stands between the two edge ones.
       measure(20, 54, 0);
       const { container } = render(<Heatmap payload={{ render: {}, data: columns(13) }} label="Thirteen" />);
       const named = spans(container, 20, 54);
       expect(named.map((span) => span.index)).toEqual([0, 4, 8, 12]);
       expect(named[0].align).toBe('start');
       expect(named.at(-1)!.align).toBe('end');
+      expect(clear(named)).toBe(true);
+    });
+
+    it('keeps a first label at its start clear of a named last label at the grid end when the two are neighbours', () => {
+      // 5 columns of 20 px under 54 px labels, no room left of the first: at a step of 4 the first label (0 to 54)
+      // and the fifth, ending at the grid's end (46 to 100), would cross, as both move towards each other. No step
+      // fits, so only the first column is named.
+      measure(20, 54, 0);
+      const { container } = render(<Heatmap payload={{ render: {}, data: columns(5) }} label="Five" />);
+      const named = spans(container, 20, 54);
+      expect(named.map((span) => span.index)).toEqual([0]);
       expect(clear(named)).toBe(true);
     });
 
