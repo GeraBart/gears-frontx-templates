@@ -73,7 +73,7 @@ Chosen option: "Per-type data shapes with one entry per type", because the catal
 
 Why 500: the cap equals the largest page size, so the whole capped result fits on one page at the largest size. The worst case is then one page of 500 rows, sorted and rendered in the browser, and the large-grid check measures exactly that case: the reference grid delivers 500 rows and is shown at a page size of 500 (`cpt-frontx-dashboard-nfr-large-table`). If that check fails, the cap is revisited.
 
-**Data size of the other types.** The product owns the data size of the other 7 data types, as it owns the dashboard size; the template adds no cap for them. The only other template-side bound is the response-size cap of the binding ([ADR-0011](0011-widget-data-binding-v1.md)). The reference dashboard fixes the data sizes the budgets are measured with.
+**Data size of the other types.** The product owns the data size of the other 13 data types, as it owns the dashboard size; the template adds no cap for them. The only other template-side bound is the response-size cap of the binding ([ADR-0011](0011-widget-data-binding-v1.md)). The reference dashboard fixes the data sizes the budgets are measured with.
 
 **Markdown safety.** `markdown_card` shows CommonMark as formatted text (`cpt-frontx-dashboard-fr-markdown-safety`). The threat: the dashboard author is trusted, but the markdown may be generated, so the rules hold for any text, including text that tries to run script or load content from elsewhere. The rules:
 
