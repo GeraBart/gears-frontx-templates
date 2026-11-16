@@ -848,9 +848,9 @@ The example uses these types, each specified in full in its FEATURE:
 
 - the dashboard type, with `requests` and the layout ([dashboard model](features/feature-dashboard-model/FEATURE.md));
 - the widget base, the render base, `data_widget` with the binding and `value_format`, the value_format type, the request type and the widget-data base ([widget contract](features/feature-widget-contract/FEATURE.md));
-- the `pie_chart` and `cartesian_chart` widget types and their data types ([widget catalog](features/feature-widget-catalog/FEATURE.md)).
+- the `pie_chart` and `cartesian_chart` widget types, their render types `pie_chart_render` and `cartesian_chart_render`, and their data types ([widget catalog](features/feature-widget-catalog/FEATURE.md)).
 
-The donut is a `pie_chart` whose `render.radius` has two items; the static pie leaves `radius` at its default. The line is a `cartesian_chart` whose one series is drawn as a line.
+The donut is a `pie_chart` whose `render.radius` has two items; the static pie has no `radius`, so it draws a full pie. The line is a `cartesian_chart` whose one series is drawn as a line.
 
 ### 6.2 The dashboard instance
 
@@ -911,10 +911,11 @@ The donut is a `pie_chart` whose `render.radius` has two items; the static pie l
 
 ### 6.3 What happens
 
-1. The root sees `activity` referenced twice and sends `GET /my-service/activity` once.
-2. The static pie gets its data at once: `{"slices": [{"label": "repo-a", "value": 3.0}, {"label": "repo-b", "value": 1.0}]}`, stamped and validated like any other data.
-3. When `activity` answers, the root runs the donut's transform and the line's transform on the same response, stamps and validates each, and sends each `render_widget`.
-4. If `activity` fails, both the donut and the line show "This widget cannot be shown"; the static pie is unaffected.
+1. Before a widget mounts, the root stamps its `render` with the widget type's render type (`pie_chart_render` for both pies, `cartesian_chart_render` for the line) and registers it, which checks it strictly against that closed type; a render that fails it fails only its cell.
+2. The root sees `activity` referenced twice and sends `GET /my-service/activity` once.
+3. The static pie gets its data at once: `{"slices": [{"label": "repo-a", "value": 3.0}, {"label": "repo-b", "value": 1.0}]}`, stamped and validated like any other data.
+4. When `activity` answers, the root runs the donut's transform and the line's transform on the same response, stamps and validates each, and sends each `render_widget`.
+5. If `activity` fails, both the donut and the line show "This widget cannot be shown"; the static pie is unaffected.
 
 JSON numbers arrive as CEL `double`, so `r.open` and `p.count` need no conversion here.
 
