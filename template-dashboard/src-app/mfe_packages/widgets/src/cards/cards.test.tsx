@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ValueFormat } from '@gears-frontx/frontx-dashboard-root/contract';
@@ -906,6 +906,20 @@ describe('activity_feed', () => {
       />,
     );
     expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual(['three days old3 days ago', 'of the momentnow', 'in two hoursin 2 hours', 'two years old2 years ago']);
+  });
+
+  it('follows the host clock minute by minute while its times are relative, with no new data', () => {
+    const { container, unmount } = render(<ActivityFeed payload={{ render: {}, data: { items: [item('of the moment', '2026-11-04T12:00:00Z')] } }} />);
+    expect(container.querySelector('time')!.textContent).toBe('now');
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(container.querySelector('time')!.textContent).toBe('1 minute ago');
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps no clock tick while its times are absolute', () => {
+    render(<ActivityFeed payload={{ render: { time_style: 'absolute' }, data: { items: [item('of the moment', '2026-11-04T12:00:00Z')] } }} />);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('writes the relative time in the host language', () => {

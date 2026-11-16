@@ -127,6 +127,15 @@ export function ActivityFeed({
     revealed.current = null;
     if (row instanceof HTMLElement) (row.querySelector<HTMLElement>('a[href]') ?? row).focus();
   });
+  // While the times are relative, a minute tick renders the feed again, so "now" and "in 2 hours" follow the host
+  // clock between data updates; the tick stops when the times turn absolute and when the feed goes.
+  const relative = render.time_style !== 'absolute';
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!relative) return;
+    const tick = setInterval(() => setTick((count) => count + 1), 60_000);
+    return () => clearInterval(tick);
+  }, [relative]);
 
   if (!data) return <WidgetCannotBeShown texts={texts} problem="activity_feed: no data" />;
   const nonFinite = nonFiniteProblemOf('activity_feed', payload);
@@ -138,7 +147,6 @@ export function ActivityFeed({
   const shown = paging.version === version ? paging.shown : pageSize;
   const visible = data.items.slice(0, shown);
   const now = Date.now();
-  const relative = render.time_style !== 'absolute';
   const withTone = render.show_tone !== false;
   const showMore = () => {
     revealed.current = shown;
