@@ -7,6 +7,7 @@ import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, typ
 import type { HeatmapData, HeatmapRender } from '../types';
 import { ChartShell } from '../chart/ChartShell';
 import type { ValuesTable } from '../chart/DataView';
+import { dayOf } from '../time';
 import styles from '../widgets.module.css';
 
 /** From this much of the scale up, a tile's fill is dark enough for its value to read in the foreground over it. */
@@ -47,20 +48,6 @@ const tileKey = (x: string | number | null, y: string | number | null) => JSON.s
 export const MAX_HEATMAP_TILES = 10_000;
 
 const DAY_MS = 86_400_000;
-const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-/**
- * A `YYYY-MM-DD` date as its UTC midnight in milliseconds, or null when it is not such a date of the calendar. The one date
- * rule of the widgets: the heatmap calendar, and the bare dates of cartesian points and reference lines on a time axis.
- */
-export function dayOf(x: unknown): number | null {
-  if (typeof x !== 'string') return null;
-  const match = ISO_DATE.exec(x);
-  if (!match) return null;
-  const time = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  // Date.UTC rolls 2026-02-30 over into March: a date that does not read back as itself is no date.
-  return new Date(time).toISOString().slice(0, 10) === x ? time : null;
-}
 
 // @cpt-algo:cpt-frontx-dashboard-algo-widget-catalog-heatmap-checks:p2
 /**

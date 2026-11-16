@@ -1110,6 +1110,13 @@ describe('activity_feed', () => {
     expect(error).toHaveBeenCalledWith('[widget] activity_feed: data.items[1] needs an ISO 8601 date-time or a YYYY-MM-DD date as its time');
   });
 
+  it('fails its cell naming the item whose date-time has hour 24, which would read as the next day', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<ActivityFeed payload={{ render: {}, data: { items: [item('first', '2026-11-04T23:59Z'), item('second', '2026-11-04T24:00Z')] } }} />);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] activity_feed: data.items[1] needs an ISO 8601 date-time or a YYYY-MM-DD date as its time');
+  });
+
   it('draws with a locale that is not a BCP-47 tag, without throwing', () => {
     render(<ActivityFeed payload={{ render: {}, data: { items: [item('a', '2026-11-01T12:00:00Z')] } }} locale="pt_BR" />);
     expect(screen.getByText('a')).toBeTruthy();

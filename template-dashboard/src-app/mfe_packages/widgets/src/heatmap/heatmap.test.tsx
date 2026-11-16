@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HeatmapData } from '../types';
 import { DEFAULT_WIDGET_TEXTS, type WidgetTexts } from '../states';
 import { HEATMAP_SAMPLE } from '../samples';
-import { Heatmap, MAX_HEATMAP_TILES, checkHeatmap, dayOf } from './Heatmap';
+import { Heatmap, MAX_HEATMAP_TILES, checkHeatmap } from './Heatmap';
+import { dayOf } from '../time';
 
 // The rows deliver Fri before Mon and 20:00 before 08:00, so first appearance is testable.
 const DATA: HeatmapData = {
