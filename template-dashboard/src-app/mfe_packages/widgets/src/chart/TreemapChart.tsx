@@ -288,9 +288,13 @@ export function TreemapChart({
   };
 
   const place = (tileBox: TileBox) => ({ left: tileBox.x, top: tileBox.y, width: tileBox.width, height: tileBox.height }) as CSSProperties;
+  // Nothing is drawn into a box without room (a group the rows before it left none, or an item those rows left none
+  // for): no tile, no group face and no group header.
+  const hasRoom = (tileBox: TileBox) => tileBox.width > 0 && tileBox.height > 0;
 
   /** One tile: an image named by its item and value, or with drill-down a button that picks its row. */
   const tileOf = (tile: Tile, onPick: ((row: number) => void) | undefined) => {
+    if (!hasRoom(tile.box)) return null;
     const text = textOfTile(tile);
     const name = nameOf(tile);
     const style = { ...place(tile.box), '--tile': tile.colour } as CSSProperties;
@@ -339,8 +343,8 @@ export function TreemapChart({
             {grouped
               ? groups.map((group) => (
                   <Fragment key={group.key === null ? 'null' : `group:${group.key}`}>
-                    <span aria-hidden="true" className={styles.treemapGroupFace} style={{ ...place(group.face), '--tile': group.colour } as CSSProperties} />
-                    {group.head ? (
+                    {hasRoom(group.face) ? <span aria-hidden="true" className={styles.treemapGroupFace} style={{ ...place(group.face), '--tile': group.colour } as CSSProperties} /> : null}
+                    {group.head !== null && hasRoom(group.head) ? (
                       <Text
                         typography="label"
                         render={<span />}

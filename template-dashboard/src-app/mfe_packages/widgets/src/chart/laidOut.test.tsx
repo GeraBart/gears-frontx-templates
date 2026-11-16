@@ -99,8 +99,9 @@ describe('a chart whose widget is taken out of the page', () => {
     const tiles = () => container.querySelectorAll('[class*="treemapTile"]').length;
     expect(tiles()).toBe(2);
     resizeAll({ width: 640, height: 0 });
-    // A box whose height comes from its chart measures W by 0: the tiles stay drawn, or they would never come back.
-    expect(tiles()).toBe(2);
+    // A box whose height comes from its chart measures W by 0: a tile has no room there, so none is drawn, and
+    // the next size draws them again.
+    expect(tiles()).toBe(0);
     resizeAll({ width: 0, height: 0 });
     expect(tiles()).toBe(0);
     resizeAll({ width: 480, height: 200 });

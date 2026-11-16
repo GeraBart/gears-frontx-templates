@@ -1208,7 +1208,7 @@ describe('treemap_chart', () => {
 
   const sized = stubSizedObserver();
 
-  it('lays the values out squarified: the whole box for one, squares for four equals, 0 by 0 in a box without room', () => {
+  it('lays the values out squarified: the whole box for one, squares for four equals, no tile in a box without room', () => {
     sized(100, 50);
     expectBoxes(tiles(draw([{ label: 'a', value: 7, group: null }]).container).map(boxOf), [[0, 0, 100, 50]]);
     cleanup();
@@ -1221,13 +1221,9 @@ describe('treemap_chart', () => {
       [50, 50, 50, 50],
     ]);
     cleanup();
-    // A box without room lays every tile out at 0 by 0 at its corner.
+    // A box without room draws no tile, like a value of 0, and keeps every item in the text alternative.
     sized(0, 100);
-    expect(tiles(draw(ITEMS).container).map(boxOf)).toEqual([
-      [0, 0, 0, 0],
-      [0, 0, 0, 0],
-      [0, 0, 0, 0],
-    ]);
+    expect(tiles(draw(ITEMS).container)).toHaveLength(0);
   });
 
   it('gives every tile the area of its value over the total, and covers the box with no overlap', () => {
@@ -1324,23 +1320,43 @@ describe('treemap_chart', () => {
     expect(rowsOf().slice(1).map((row) => row[0])).toEqual(['huge', 'tiny']);
   });
 
-  it('lays a tile out at 0 by 0 when the rows before it leave no room, in a wide box and a tall one', () => {
+  it('draws no tile for the item the rows before it leave no room for, in a wide box and a tall one', () => {
     // 1e-20 beside 1 keeps an area above 0, but the first row takes the whole box once rounded, so no room is left.
     const items: TreemapData['items'] = [
       { label: 'huge', value: 1, group: null },
       { label: 'tiny', value: 1e-20, group: null },
     ];
     sized(600, 300);
-    expect(tiles(draw(items).container).map(boxOf)).toEqual([
-      [0, 0, 600, 300],
-      [0, 0, 0, 0],
-    ]);
+    expect(tiles(draw(items).container).map(boxOf)).toEqual([[0, 0, 600, 300]]);
     cleanup();
     sized(300, 600);
-    expect(tiles(draw(items).container).map(boxOf)).toEqual([
-      [0, 0, 300, 600],
-      [0, 0, 0, 0],
+    expect(tiles(draw(items).container).map(boxOf)).toEqual([[0, 0, 300, 600]]);
+    // A group the rows before it leave no room for draws no face either, and its item stays in the text alternative.
+    cleanup();
+    sized(600, 300);
+    const grouped = draw([
+      { label: 'huge', value: 1, group: 'Big' },
+      { label: 'tiny', value: 1e-20, group: 'Small' },
     ]);
+    expect(faces(grouped.container)).toHaveLength(1);
+    expect(tiles(grouped.container)).toHaveLength(1);
+  });
+
+  it('draws no tile at all for the item the rows before it leave no room for, and keeps it in the text alternative', () => {
+    // The same 1e-20 beside 1: with drill_down the tile would be a button, and an item with no room must leave
+    // neither a button nor an image behind, while the text alternative still lists it.
+    sized(600, 300);
+    const { container } = draw(
+      [
+        { label: 'huge', value: 1, group: null },
+        { label: 'tiny', value: 1e-20, group: null },
+      ],
+      { drill_down: true },
+    );
+    expect(within(container).queryByRole('img', { name: /^tiny:/ })).toBeNull();
+    expect(within(container).queryByRole('button', { name: /^tiny:/ })).toBeNull();
+    expect(within(container).getByRole('button', { name: /^huge:/ })).toBeTruthy();
+    expect(rowsOf().slice(1).map((row) => row[0])).toEqual(['huge', 'tiny']);
   });
 
   it('names every tile and its value whatever the tile shows, and colours it by its palette place', () => {
