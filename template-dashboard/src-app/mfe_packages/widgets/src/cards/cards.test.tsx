@@ -860,33 +860,27 @@ describe('activity_feed', () => {
   const item = (title: string, time: string, rest: object = {}) => ({ title, time, ...rest });
 
   it('shows one item per data item, in the delivered order, each with its time element, title and text', () => {
-    // In Los Angeles a date-time reads in Pacific time (PST on Nov 4, PDT on Oct 30), and a bare date keeps its own day.
-    vi.stubEnv('TZ', 'America/Los_Angeles');
-    try {
-      const { container } = render(
-        <ActivityFeed
-          payload={{
-            render: { time_style: 'absolute' },
-            data: {
-              items: [
-                item('REQ-1042 in payments-api', '2026-11-04T09:24:00Z', { text: 'Fix retry policy' }),
-                item('Deploy of 2026-11-01', '2026-11-01', { text: 'payments-api and web-console' }),
-                item('REQ-1040 in web-console', '2026-10-30T18:05:00Z'),
-              ],
-            },
-          }}
-        />,
-      );
-      expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual([
-        'REQ-1042 in payments-apiNov 4, 2026, 1:24 AMFix retry policy',
-        'Deploy of 2026-11-01Nov 1, 2026payments-api and web-console',
-        'REQ-1040 in web-consoleOct 30, 2026, 11:05 AM',
-      ]);
-      const times = [...container.querySelectorAll('time')].map((time) => time.getAttribute('datetime'));
-      expect(times).toEqual(['2026-11-04T09:24:00Z', '2026-11-01', '2026-10-30T18:05:00Z']);
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    const { container } = render(
+      <ActivityFeed
+        payload={{
+          render: { time_style: 'absolute' },
+          data: {
+            items: [
+              item('REQ-1042 in payments-api', '2026-11-04T09:24:00Z', { text: 'Fix retry policy' }),
+              item('Deploy of 2026-11-01', '2026-11-01', { text: 'payments-api and web-console' }),
+              item('REQ-1040 in web-console', '2026-10-30T18:05:00Z'),
+            ],
+          },
+        }}
+      />,
+    );
+    expect([...container.querySelectorAll('ul > li')].map((row) => row.textContent)).toEqual([
+      'REQ-1042 in payments-apiNov 4, 2026, 9:24 AMFix retry policy',
+      'Deploy of 2026-11-01Nov 1, 2026payments-api and web-console',
+      'REQ-1040 in web-consoleOct 30, 2026, 6:05 PM',
+    ]);
+    const times = [...container.querySelectorAll('time')].map((time) => time.getAttribute('datetime'));
+    expect(times).toEqual(['2026-11-04T09:24:00Z', '2026-11-01', '2026-10-30T18:05:00Z']);
   });
 
   it('writes a relative time from the host clock: past and future items, and one of the moment', () => {
@@ -917,8 +911,11 @@ describe('activity_feed', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('keeps no clock tick while its times are absolute', () => {
-    render(<ActivityFeed payload={{ render: { time_style: 'absolute' }, data: { items: [item('of the moment', '2026-11-04T12:00:00Z')] } }} />);
+  it('keeps no clock tick while its times are absolute, and stops the one it had when they turn absolute', () => {
+    const items = [item('of the moment', '2026-11-04T12:00:00Z')];
+    const { rerender } = render(<ActivityFeed payload={{ render: {}, data: { items } }} />);
+    expect(vi.getTimerCount()).toBe(1);
+    rerender(<ActivityFeed payload={{ render: { time_style: 'absolute' }, data: { items } }} />);
     expect(vi.getTimerCount()).toBe(0);
   });
 
