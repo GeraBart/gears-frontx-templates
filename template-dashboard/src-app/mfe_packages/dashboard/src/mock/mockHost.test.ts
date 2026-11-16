@@ -176,9 +176,8 @@ describe('the mock host', () => {
   });
 
   it('answers the weekday commits of the three most active repositories, whose series add up to their commits in the activity of the period', async () => {
-    const ask = (path: string) => askDemo(path);
-    for (const query of ['?period=7d', '?period=30d']) {
-      const [weekday, activity] = (await Promise.all([ask(`/api/demo/commits/weekday${query}`), ask(`/api/demo/repos/activity${query}`)])) as [
+    for (const query of ['?period=7d', '?period=30d', '?period=90d']) {
+      const [weekday, activity] = (await Promise.all([askDemo(`/api/demo/commits/weekday${query}`), askDemo(`/api/demo/repos/activity${query}`)])) as [
         { points: { axis: string; series: string | null; value: number | null }[] },
         Activity,
       ];
@@ -196,9 +195,8 @@ describe('the mock host', () => {
   });
 
   it('answers the treemap items of the repositories, whose labels and values equal the repositories and commits of the activity of the period', async () => {
-    const ask = (path: string) => askDemo(path);
     for (const query of ['?period=7d', '?period=30d']) {
-      const [treemap, activity] = (await Promise.all([ask(`/api/demo/repos/commits${query}`), ask(`/api/demo/repos/activity${query}`)])) as [
+      const [treemap, activity] = (await Promise.all([askDemo(`/api/demo/repos/commits${query}`), askDemo(`/api/demo/repos/activity${query}`)])) as [
         { items: { label: string; value: number | null; group: string | null }[] },
         Activity,
       ];
@@ -220,12 +218,12 @@ describe('the mock host', () => {
     expect(steps.at(-1)).toEqual({ label: 'Lead time', value: summary.lead_time_h.value, kind: 'total' });
     expect(steps.every((step) => step.value === null || Number.isFinite(step.value))).toBe(true);
     // The review stage is the median review time of the summary.
-    const total = steps.at(-1)!.value!;
+    const leadTime = steps.at(-1)!.value!;
     expect(steps.find((step) => step.label === 'Review')?.value).toBe(summary.review_h.value);
     // The deltas of one decimal add up to the total exactly to that decimal.
     const deltas = steps.filter((step) => step.kind === 'delta').map((step) => step.value!);
     expect(deltas.every((value) => Number(value.toFixed(1)) === value)).toBe(true);
-    expect(Number(deltas.reduce((sum, value) => sum + value, 0).toFixed(1))).toBe(total);
+    expect(Number(deltas.reduce((sum, value) => sum + value, 0).toFixed(1))).toBe(leadTime);
     // No stage runs backwards: the rest the waiting stage takes is never below zero.
     expect(deltas.every((value) => value >= 0)).toBe(true);
   });
