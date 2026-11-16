@@ -89,6 +89,7 @@ const PULL_REQUESTS = Array.from({ length: OPEN.length }, (_, index) => {
   };
 });
 
+const TONE_OF_STATE: Partial<Record<string, 'info' | 'warning'>> = { open: 'info', blocked: 'warning' };
 /**
  * The newest open pull request of each of the last 12 days that has one, youngest first, as the items the activity
  * feed of the demo takes, so the items span 12 distinct days: of a day's pull requests, the first in the grid order.
@@ -96,18 +97,20 @@ const PULL_REQUESTS = Array.from({ length: OPEN.length }, (_, index) => {
  * the title names the pull request and its repository, the text is the pull request's own title, and the href is the
  * row's link. A tone only where the state means one: open is info, blocked is warning, the other states none.
  */
-const TONE_OF_STATE: Partial<Record<string, 'info' | 'warning'>> = { open: 'info', blocked: 'warning' };
 const RECENT_ITEMS = [...PULL_REQUESTS]
   .sort((a, b) => a.age_days - b.age_days)
   .filter((pull, index, sorted) => index === 0 || sorted[index - 1].age_days !== pull.age_days)
   .slice(0, 12)
-  .map((pull) => ({
-    time: new Date(new Date(`${DAYS[DAYS.length - 1]}T00:00:00Z`).getTime() - pull.age_days * 86_400_000).toISOString().slice(0, 10),
-    title: `${pull.id} in ${pull.repo}`,
-    text: pull.title,
-    ...(TONE_OF_STATE[pull.state] ? { tone: TONE_OF_STATE[pull.state] } : {}),
-    href: pull.url,
-  }));
+  .map((pull) => {
+    const tone = TONE_OF_STATE[pull.state];
+    return {
+      time: new Date(new Date(`${DAYS[DAYS.length - 1]}T00:00:00Z`).getTime() - pull.age_days * 86_400_000).toISOString().slice(0, 10),
+      title: `${pull.id} in ${pull.repo}`,
+      text: pull.title,
+      ...(tone ? { tone } : {}),
+      href: pull.url,
+    };
+  });
 
 /**
  * Commits by weekday and two-hour block of the day, UTC, over the 31 days: the daily commits split in proportion to
@@ -157,12 +160,12 @@ const daysOf = (query: URLSearchParams) => {
   const period = query.get('period') ?? '';
   return Object.hasOwn(PERIOD_DAYS, period) ? PERIOD_DAYS[period] : 30;
 };
+/** The commits each repository made in the last `days` days: the sums of its daily split, a gap counting as none. */
+const repoCommitsIn = (days: number) => REPOS.map((_, repo) => sum(REPO_DAILY[repo].slice(-days).map((count) => count ?? 0)));
 /**
  * The pull requests each repository opened in the last `days` days: the sums of its daily split when the daily series
  * covers them; beyond it (90 days) the 30-day count scaled and split by the shares, as no page shows a longer series.
  */
-/** The commits each repository made in the last `days` days: the sums of its daily split, a gap counting as none. */
-const repoCommitsIn = (days: number) => REPOS.map((_, repo) => sum(REPO_DAILY[repo].slice(-days).map((count) => count ?? 0)));
 const repoOpenedIn = (days: number) =>
   days <= DAYS.length
     ? REPOS.map((_, repo) => sum(REPO_OPENED.slice(-days).map((opened) => opened[repo])))
@@ -212,13 +215,15 @@ const FUNNEL = (() => {
  * review step is the median review time of the repositories, coding and CI are fixed, and waiting to deploy is the rest.
  * Not period-bound, like the lead time card itself: the stage mix is a fixture, not a query over the period.
  */
+const CODING_STAGE_H = 4.1;
+const CI_STAGE_H = 3.2;
 const REVIEW_STAGE_H = median(REVIEW_H);
 // The last stage takes what the others leave of the lead time, so the deltas always add up to the total.
-const WAITING_STAGE_H = Number((LEAD_TIME_H - 4.1 - REVIEW_STAGE_H - 3.2).toFixed(1));
+const WAITING_STAGE_H = Number((LEAD_TIME_H - CODING_STAGE_H - REVIEW_STAGE_H - CI_STAGE_H).toFixed(1));
 const LEAD_TIME_STEPS = [
-  { label: 'Coding', value: 4.1, kind: 'delta' },
+  { label: 'Coding', value: CODING_STAGE_H, kind: 'delta' },
   { label: 'Review', value: REVIEW_STAGE_H, kind: 'delta' },
-  { label: 'CI', value: 3.2, kind: 'delta' },
+  { label: 'CI', value: CI_STAGE_H, kind: 'delta' },
   { label: 'Waiting to deploy', value: WAITING_STAGE_H, kind: 'delta' },
   { label: 'Lead time', value: LEAD_TIME_H, kind: 'total' },
 ];

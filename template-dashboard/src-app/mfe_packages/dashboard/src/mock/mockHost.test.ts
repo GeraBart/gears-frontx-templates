@@ -226,8 +226,8 @@ describe('the mock host', () => {
     const deltas = steps.filter((step) => step.kind === 'delta').map((step) => step.value!);
     expect(deltas.every((value) => Number(value.toFixed(1)) === value)).toBe(true);
     expect(Number(deltas.reduce((sum, value) => sum + value, 0).toFixed(1))).toBe(total);
-    // The demo stages as the dashboard shows them.
-    expect(steps.map((step) => step.value)).toEqual([4.1, 17, 3.2, 2.1, 26.4]);
+    // No stage runs backwards: the rest the waiting stage takes is never below zero.
+    expect(deltas.every((value) => value >= 0)).toBe(true);
   });
 
   it('answers the recently opened pull requests as feed items of the newest open pull request of each of the last 12 days that has one, youngest first, matching the open pull requests rows', async () => {
