@@ -119,7 +119,8 @@ describe('heatmap', () => {
     const rows = Array.from({ length: 100 }, (_, index) => ({ x: index, y: index, value: index }));
     const { container } = render(<Heatmap payload={{ render: {}, data: { rows } }} label="Limit" />);
     expect(container.querySelectorAll('[role="img"]')).toHaveLength(10_000);
-  });
+    // Measured: about 0.9 to 1.5 s alone, 1.5 s in the full suite at load 25, and one 6.5 s timeout at heavier load.
+  }, 20_000);
 
   it('fails its own check instead of drawing more tiles than its limit', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -375,6 +376,22 @@ describe('heatmap in calendar mode', () => {
     expect([...container.querySelectorAll('.heatLegend')].map((cell) => cell.textContent)).toEqual(['08']);
     const table = figure('Daily').getByRole('table', { hidden: true });
     expect(within(table).getAllByRole('columnheader', { hidden: true }).map((cell) => cell.textContent)).toEqual(['x', 'Value']);
+  });
+
+  it('measures again which values fit their tiles when only the locale changes', () => {
+    // jsdom lays nothing out: a tile is 36 px wide and its text 8 px a character, so 1,234 (en) is cut and 1234 (es) fits.
+    vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockImplementation(function (this: Element) {
+      return this.classList.contains('heatCell') ? (this.textContent ?? '').length * 8 : 0;
+    });
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function (this: Element) {
+      return this.classList.contains('heatCell') ? 36 : 0;
+    });
+    const payload = { render: { mode: 'calendar' as const, show_cell_values: true }, data: { rows: [{ x: '2026-10-01', value: 1234 }] } };
+    const value = (root: HTMLElement) => root.querySelector<HTMLElement>('[data-heat-value]')!;
+    const { container, rerender } = render(<Heatmap payload={payload} locale="en" label="Daily" />);
+    expect([value(container).textContent, value(container).hidden]).toEqual(['1,234', true]);
+    rerender(<Heatmap payload={payload} locale="es" label="Daily" />);
+    expect([value(container).textContent, value(container).hidden]).toEqual(['1234', false]);
   });
 
   it('takes the render scale ends in calendar mode', () => {

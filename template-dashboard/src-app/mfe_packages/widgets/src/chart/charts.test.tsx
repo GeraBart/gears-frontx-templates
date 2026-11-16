@@ -1460,6 +1460,20 @@ describe('treemap_chart', () => {
     expect(heads(draw(items).container).map((head) => head.textContent)).toEqual(['Web', 'Data']);
   });
 
+  it('writes only the share in a group header whose total is past the largest number, in its text and its title', () => {
+    sized(600, 300);
+    // Two finite values whose sum is not finite: the header and its title leave the total out, not an empty one.
+    const { container } = draw(
+      [
+        { label: 'a', value: 1.5e308, group: 'Web' },
+        { label: 'b', value: 1.5e308, group: 'Web' },
+      ],
+      { show_share: true },
+    );
+    expect(heads(container).map((head) => head.textContent)).toEqual(['Web, 100%']);
+    expect(heads(container).map((head) => head.getAttribute('title'))).toEqual(['Web, 100% of the total']);
+  });
+
   it('hides the labels a low cell cannot fit, and keeps them in the tooltip and the text alternative', () => {
     sized(240, 90);
     const items: TreemapData['items'] = [
