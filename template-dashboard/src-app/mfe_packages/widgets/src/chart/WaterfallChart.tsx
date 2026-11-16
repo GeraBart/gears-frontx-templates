@@ -36,7 +36,9 @@ const BAR_SHARE = 0.6;
 const CHAR_EM = 0.62;
 const TEXT_PX = 10;
 const widthOf = (text: string) => text.length * CHAR_EM * TEXT_PX;
-// The share of its band the chart library draws a bar at when the asked bar size does not fit the band.
+// The share of its band the chart library draws a bar at when the asked bar size does not fit the band. This rule,
+// and the centring `barOf` rounds by, mirror the bar layout of the pinned recharts 3.10.1 (widgets/package.json):
+// re-check both against the library's bar placement on any recharts upgrade.
 const FULL_BAR_SHARE = 0.9;
 // The tones in the order the legend names them, the rank of each.
 const TONES = ['increase', 'decrease', 'total'] as const;
@@ -297,10 +299,12 @@ export function WaterfallChart({
                   <ChartTooltipContent
                     {...props}
                     // Only the bar of the hovered step: the transparent base of its stack, and the two tones the
-                    // step is not, have no entry. An entry's name is its dataKey, the tone the step takes.
+                    // step is not, have no entry, and a step that draws no bar (a delta of exactly 0) has none.
+                    // An entry's name is its dataKey, the tone the step takes.
                     payload={props.payload?.filter((item) => {
-                      if (item.dataKey === 'base') return false;
-                      const value = (item.payload as Step | undefined)?.[String(item.dataKey) as (typeof TONES)[number]];
+                      const step = item.payload as Step | undefined;
+                      if (item.dataKey === 'base' || !step || step.size <= 0) return false;
+                      const value = step[String(item.dataKey) as (typeof TONES)[number]];
                       return value !== null && value !== undefined;
                     })}
                     labelFormatter={(key) => data.steps[Number(key)]?.label ?? String(key)}

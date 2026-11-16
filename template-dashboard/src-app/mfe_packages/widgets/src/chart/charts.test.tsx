@@ -1771,6 +1771,21 @@ describe('waterfall_chart', () => {
     expect(entries()[0]).toContain('+5');
   });
 
+  it('writes no tooltip entry for a hovered step that draws no bar, a delta of exactly 0', async () => {
+    const steps: WaterfallData['steps'] = [
+      { label: 'Flat', value: 0 },
+      { label: 'Up', value: 3 },
+      { label: 'Down', value: -2 },
+    ];
+    const { container } = draw(steps);
+    // The delta of 0 draws no bar: only the two others do.
+    expect(bars(container)).toHaveLength(2);
+    fireEvent.mouseMove(container.querySelector('.recharts-wrapper')!, { clientX: 150, clientY: 100, pageX: 150, pageY: 100 });
+    // The cursor of the hovered band shows the first band is hovered, and the tooltip names no tone for it.
+    await waitFor(() => expect(container.querySelector('.recharts-tooltip-cursor')).not.toBeNull());
+    expect([...container.querySelectorAll('.recharts-tooltip-wrapper [class*="tooltipRow"]')]).toEqual([]);
+  });
+
   it('fails the cell on a total whose value is not the running sum, naming the step and never its value', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     draw([
