@@ -10,7 +10,7 @@ import { ChartShell } from './ChartShell';
 import { FILL } from './chrome';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
-import { CHAR_WIDTH } from '../textFit';
+import { CHAR_WIDTH, FLOOR_SIZE, HOLE_ROOM, LINE_HEIGHT } from '../textFit';
 import styles from '../widgets.module.css';
 
 /** The narrowest compact pie that keeps its legend beside it. */
@@ -34,14 +34,11 @@ export function checkPie(render: PieRender): string | null {
   return null;
 }
 
-// The height of one line for its font size, and the share of the hole's radius the centre text may reach: the text
-// block's corners stay inside that circle. The width of one character is the shared estimate, CHAR_WIDTH.
-const LINE_HEIGHT = 1.2;
-const HOLE_ROOM = 0.9;
-// The text sizes of the centre: the total at most as large as a card's headline, the caption as a meta line; smaller than the floor, a line is left out.
+// The width of one character, the height of one line, the share of the hole's radius the centre text may reach and the
+// readable floor are the shared ones of ../textFit: the centre text here fits its hole by the same numbers.
+// The text sizes of the centre: the total at most as large as a card's headline, the caption as a meta line.
 const TOTAL_SIZE = 24;
 const CAPTION_SIZE = 12;
-const FLOOR_SIZE = 9;
 
 /**
  * The total in the hole of a donut, with its caption under it, each sized so the text block stays inside the hole: a

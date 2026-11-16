@@ -273,8 +273,8 @@ export function TreemapChart({
   const table: ValuesTable = {
     columns,
     rows: items.map((item) => {
-      // A null value has no share either.
-      const share = item.value === null ? null : shareOf(item.value);
+      // A null value has no share either, and the share is worked out only when the share column is shown.
+      const share = showShare && item.value !== null ? shareOf(item.value) : null;
       return [item.label, ...(grouped ? [item.group] : []), item.value, ...(showShare ? [share] : [])];
     }),
   };

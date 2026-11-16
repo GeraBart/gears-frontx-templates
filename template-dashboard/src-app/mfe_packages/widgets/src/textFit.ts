@@ -5,9 +5,9 @@ import { useLayoutEffect, useRef, useState } from 'react';
 // guess: each drawn line is then measured, and its measured width replaces the guess.
 export const CHAR_WIDTH = 0.62;
 export const LINE_HEIGHT = 1.2;
-const HOLE_ROOM = 0.9;
+export const HOLE_ROOM = 0.9;
 // Smaller than this, a centre line is left out.
-const FLOOR_SIZE = 9;
+export const FLOOR_SIZE = 9;
 
 /** The estimated width in px of a text drawn at a font size of px: CHAR_WIDTH of the size per character. */
 export const estimateWidth = (text: string, px: number) => text.length * CHAR_WIDTH * px;
@@ -46,7 +46,7 @@ export function fitCentreLines<Line extends CentreLine>(hole: number, wanted: Li
 /** A line's width in em of its font size: its measured width when the same text was measured, else the estimate. */
 function emOfLine({ role, text }: CentreLine, measured: MeasuredLines) {
   const known = measured[role];
-  return known?.text === text ? known.em : text.length * CHAR_WIDTH;
+  return known?.text === text ? known.em : estimateWidth(text, 1);
 }
 
 /**

@@ -37,7 +37,11 @@ const pie = (uuid: string, extra: Record<string, unknown> = {}) => ({
 
 const dashboardOf = (cells: unknown[]): Dashboard => ({ id: DASHBOARD, title: 'Order', layout: { cells } }) as unknown as Dashboard;
 
-/** A widget of one shipped type with one render field set, in a small cell: the type prefix, a demo widget, the field, the uuid tail and the value. */
+/**
+ * A widget of one shipped type with one render field set, in a small cell: the type prefix, a demo widget, the field,
+ * the uuid tail and the value. The tail is exactly two hex characters (`3${index}` over a list of at most 10 values),
+ * as it completes the 12-character last group of the uuid.
+ */
 const withRender = (type: string, widget: { render: Record<string, unknown> }, field: string, uuid: string, value: unknown) => ({
   size: 'small',
   widget: { ...widget, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...widget.render, [field]: value } },
@@ -50,7 +54,7 @@ const problemOfFor = (dataPrefix: string, uuid: string) => (data: Record<string,
   try {
     types.register({ ...data, id });
   } catch (error) {
-    return String(error);
+    return error instanceof Error ? error.message : String(error);
   }
   const { valid, errors } = types.validateInstance(id);
   return valid ? null : JSON.stringify(errors);

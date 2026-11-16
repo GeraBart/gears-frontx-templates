@@ -1654,6 +1654,9 @@ describe('waterfall_chart', () => {
   const levelsOf = (container: HTMLElement) => connectors(container).map((line) => Number(line.getAttribute('y1')));
   const labelYs = (container: HTMLElement) => [...container.querySelectorAll('text[class*="valueLabel"]')].map((text) => Number(text.getAttribute('y')));
   const legendOf = (container: HTMLElement) => [...container.querySelectorAll('.recharts-legend-wrapper [class*="legendItem"]')].map((item) => item.textContent);
+  // Hovers the first band of a 600 px chart, and reads the entries of the tooltip it opens.
+  const hoverFirstBand = (container: HTMLElement) => fireEvent.mouseMove(container.querySelector('.recharts-wrapper')!, { clientX: 150, clientY: 100, pageX: 150, pageY: 100 });
+  const tooltipRows = (container: HTMLElement) => [...container.querySelectorAll('.recharts-tooltip-wrapper [class*="tooltipRow"]')].map((row) => row.textContent);
 
   const sized = stubSizedObserver();
 
@@ -1855,8 +1858,8 @@ describe('waterfall_chart', () => {
       { label: 'Down', value: -2 },
     ];
     const { container } = draw(steps);
-    fireEvent.mouseMove(container.querySelector('.recharts-wrapper')!, { clientX: 150, clientY: 100, pageX: 150, pageY: 100 });
-    const entries = () => [...container.querySelectorAll('.recharts-tooltip-wrapper [class*="tooltipRow"]')].map((row) => row.textContent);
+    hoverFirstBand(container);
+    const entries = () => tooltipRows(container);
     await waitFor(() => expect(entries()).not.toEqual([]));
     // The hovered bar of the first band names its step in the header, and its signed change in the row.
     expect(container.querySelector('.recharts-tooltip-wrapper')?.textContent).toContain('First');
@@ -1873,12 +1876,12 @@ describe('waterfall_chart', () => {
     const { container } = draw(steps);
     // The delta of 0 draws no bar: only the two others do.
     expect(bars(container)).toHaveLength(2);
-    fireEvent.mouseMove(container.querySelector('.recharts-wrapper')!, { clientX: 150, clientY: 100, pageX: 150, pageY: 100 });
+    hoverFirstBand(container);
     // The cursor stands in the first band, left of the first drawn bar, and the tooltip names no tone for it.
     await waitFor(() => expect(container.querySelector('.recharts-tooltip-cursor')).not.toBeNull());
     const cursor = container.querySelector('.recharts-tooltip-cursor')!;
     expect(Number(cursor.getAttribute('x')) + Number(cursor.getAttribute('width'))).toBeLessThanOrEqual(edgesOf(container)[0]!.left);
-    expect([...container.querySelectorAll('.recharts-tooltip-wrapper [class*="tooltipRow"]')]).toEqual([]);
+    expect(tooltipRows(container)).toEqual([]);
   });
 
   it('fails the cell on a total whose value is not the running sum, naming the step and never its value', () => {
