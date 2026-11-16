@@ -8,6 +8,19 @@ npm run type-check
 npm test
 ```
 
+## Node, registry and rough timings
+
+- Node: the repository root declares `"node": ">=24.14.0"` and `"npm": ">=10.0.0"` in its `engines` field, with `engine-strict=true` in its `.npmrc`. This folder has no `engines` field and no `.nvmrc` of its own. The commands in this README were run with Node 25.1.0 and npm 11.6.2.
+- Registry: the lockfile resolves every package (367 of them) from the public npm registry. A user-level npmrc that points a scope such as `@gears-frontx` at a registry that is not running makes the requests for that scope wait on it (an `npm view` of a `@gears-frontx` package had not answered after 30 s). Install with a clean user config instead:
+
+```bash
+export NPM_CONFIG_USERCONFIG="$(mktemp)"
+printf 'registry=https://registry.npmjs.org/\n' > "$NPM_CONFIG_USERCONFIG"
+npm ci
+```
+
+- Timings: measured on one development machine that was busy with other work at the time, so take them as rough: `npm ci` took about 2 minutes (113 s), `npm run build:widgets` between about 1 and 5 minutes (52 s and 284 s in two runs), and `npm run dev:host` reported Vite ready in under a second and answered the first page request about 5 s after the command started.
+
 ## Dev preview
 
 `preview/` is a dev-only page that mounts the dashboard area, the cell frame and the catalog widgets in a real browser, over invented, vendor-neutral demo data. It is not part of the template and no template manifest ships it. It checks layout, themes, legends, tooltips, the larger view and drill-down of the widget components by eye and with browser tools.
@@ -32,3 +45,5 @@ npm run build:host && npm run preview:host   # the production build, on http://1
 ```
 
 Query options: `?theme=dark`, `?dashboard=<dashboard id>`, `?delay=<ms>` (the mock host's answer delay).
+
+The page opens the "Engineering delivery" dashboard: 29 cells that use all 15 widget types (6 cartesian charts, 4 metric cards, 3 pie charts, 3 markdown cards, 2 heatmaps, 2 grids, and one each of `summary_card`, `ranked_list_card`, `progress_list_card`, `radial_progress`, `radar_chart`, `treemap_chart`, `waterfall_chart`, `funnel_chart` and `activity_feed`). One cell, "Incidents (failing API)", shows "This widget cannot be shown" with a "Try again" button on purpose: its data request fails on the mock host.
