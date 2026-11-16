@@ -689,7 +689,12 @@ describe('radial_progress', () => {
       expect(height).toBeLessThanOrEqual(258);
       const caption = container.querySelector('text[data-role="caption"]')!;
       expect(Number(caption.getAttribute('y'))).toBeGreaterThan(137);
-      expect(Number(caption.getAttribute('font-size'))).toBeGreaterThanOrEqual(9);
+      // At its own 12 px the caption, 21 characters at the widgets' estimate of 0.62 em each (jsdom measures no text),
+      // is about 156 px, wider than the ring: it is set smaller, within the ring's width and not under the 9 px floor.
+      const size = Number(caption.getAttribute('font-size'));
+      expect(size).toBeLessThan(12);
+      expect(size).toBeGreaterThanOrEqual(9);
+      expect("of the quarter's plan".length * 0.62 * size).toBeLessThanOrEqual(137);
     } finally {
       globalThis.ResizeObserver = original;
     }
