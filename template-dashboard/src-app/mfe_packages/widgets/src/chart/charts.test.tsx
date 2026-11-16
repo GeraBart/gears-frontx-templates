@@ -1061,6 +1061,8 @@ describe('radar_chart', () => {
     expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 1 }, { axis: 'Tue', series: null, value: 2 }, { axis: 'Wed', series: null, value: 3 }, { axis: 'Mon', series: null, value: 4 }] })).toBe(
       'radar_chart: data.points[3] repeats the axis and the series of an earlier point',
     );
+    // The unnamed series and a series named "null" are two series: one point of each on one axis repeats nothing.
+    expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 1 }, { axis: 'Mon', series: 'null', value: 2 }, { axis: 'Tue', series: null, value: 3 }, { axis: 'Wed', series: null, value: 3 }] })).toBeNull();
     // One axis with two series, or one series on two axes, repeats nothing.
     expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 1 }, { axis: 'Mon', series: 'Web', value: 2 }, { axis: 'Tue', series: null, value: 3 }, { axis: 'Wed', series: null, value: 3 }] })).toBeNull();
   });
