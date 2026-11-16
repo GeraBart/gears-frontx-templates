@@ -9,7 +9,7 @@ import { PALETTE, legendOf } from './legend';
 import { ChartShell } from './ChartShell';
 import { FILL, pickIndexOf, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
 import type { ValuesTable } from './DataView';
-import { isCompact, isLaidOut, useElementSize } from './size';
+import { isLaidOut, useElementSize } from './size';
 import { compactTick } from './ticks';
 import styles from '../widgets.module.css';
 
@@ -33,7 +33,8 @@ const TICK_SIZE = 8;
 /**
  * Whether the axis labels fit between the circle and the edge of the plot area with its margins: the widest label
  * beside the circle on the horizontal ends, and one tick text line above and under it. Both rooms are shortest where
- * the circle takes the whole shorter side, so a low cell, or a legend that takes some of it, leaves little of either.
+ * the circle takes the whole shorter side, so a low or narrow cell, or a legend that takes some of it, leaves little of
+ * either.
  */
 function labelsFit(plotWidth: number, plotHeight: number, longest: number): boolean {
   if (plotWidth <= 0 || plotHeight <= 0) return true;
@@ -43,12 +44,13 @@ function labelsFit(plotWidth: number, plotHeight: number, longest: number): bool
 }
 
 /**
- * The axis of the spokes. A compact cell hides the axis labels that cannot fit in the plot area the chart leaves after
- * its legend, and keeps them in the tooltip and the text alternative; before the chart is laid out the labels are kept.
+ * The axis of the spokes. A cell of any height hides all the axis labels when the longest cannot fit in the plot area
+ * the chart leaves after its legend, and keeps them in the tooltip and the text alternative; before the chart is laid
+ * out the labels are kept.
  */
-function AngleAxis({ compact, longest }: { compact: boolean; longest: number }) {
+function AngleAxis({ longest }: { longest: number }) {
   const plot = usePlotArea();
-  const showLabels = !compact || !plot || labelsFit(plot.width, plot.height, longest);
+  const showLabels = !plot || labelsFit(plot.width, plot.height, longest);
   return <PolarAngleAxis dataKey="axis" tick={showLabels ? TICK : false} tickLine={false} />;
 }
 
@@ -178,7 +180,7 @@ export function RadarChart({
               }
             >
               <PolarGrid />
-              <AngleAxis compact={isCompact(height)} longest={longest} />
+              <AngleAxis longest={longest} />
               {/* Along the first axis, which the chart draws straight up, so the value labels read level beside it. */}
               <PolarRadiusAxis
                 angle={90}

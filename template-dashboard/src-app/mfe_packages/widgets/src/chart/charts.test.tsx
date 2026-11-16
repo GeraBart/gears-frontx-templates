@@ -985,7 +985,7 @@ describe('radar_chart', () => {
     whole.unmount();
   });
 
-  it('hides the axis labels of a compact cell that cannot fit them, and keeps them in the tooltip and text alternative', () => {
+  it('hides the axis labels of a cell of any height that cannot fit them, and keeps them in the text alternative', () => {
     const wide = [{ axis: 'Mon', series: null, value: 3 }, { axis: 'Wednesdays', series: null, value: 2 }, { axis: 'Fri', series: null, value: 1 }];
     // 300 by 195 px is compact and fits "Wednesdays" beside the circle: the labels stay.
     sized(300, 195);
@@ -998,9 +998,14 @@ describe('radar_chart', () => {
     expect(hidden.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(0);
     expect(within(alternative('Commits')).getAllByRole('row', { hidden: true }).map((row) => row.children[0]?.textContent)).toEqual(['Axis', 'Mon', 'Wednesday overflow', 'Fri']);
     cleanup();
-    // The same label in a high cell keeps the labels: only a compact cell hides them.
+    // A high cell is judged the same way: in 300 by 300 px the circle takes most of the width, which leaves room
+    // beside it for short labels and not for the 18 characters of "Wednesday overflow", which hide every label.
     sized(300, 300);
-    expect(draw(longest).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(3);
+    const short = [{ axis: 'Mon', series: null, value: 3 }, { axis: 'Wed', series: null, value: 2 }, { axis: 'Fri', series: null, value: 1 }];
+    expect(draw(short).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(3);
+    cleanup();
+    expect(draw(longest).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(0);
+    expect(within(alternative('Commits')).getAllByRole('row', { hidden: true }).map((row) => row.children[0]?.textContent)).toEqual(['Axis', 'Mon', 'Wednesday overflow', 'Fri']);
   });
 
   it('judges the fit of the axis labels from the plot area the legend leaves, not from the whole cell', () => {
