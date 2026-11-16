@@ -77,10 +77,13 @@ if (only !== undefined) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--jobs') {
+      if (index === argv.length - 1) failWith('--jobs needs the number of bundles to build at a time');
       index += 1;
       cap = parseJobs(argv[index], '--jobs');
     } else if (arg.startsWith('--jobs=')) {
       cap = parseJobs(arg.slice('--jobs='.length), '--jobs');
+    } else if (arg.startsWith('--')) {
+      failWith(`unknown option ${arg}: the parent takes --jobs N and the names of bundles to build`);
     } else {
       named.push(arg);
     }
@@ -113,18 +116,35 @@ if (only !== undefined) {
       const child = spawn(process.execPath, [script, '--only', type], { stdio: ['ignore', 'pipe', 'pipe'] });
       let out = '';
       let err = '';
+      let settled = false;
       child.stdout.setEncoding('utf8');
       child.stderr.setEncoding('utf8');
       child.stdout.on('data', (chunk) => { out += chunk; });
       child.stderr.on('data', (chunk) => { err += chunk; });
-      child.on('close', (code) => {
+      // A child settles once, on the first of 'close' and 'error': a spawn
+      // that fails (EAGAIN, ENOMEM) emits 'error' and may never emit 'close',
+      // so the child is still counted, its error recorded, and the build ends
+      // with the failed summary instead of crashing on the unhandled event.
+      const settle = (failedRun) => {
+        if (settled) return;
+        settled = true;
         running -= 1;
         // A child's output goes out whole, so two bundles never share a line.
         if (out) process.stdout.write(out.endsWith('\n') ? out : `${out}\n`);
         if (err) process.stderr.write(err.endsWith('\n') ? err : `${err}\n`);
-        if (code !== 0) failed.push(type);
+        if (failedRun) failed.push(type);
         startNext();
         if (running === 0) finish();
+      };
+      child.on('error', (error) => {
+        err += `${type}: ${error.message}\n`;
+        settle(true);
+      });
+      child.on('close', (code, signal) => {
+        // A child the kernel killed (an OOM kill, say) closes with no code and
+        // the signal: say so next to its output, and count the bundle failed.
+        if (signal) err += `${type}: killed by ${signal}\n`;
+        settle(code !== 0);
       });
     }
   };
