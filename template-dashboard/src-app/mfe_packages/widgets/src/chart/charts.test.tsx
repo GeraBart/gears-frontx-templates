@@ -857,25 +857,11 @@ describe('funnel_chart', () => {
   });
 });
 
-describe('radar_chart', () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  const POINTS: RadarData['points'] = [
-    { axis: 'Mon', series: 'Web', value: 12 },
-    { axis: 'Mon', series: 'API', value: 8 },
-    { axis: 'Tue', series: 'Web', value: 7 },
-    { axis: 'Tue', series: 'API', value: null },
-    { axis: 'Wed', series: 'Web', value: 0 },
-    { axis: 'Wed', series: 'API', value: 5 },
-  ];
-  const draw = (points: RadarData['points'], options: RadarRender = {}, extra: object = {}) =>
-    render(<RadarChart payload={{ render: options, data: { points }, ...extra }} label="Commits" />);
-  const axisTicks = (container: HTMLElement) => [...container.querySelectorAll('.recharts-polar-angle-axis-tick-value')].map((tick) => tick.textContent);
-  const polygons = (container: HTMLElement) => [...container.querySelectorAll('.recharts-radar-polygon path')];
-  const rowsOf = () => within(alternative('Commits')).getAllByRole('row', { hidden: true }).map((row) => [...row.children].map((cell) => cell.textContent));
-  const radiusTicks = (container: HTMLElement) => [...container.querySelectorAll('.recharts-polar-radius-axis-tick-value')].map((tick) => tick.textContent);
-
-  // The widget's body as the ResizeObserver reports it.
+/**
+ * The widget's body as the ResizeObserver reports it, for the describe block that calls this: each test starts at 600
+ * by 300 px, `sized` sets another size, and after each test the observer comes back and the mocks are restored.
+ */
+const stubSizedObserver = () => {
   const original = globalThis.ResizeObserver;
   const sized = (width: number, height: number) => {
     globalThis.ResizeObserver = class {
@@ -892,6 +878,26 @@ describe('radar_chart', () => {
     globalThis.ResizeObserver = original;
     vi.restoreAllMocks();
   });
+  return sized;
+};
+
+describe('radar_chart', () => {
+  const POINTS: RadarData['points'] = [
+    { axis: 'Mon', series: 'Web', value: 12 },
+    { axis: 'Mon', series: 'API', value: 8 },
+    { axis: 'Tue', series: 'Web', value: 7 },
+    { axis: 'Tue', series: 'API', value: null },
+    { axis: 'Wed', series: 'Web', value: 0 },
+    { axis: 'Wed', series: 'API', value: 5 },
+  ];
+  const draw = (points: RadarData['points'], options: RadarRender = {}, extra: object = {}) =>
+    render(<RadarChart payload={{ render: options, data: { points }, ...extra }} label="Commits" />);
+  const axisTicks = (container: HTMLElement) => [...container.querySelectorAll('.recharts-polar-angle-axis-tick-value')].map((tick) => tick.textContent);
+  const polygons = (container: HTMLElement) => [...container.querySelectorAll('.recharts-radar-polygon path')];
+  const rowsOf = () => within(alternative('Commits')).getAllByRole('row', { hidden: true }).map((row) => [...row.children].map((cell) => cell.textContent));
+  const radiusTicks = (container: HTMLElement) => [...container.querySelectorAll('.recharts-polar-radius-axis-tick-value')].map((tick) => tick.textContent);
+
+  const sized = stubSizedObserver();
 
   it('draws one polygon per series in first-seen axis order, each in its series colour', () => {
     const { container } = draw(POINTS);
@@ -1119,23 +1125,7 @@ describe('treemap_chart', () => {
     for (const [index, box] of got.entries()) for (const [side, value] of box.entries()) expect(value).toBeCloseTo(want[index][side], 6);
   };
 
-  // The widget's body as the ResizeObserver reports it.
-  const original = globalThis.ResizeObserver;
-  const sized = (width: number, height: number) => {
-    globalThis.ResizeObserver = class {
-      constructor(private readonly callback: ResizeObserverCallback) {}
-      observe(target: Element) {
-        this.callback([{ target, contentRect: { width, height } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
-  };
-  beforeEach(() => sized(600, 300));
-  afterEach(() => {
-    globalThis.ResizeObserver = original;
-    vi.restoreAllMocks();
-  });
+  const sized = stubSizedObserver();
 
   it('lays the values out squarified: the whole box for one, squares for four equals, 0 by 0 in a box without room', () => {
     sized(100, 50);
@@ -1545,23 +1535,7 @@ describe('waterfall_chart', () => {
   const labelYs = (container: HTMLElement) => [...container.querySelectorAll('text[class*="valueLabel"]')].map((text) => Number(text.getAttribute('y')));
   const legendOf = (container: HTMLElement) => [...container.querySelectorAll('.recharts-legend-wrapper [class*="legendItem"]')].map((item) => item.textContent);
 
-  // The widget's body as the ResizeObserver reports it.
-  const original = globalThis.ResizeObserver;
-  const sized = (width: number, height: number) => {
-    globalThis.ResizeObserver = class {
-      constructor(private readonly callback: ResizeObserverCallback) {}
-      observe(target: Element) {
-        this.callback([{ target, contentRect: { width, height } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
-  };
-  beforeEach(() => sized(600, 300));
-  afterEach(() => {
-    globalThis.ResizeObserver = original;
-    vi.restoreAllMocks();
-  });
+  const sized = stubSizedObserver();
 
   it('draws one bar per step that draws, the deltas stacked from the running sum and the total from zero', () => {
     const { container } = draw(STEPS);
