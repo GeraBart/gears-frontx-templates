@@ -57,13 +57,15 @@ type Row = { axis: string; [key: string]: string | number | null | undefined };
 
 // @cpt-algo:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2
 /**
- * The radar's own check of its data: the first negative value, and the first point that would add an axis or a series
- * beyond what a radar takes, each named by its position and never by its value, then fewer than 3 distinct axes, which
+ * The radar's own check of its data: the first negative value, the first point that would add an axis or a series
+ * beyond what a radar takes, and the first point that repeats the axis and the series of an earlier one, which would
+ * hide that earlier value, each named by its position and never by its value, then fewer than 3 distinct axes, which
  * draw a dot or a line and no polygon (the data type counts the points, not the axes), or null.
  */
 export function checkRadar(data: RadarData): string | null {
   const axes: string[] = [];
   const series: (string | null)[] = [];
+  const pairs = new Set<string>();
   // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-radar-for-point
   for (const [index, point] of data.points.entries()) {
     // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-radar-negative
@@ -81,6 +83,12 @@ export function checkRadar(data: RadarData): string | null {
       series.push(point.series);
     }
     // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-radar-series
+    // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-radar-repeat
+    // JSON keeps the unnamed series (null) apart from a series named "null".
+    const pair = JSON.stringify([point.axis, point.series]);
+    if (pairs.has(pair)) return `radar_chart: data.points[${index}] repeats the axis and the series of an earlier point`;
+    pairs.add(pair);
+    // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-radar-repeat
   }
   // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-radar-for-point
   // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-radar-min-axes
@@ -131,7 +139,7 @@ export function RadarChart({
   const axes = [...new Set(data.points.map((point) => point.axis))];
   const names: (string | null)[] = [];
   for (const point of data.points) if (!names.some((name) => name === point.series)) names.push(point.series);
-  // One row per axis; of the points a series delivered on one axis, the last is the one its spoke shows.
+  // One row per axis, one value per series on it: the check lets no axis and series pair repeat.
   const rows: Row[] = axes.map((axis) => ({ axis }));
   const byAxis = new Map(rows.map((row) => [row.axis, row]));
   for (const point of data.points) byAxis.get(point.axis)![`s${names.findIndex((name) => name === point.series)}`] = point.value;

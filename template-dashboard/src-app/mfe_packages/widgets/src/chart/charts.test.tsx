@@ -1032,8 +1032,20 @@ describe('radar_chart', () => {
     const fives = Array.from({ length: 5 }, (_, index) => ({ axis: ['Mon', 'Tue', 'Wed'][index % 3], series: `s${index}`, value: 1 }));
     expect(checkRadar({ points: [...fives] })).toBeNull();
     expect(checkRadar({ points: [...fives, { axis: 'Mon', series: 's5', value: 1 }] })).toBe('radar_chart: data.points[5].series would be a 6th series, and a radar takes at most 5');
-    // A point that repeats an axis and a series crosses no bound: the last one wins.
-    expect(checkRadar({ points: [...fives, { axis: 'Mon', series: 's0', value: 2 }] })).toBeNull();
+  });
+
+  it('fails the cell on a point that repeats the axis and the series of an earlier one, naming its position and never its value', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    draw([...POINTS, { axis: 'Tue', series: 'Web', value: 99 }]);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] radar_chart: data.points[6] repeats the axis and the series of an earlier point');
+    expect(String(error.mock.calls[0][0])).not.toContain('99');
+    // The unnamed series is one series: two of its points on one axis repeat as well.
+    expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 1 }, { axis: 'Tue', series: null, value: 2 }, { axis: 'Wed', series: null, value: 3 }, { axis: 'Mon', series: null, value: 4 }] })).toBe(
+      'radar_chart: data.points[3] repeats the axis and the series of an earlier point',
+    );
+    // One axis with two series, or one series on two axes, repeats nothing.
+    expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 1 }, { axis: 'Mon', series: 'Web', value: 2 }, { axis: 'Tue', series: null, value: 3 }, { axis: 'Wed', series: null, value: 3 }] })).toBeNull();
   });
 
   it('fails the cell on fewer than 3 distinct axes, which draw a dot or a line and no polygon', () => {
@@ -1042,7 +1054,7 @@ describe('radar_chart', () => {
     draw([{ axis: 'Mon', series: 'Web', value: 3 }, { axis: 'Tue', series: 'Web', value: 2 }, { axis: 'Mon', series: 'API', value: 1 }]);
     expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
     expect(error).toHaveBeenCalledWith('[widget] radar_chart: data.points has 2 distinct axes, and a radar takes at least 3');
-    expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 1 }, { axis: 'Mon', series: 'API', value: 2 }, { axis: 'Mon', series: null, value: 3 }] })).toBe('radar_chart: data.points has 1 distinct axis, and a radar takes at least 3');
+    expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 1 }, { axis: 'Mon', series: 'API', value: 2 }, { axis: 'Mon', series: 'Web', value: 3 }] })).toBe('radar_chart: data.points has 1 distinct axis, and a radar takes at least 3');
     expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 1 }, { axis: 'Tue', series: null, value: 2 }, { axis: 'Wed', series: null, value: 3 }] })).toBeNull();
   });
 
