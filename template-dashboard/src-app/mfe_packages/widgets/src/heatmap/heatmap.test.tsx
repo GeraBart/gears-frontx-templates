@@ -219,6 +219,28 @@ describe('heatmap', () => {
       expect(named(three)).toEqual(['00:00', '06:00', '12:00', '18:00']);
     });
 
+    it('keeps a first label that starts at its column clear of the next named one, and a named last label at the grid end', () => {
+      // 20 px columns under 54 px labels, no room left of the first: a step of 3 would put the next centred label
+      // over the first's end, so every fourth column is named, and the 13th, named, ends at the grid's end.
+      measure(20, 54, 0);
+      const { container } = render(<Heatmap payload={{ render: {}, data: columns(13) }} label="Thirteen" />);
+      const named = spans(container, 20, 54);
+      expect(named.map((span) => span.index)).toEqual([0, 4, 8, 12]);
+      expect(named[0].align).toBe('start');
+      expect(named.at(-1)!.align).toBe('end');
+      expect(clear(named)).toBe(true);
+    });
+
+    it('keeps the label of a single column inside the grid, reaching back at most over the room left of it', () => {
+      measure(20, 100, 10);
+      const { container } = render(<Heatmap payload={{ render: {}, data: columns(1) }} label="One column" />);
+      const only = container.querySelector<HTMLElement>('.heatColumnAxisThin')!;
+      expect(only.textContent).toBe('c0');
+      expect(only.style.justifySelf).toBe('end');
+      // Its column and the 10 px before it.
+      expect(parseFloat(only.style.maxInlineSize)).toBe(30);
+    });
+
     it('names only the first column, at most as wide as all the columns, when no step lets a label stand whole', () => {
       measure(20, 100);
       const { container } = render(<Heatmap payload={{ render: {}, data: columns(3) }} label="Three columns" />);

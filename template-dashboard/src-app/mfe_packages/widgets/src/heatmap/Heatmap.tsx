@@ -31,7 +31,7 @@ interface ColumnLabels {
  * column's when centring would cross the grid's start, as the room left of the first column, `before`, is less than
  * that shift. The step counts that shift too, so an edge label keeps the same space to its neighbour. With few columns
  * no step may fit: the loop stops at the column count, so only the first label is named, at most `room` wide, and the
- * kit's text cuts it.
+ * kit's text cuts it. A single column's label ends at the grid's end, at most its column and `before` wide.
  */
 function columnLabelsOf(track: number, gap: number, widths: number[], before: number): ColumnLabels {
   const widest = widths.reduce((most, width) => Math.max(most, width), 0);
@@ -49,7 +49,9 @@ function columnLabelsOf(track: number, gap: number, widths: number[], before: nu
   };
   let step = 2;
   while (step < widths.length && !fits(step)) step += 1;
-  const room = step * (track + gap) - gap;
+  // A single column is also the last, so its label ends at the grid's end: it may reach back only over its column
+  // and the room left of it, never past the grid's start.
+  const room = widths.length === 1 ? track + before : step * (track + gap) - gap;
   return { step, room, firstAtStart: (Math.min(widest, room) - track) / 2 > before };
 }
 
