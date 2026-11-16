@@ -162,7 +162,7 @@ const metric = (data: object): Payload => ({ render: {}, data });
  * or divide by 0. Each case names what the widget must still draw (selectors, and the text it must show), and no text,
  * style or SVG path may show a number that is not finite.
  */
-const DERIVED: Array<{ name: string; draw: Draw; payload: Payload; shows: string[]; text?: RegExp }> = [
+const DERIVED: Array<{ name: string; draw: Draw; payload: Payload; shows: string[]; text?: RegExp; check?: (container: HTMLElement) => void }> = [
   // The percent is left out; the direction stays.
   { name: 'a metric trend of 1 against 1e-320', draw: (payload) => <MetricCard payload={payload} />, payload: metric({ value: 1, previous_value: 1e-320 }), shows: ['[aria-label="Up"]'], text: /^[^%]*$/ },
   { name: 'a metric trend of -1.5e308 against 1.5e308', draw: (payload) => <MetricCard payload={payload} />, payload: metric({ value: -BIG, previous_value: BIG }), shows: ['[aria-label="Down"]'], text: /-200%/ },
@@ -228,7 +228,27 @@ const DERIVED: Array<{ name: string; draw: Draw; payload: Payload; shows: string
     name: 'a treemap of two 1e308 items, whose total overflows',
     draw: (payload) => <TreemapChart payload={payload} />,
     payload: { render: {}, data: { items: [{ label: 'a', value: 1e308, group: null }, { label: 'b', value: 1e308, group: null }] } },
-    shows: ['[data-share="50"]', '[class*="treemapTile"]:nth-of-type(2)[data-share="50"]'],
+    shows: ['[class*="treemapTile"]'],
+    check: (container) => expect([...container.querySelectorAll('[class*="treemapTile"]')].map((tile) => tile.getAttribute('data-share'))).toEqual(['50', '50']),
+  },
+  // Two 1.5e308 items of one group: the group's raw sum is beyond the largest number, so its area and share go over
+  // the largest value as the flat tiles do, and its header leaves the sum out and writes the share alone.
+  {
+    name: 'a treemap group of two 1.5e308 items, whose total overflows',
+    draw: (payload) => <TreemapChart payload={payload} />,
+    payload: {
+      render: { show_share: true },
+      data: { items: [{ label: 'a', value: BIG, group: 'g' }, { label: 'b', value: BIG, group: 'g' }, { label: 'c', value: BIG, group: 'h' }] },
+    },
+    shows: ['[class*="treemapTile"]', '[class*="treemapGroupHead"]'],
+    text: /^g, 66\.67%/,
+    check: (container) => {
+      expect([...container.querySelectorAll('[class*="treemapTile"]')].map((tile) => tile.getAttribute('data-share'))).toEqual(['33.33', '33.33', '33.33']);
+      // Both groups take room: g two thirds of the box, h one third.
+      const faces = [...container.querySelectorAll<HTMLElement>('[class*="treemapGroupFace"]')].map((face) => parseFloat(face.style.width) * parseFloat(face.style.height));
+      expect(faces).toHaveLength(2);
+      expect(faces[0] / faces[1]).toBeCloseTo(2, 5);
+    },
   },
   {
     name: 'a percent stack of two 1e308 values',
@@ -269,7 +289,7 @@ describe('derived numbers', () => {
     vi.restoreAllMocks();
   });
 
-  it.each(DERIVED)('$name draws with no infinity and no NaN in its text, styles or paths', async ({ draw, payload, shows, text }) => {
+  it.each(DERIVED)('$name draws with no infinity and no NaN in its text, styles or paths', async ({ draw, payload, shows, text, check }) => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { container } = render(<>{draw(payload as never)}</>);
     // The grid loads its rows through the kit's load callback, after the first render.
@@ -278,6 +298,7 @@ describe('derived numbers', () => {
     expect(error.mock.calls.filter(([line]) => String(line).startsWith('[widget]'))).toEqual([]);
     expect(container.innerHTML).not.toMatch(/∞|NaN|Infinity/);
     if (text) expect(container.textContent).toMatch(text);
+    check?.(container);
   });
 });
 

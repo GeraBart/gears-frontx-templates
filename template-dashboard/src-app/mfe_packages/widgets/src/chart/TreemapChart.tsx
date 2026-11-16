@@ -125,7 +125,10 @@ interface Group {
   key: string | null;
   name: string;
   colour: string;
+  /** The tiles' raw sum, which may pass the largest number (two 1.5e308 items): it is written only while finite. */
   total: number;
+  /** The tiles' sum in units of the largest value: the group's area and share, finite whatever the raw sum. */
+  units: number;
   face: TileBox;
   head: TileBox | null;
   /** Whether the header writes the total (and with show_share the share) after the name. */
@@ -175,14 +178,19 @@ export function TreemapChart({
   if (!(most > 0)) return <WidgetEmpty texts={texts} />;
   const unitTotal = items.reduce((sum, item) => sum + (item.value ?? 0) / most, 0);
   const shareOf = (value: number) => value / most / unitTotal;
-  const shareTextOf = (value: number) => formatValue(shareOf(value), { value_type: 'percent' }, locale);
+  const percentOf = (share: number) => formatValue(share, { value_type: 'percent' }, locale);
+  const shareTextOf = (value: number) => percentOf(shareOf(value));
   // A tile is drawn for a value whose share of the box stays above 0 once scaled: a positive value too small beside
   // the largest (5e-324 beside 1e308) draws no tile, like a 0, and stays in the data view.
   const drawn = (value: number | null) => value !== null && value / most > 0;
 
   const showShare = render.show_share === true;
   const valueLabels = render.value_labels ?? 'auto';
-  const groupTotalTextOf = (total: number) => (showShare ? `${valueOf(total)} ${shareTextOf(total)}` : valueOf(total));
+  // A group writes its raw sum while it is finite, and with show_share its share, which its units give.
+  const groupTotalOf = (group: { total: number; units: number }) => (Number.isFinite(group.total) ? valueOf(group.total) : null);
+  const groupShareOf = (group: { units: number }) => percentOf(group.units / unitTotal);
+  const groupTotalTextOf = (group: { total: number; units: number }) =>
+    [groupTotalOf(group), ...(showShare ? [groupShareOf(group)] : [])].filter((part) => part !== null).join(' ');
   const grouped = items.some((item) => item.group !== null);
   const colourOf = (position: number) => PALETTE[position % PALETTE.length];
   const whole: TileBox = { x: 0, y: 0, width: box.width, height: box.height };
@@ -192,20 +200,21 @@ export function TreemapChart({
   const flat: Tile[] = [];
   const groups: Group[] = [];
   if (grouped) {
-    const nested: { key: string | null; name: string; colour: string; total: number; tiles: Tile[] }[] = [];
+    const nested: { key: string | null; name: string; colour: string; total: number; units: number; tiles: Tile[] }[] = [];
     for (const [index, item] of items.entries()) {
       if (!drawn(item.value)) continue;
       const name = item.group ?? texts.treemap.other;
       let group = nested.find((candidate) => candidate.key === item.group);
       if (!group) {
-        group = { key: item.group, name, colour: colourOf(nested.length), total: 0, tiles: [] };
+        group = { key: item.group, name, colour: colourOf(nested.length), total: 0, units: 0, tiles: [] };
         nested.push(group);
       }
       group.total += item.value as number;
+      group.units += (item.value as number) / most;
       group.tiles.push({ index, label: item.label, value: item.value as number, box: { x: 0, y: 0, width: 0, height: 0 }, colour: group.colour, group: name });
     }
     const faces = squarified(
-      nested.map((group) => group.total),
+      nested.map((group) => group.units),
       whole,
     );
     for (const [position, group] of nested.entries()) {
@@ -213,7 +222,8 @@ export function TreemapChart({
       // The header band takes its room only while the tiles keep the least tile under it, and the name fits; it
       // writes the group's total (and share) after the name while they fit too.
       const head = face.height >= HEADER + LEAST_TILE && widthOf(group.name) + 2 * PAD <= face.width ? { x: face.x, y: face.y, width: face.width, height: HEADER } : null;
-      const withTotal = head !== null && widthOf(`${group.name}, ${groupTotalTextOf(group.total)}`) + 2 * PAD <= face.width;
+      const totalText = groupTotalTextOf(group);
+      const withTotal = head !== null && totalText !== '' && widthOf(`${group.name}, ${totalText}`) + 2 * PAD <= face.width;
       const area = head ? { x: face.x, y: face.y + HEADER, width: face.width, height: face.height - HEADER } : face;
       const boxes = squarified(
         group.tiles.map((tile) => tile.value),
@@ -324,15 +334,15 @@ export function TreemapChart({
                         render={<span />}
                         className={styles.treemapGroupHead}
                         style={{ ...place(group.head), '--tile': group.colour } as CSSProperties}
-                        title={[`${group.name}: ${valueOf(group.total)}`, ...(showShare ? [`${shareTextOf(group.total)} ${texts.treemap.ofTotal}`] : [])].join(', ')}
+                        title={[groupTotalOf(group) === null ? group.name : `${group.name}: ${groupTotalOf(group)}`, ...(showShare ? [`${groupShareOf(group)} ${texts.treemap.ofTotal}`] : [])].join(', ')}
                       >
                         {group.name}
                         {group.withTotal ? (
                           <>
                             {', '}
-                            <span className={styles.treemapValue}>{valueOf(group.total)}</span>
-                            {showShare ? ' ' : null}
-                            {showShare ? <span className={styles.treemapShare}>{shareTextOf(group.total)}</span> : null}
+                            {groupTotalOf(group) !== null ? <span className={styles.treemapValue}>{groupTotalOf(group)}</span> : null}
+                            {showShare && groupTotalOf(group) !== null ? ' ' : null}
+                            {showShare ? <span className={styles.treemapShare}>{groupShareOf(group)}</span> : null}
                           </>
                         ) : null}
                       </Text>
