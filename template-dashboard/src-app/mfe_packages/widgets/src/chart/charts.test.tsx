@@ -1818,7 +1818,8 @@ describe('waterfall_chart', () => {
     // The bands of a five-step 600 px chart are wide enough for every label: auto writes them.
     expect(labels(draw(STEPS).container)).toEqual(['+4.1', '+17', '+3.2', '+2.1', '26.4']);
     cleanup();
-    // A label wider than its bar but not its band still shows: "+17.0 hr" is wider than the 56 px a bar is at most.
+    // A label the unit lengthens still shows: "+17.0 hr" (an estimated 50 px at the labels' 10 px) fits the 108.8 px
+    // band its 56 px bar stands in. A label wider than its bar but not its band is the "+1,234.56" case below.
     expect(labels(draw(STEPS, {}, { value_format: { value_type: 'duration', unit: 'h', decimals: 1 } }).container)).toContain('+17.0 hr');
     cleanup();
     // A three-step 240 px chart has bands of about 61 px and bars of 35: "+1,234.56" (about 56 px) is wider than its
@@ -1873,8 +1874,10 @@ describe('waterfall_chart', () => {
     // The delta of 0 draws no bar: only the two others do.
     expect(bars(container)).toHaveLength(2);
     fireEvent.mouseMove(container.querySelector('.recharts-wrapper')!, { clientX: 150, clientY: 100, pageX: 150, pageY: 100 });
-    // The cursor of the hovered band shows the first band is hovered, and the tooltip names no tone for it.
+    // The cursor stands in the first band, left of the first drawn bar, and the tooltip names no tone for it.
     await waitFor(() => expect(container.querySelector('.recharts-tooltip-cursor')).not.toBeNull());
+    const cursor = container.querySelector('.recharts-tooltip-cursor')!;
+    expect(Number(cursor.getAttribute('x')) + Number(cursor.getAttribute('width'))).toBeLessThanOrEqual(edgesOf(container)[0]!.left);
     expect([...container.querySelectorAll('.recharts-tooltip-wrapper [class*="tooltipRow"]')]).toEqual([]);
   });
 

@@ -81,9 +81,9 @@ function runningAfter(running: number, step: WaterfallData['steps'][number], ind
 /**
  * The waterfall's own check of its data: the first total after the first step whose delivered value is not the
  * running sum of the steps before it, the first step that moves the running sum out of the finite range, and the
- * first step whose drawn extent (a total's whole sum, a delta's move from where it starts) rounds beyond the largest
- * number while the sum stays in range, each named by its position and never by its value, or null. A total within the relative tolerance is the running sum;
- * one with no value draws the sum the steps before it moved to. The first step may be a total: the start of the
+ * first delta whose move from the sum it starts at to the sum it ends at rounds beyond the largest number while both
+ * sums stay in range, each named by its position and never by its value, or null. A total within the relative
+ * tolerance is the running sum; one with no value draws the sum the steps before it moved to. The first step may be a total: the start of the
  * sum, its value the sum begins at.
  */
 export function checkWaterfall(data: WaterfallData): string | null {
@@ -102,9 +102,9 @@ export function checkWaterfall(data: WaterfallData): string | null {
     // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-sum
     // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-finite
     if (!Number.isFinite(running)) return `waterfall_chart: data.steps[${index}] moves the running sum out of the finite range`;
-    // The extent the chart draws, as stepsOf takes it: a finite sum and a finite start can still lie further apart
-    // than the largest number when the sum rounds away from the start.
-    if (!Number.isFinite(total ? Math.abs(running) : Math.abs(running - before))) return `waterfall_chart: data.steps[${index}] draws a bar whose extent is beyond the finite range`;
+    // The extent a delta draws, as stepsOf takes it: a finite sum and a finite start can still lie further apart than
+    // the largest number. A total's extent is the sum itself, finite once the check above has passed.
+    if (!total && !Number.isFinite(running - before)) return `waterfall_chart: data.steps[${index}] draws a bar whose extent is beyond the finite range`;
     // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-finite
   }
   // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-for-step
@@ -154,8 +154,9 @@ function changeOf(step: WaterfallData['steps'][number], drawn: Step | undefined,
 /**
  * The connectors and value labels over the bars: a thin line from one drawn bar's end to the next drawn bar's
  * start, at the level both stand at, and a step's change over its bar when the render asks it and the label fits
- * the band the bar stands in, estimated from its length. A label never shows in a low cell, where no bar leaves
- * room over it.
+ * the band the bar stands in, estimated from its length. With `auto` a label shows only in a cell that is not low,
+ * where the bar leaves room over it, and only while it fits its band; `always` writes it whatever the cell and the
+ * band, and `never` writes none.
  */
 function Overlay({ steps, changes, barSize, mode, compact, connectors }: { steps: Step[]; changes: string[]; barSize: number; mode: 'auto' | 'always' | 'never'; compact: boolean; connectors: boolean }) {
   const xScale = useXAxisScale();
@@ -173,19 +174,19 @@ function Overlay({ steps, changes, barSize, mode, compact, connectors }: { steps
   };
   const lines: ReactNode[] = [];
   const texts: ReactNode[] = [];
-  let previous: Step | null = null;
+  // The last drawn step and its bar, which the next drawn bar's connector starts from.
+  let previous: { step: Step; bar: { left: number; width: number } } | null = null;
   for (const step of steps) {
     if (step.size <= 0) continue;
     const bar = barOf(step);
     if (bar === null) continue;
     if (previous && connectors) {
-      const before = barOf(previous);
-      const level = yScale(previous.end);
-      if (before !== null && level !== undefined) {
-        lines.push(<line key={`c${step.index}`} className={styles.waterfallConnector} x1={before.left + before.width} y1={level} x2={bar.left} y2={level} />);
+      const level = yScale(previous.step.end);
+      if (level !== undefined) {
+        lines.push(<line key={`c${step.index}`} className={styles.waterfallConnector} x1={previous.bar.left + previous.bar.width} y1={level} x2={bar.left} y2={level} />);
       }
     }
-    previous = step;
+    previous = { step, bar };
     const change = changes[step.index] ?? '';
     if (change !== '' && (mode === 'always' || (mode === 'auto' && !compact && widthOf(change) <= bar.band))) {
       // The label stands over the bar's top edge: a total's top is zero when its sum is below it.
@@ -301,8 +302,8 @@ export function WaterfallChart({
                   <ChartTooltipContent
                     {...props}
                     // Only the bar of the hovered step: the transparent base of its stack, and the two tones the
-                    // step is not, have no entry, and a step that draws no bar (a delta of exactly 0) has none.
-                    // An entry's name is its dataKey, the tone the step takes.
+                    // step is not, have no entry, and a step that draws no bar (a delta of exactly 0, or a total
+                    // whose running sum is 0) has none. An entry's name is its dataKey, the tone the step takes.
                     payload={props.payload?.filter((item) => {
                       const step = item.payload as Step | undefined;
                       if (item.dataKey === 'base' || !step || step.size <= 0) return false;
