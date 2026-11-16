@@ -1008,16 +1008,28 @@ describe('radar_chart', () => {
     expect(within(alternative('Commits')).getAllByRole('row', { hidden: true }).map((row) => row.children[0]?.textContent)).toEqual(['Axis', 'Mon', 'Wednesday overflow', 'Fri']);
   });
 
+  it('keeps the axis labels of the demo radar on a phone, a chart 316 by 214 px over a bottom legend 28 px high', () => {
+    // Seven weekdays and three series: the circle sits in the middle of the chart, so the labels have 36 px above it, and
+    // the lowest ones end 4 px clear of the legend's entries, under the legend's own top padding.
+    const week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].flatMap((axis) => ['payments-api', 'web-console', 'mobile-app'].map((series, index) => ({ axis, series, value: index + 1 })));
+    const rect = Element.prototype.getBoundingClientRect;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return this.classList.contains('recharts-legend-wrapper') ? ({ width: 306, height: 28, top: 0, left: 0, right: 306, bottom: 28, x: 0, y: 0 } as DOMRect) : rect.call(this);
+    });
+    sized(316, 214);
+    expect(draw(week).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(7);
+  });
+
   it('judges the fit of the axis labels from the plot area the legend leaves, not from the whole cell', () => {
-    // Two series with "Wednesdays": in a 300 by 195 px cell the labels fit with no legend, and not beside a bottom legend
-    // 40 px high, which leaves the circle a lower plot area.
-    const wide = ['Mon', 'Wednesdays', 'Fri'].flatMap((axis) => [{ axis, series: 'Web', value: 3 }, { axis, series: 'API', value: 2 }]);
+    // Two series over four axes with "Wednesdays": in a 300 by 195 px cell the labels fit with no legend, and not beside
+    // a bottom legend 40 px high, which leaves the axis pointing down too little room above the legend.
+    const wide = ['Mon', 'Wednesdays', 'Fri', 'Sun'].flatMap((axis) => [{ axis, series: 'Web', value: 3 }, { axis, series: 'API', value: 2 }]);
     const rect = Element.prototype.getBoundingClientRect;
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
       return this.classList.contains('recharts-legend-wrapper') ? ({ width: 290, height: 40, top: 0, left: 0, right: 290, bottom: 40, x: 0, y: 0 } as DOMRect) : rect.call(this);
     });
     sized(300, 195);
-    expect(draw(wide, { legend_position: 'none' }).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(3);
+    expect(draw(wide, { legend_position: 'none' }).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(4);
     cleanup();
     expect(draw(wide, { legend_position: 'bottom' }).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(0);
   });
