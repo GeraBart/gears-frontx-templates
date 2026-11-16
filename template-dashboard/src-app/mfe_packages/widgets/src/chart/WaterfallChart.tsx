@@ -226,6 +226,12 @@ export function WaterfallChart({
 
   const format = (value: string | number | null) => (typeof value === 'number' ? formatValue(value, value_format, locale) : (value ?? ''));
   const change = (index: number) => changeOf(data.steps[index], steps[index], value_format, locale);
+  // One cell of the data view and the text alternative: the label as text, the change signed, the running total.
+  const cellOf = (value: string | number | null, column: number, row: number) => {
+    if (column === 0) return textOf(value, undefined, locale);
+    if (column === 1) return change(row);
+    return format(value);
+  };
   const table: ValuesTable = {
     columns: [texts.columns.label, texts.waterfall.change, texts.waterfall.running],
     rows: steps.map((step) => [data.steps[step.index].label, data.steps[step.index].value, step.end]),
@@ -252,11 +258,7 @@ export function WaterfallChart({
         table={table}
         label={texts.dataOf(label)}
         texts={texts}
-        format={(value, column, row) => {
-          if (column === 0) return textOf(value, undefined, locale);
-          if (column === 1) return change(row);
-          return format(value);
-        }}
+        format={cellOf}
         locale={locale}
         container={container}
         draw={(onPick) => (
@@ -292,7 +294,11 @@ export function WaterfallChart({
                     {...props}
                     // Only the bar of the hovered step: the transparent base of its stack, and the two tones the
                     // step is not, have no entry. An entry's name is its dataKey, the tone the step takes.
-                    payload={props.payload?.filter((item) => item.dataKey !== 'base' && (item.payload as unknown as Record<string, unknown>)[String(item.dataKey)] != null)}
+                    payload={props.payload?.filter((item) => {
+                      if (item.dataKey === 'base') return false;
+                      const value = (item.payload as Step | undefined)?.[String(item.dataKey) as (typeof TONES)[number]];
+                      return value !== null && value !== undefined;
+                    })}
                     labelFormatter={(key) => data.steps[Number(key)]?.label ?? String(key)}
                     formatter={(_value, key, item) => (
                       <span className={styles.tooltipRow}>
@@ -317,7 +323,7 @@ export function WaterfallChart({
         )}
       />
       {/* A text alternative of the delivered steps, in delivered order, with the running total each leaves. */}
-      <ValuesText caption={label} columns={table.columns} rows={table.rows.map((row, rowIndex) => row.map((value, column) => (column === 0 ? textOf(value, undefined, locale) : column === 1 ? change(rowIndex) : format(value))))} />
+      <ValuesText caption={label} columns={table.columns} rows={table.rows.map((row, rowIndex) => row.map((value, column) => cellOf(value, column, rowIndex)))} />
     </div>
   );
 }
