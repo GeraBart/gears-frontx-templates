@@ -195,7 +195,7 @@ describe('the mock host', () => {
   });
 
   it('answers the treemap items of the repositories, whose labels and values equal the repositories and commits of the activity of the period', async () => {
-    for (const query of ['?period=7d', '?period=30d']) {
+    for (const query of ['?period=7d', '?period=30d', '?period=90d']) {
       const [treemap, activity] = (await Promise.all([askDemo(`/api/demo/repos/commits${query}`), askDemo(`/api/demo/repos/activity${query}`)])) as [
         { items: { label: string; value: number | null; group: string | null }[] },
         Activity,

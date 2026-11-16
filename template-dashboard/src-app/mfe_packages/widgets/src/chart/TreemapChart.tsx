@@ -82,9 +82,9 @@ function squarified(values: number[], box: TileBox): TileBox[] {
     const along = horizontal ? rest.width : rest.height;
     const worstOf = (row: number[]) => {
       const sum = row.reduce((total, value) => total + value, 0);
-      const widest = Math.max(...row);
-      const narrowest = Math.min(...row);
-      return Math.max((along * along * widest) / (sum * sum), (sum * sum) / (along * along * narrowest));
+      const largest = Math.max(...row);
+      const smallest = Math.min(...row);
+      return Math.max((along * along * largest) / (sum * sum), (sum * sum) / (along * along * smallest));
     };
     const row = [scaled[laid[index]]];
     let best = worstOf(row);
@@ -187,11 +187,11 @@ export function TreemapChart({
   if (!(most > 0)) return <WidgetEmpty texts={texts} />;
   const unitTotal = items.reduce((sum, item) => sum + (item.value ?? 0) / most, 0);
   const shareOf = (value: number) => value / most / unitTotal;
-  const percentOf = (share: number) => formatValue(share, { value_type: 'percent' }, locale);
+  const percentOf = (share: number | null) => formatValue(share, { value_type: 'percent' }, locale);
   const shareTextOf = (value: number) => percentOf(shareOf(value));
   // A tile is drawn for a value whose share of the box stays above 0 once scaled: a positive value too small beside
   // the largest (5e-324 beside 1e308) draws no tile, like a 0, and stays in the data view.
-  const drawn = (value: number | null) => value !== null && value / most > 0;
+  const drawn = (value: number | null): value is number => value !== null && value / most > 0;
 
   const showShare = render.show_share === true;
   const valueLabels = render.value_labels ?? 'auto';
@@ -206,18 +206,19 @@ export function TreemapChart({
   const flat: Tile[] = [];
   const groups: Group[] = [];
   if (grouped) {
-    const nested: { key: string | null; name: string; colour: string; total: number; units: number; tiles: Tile[] }[] = [];
+    const nested: Pick<Group, 'key' | 'name' | 'colour' | 'total' | 'units' | 'tiles'>[] = [];
     for (const [index, item] of items.entries()) {
-      if (!drawn(item.value)) continue;
+      const { value } = item;
+      if (!drawn(value)) continue;
       const name = item.group ?? texts.treemap.other;
       let group = nested.find((candidate) => candidate.key === item.group);
       if (!group) {
         group = { key: item.group, name, colour: colourOf(nested.length), total: 0, units: 0, tiles: [] };
         nested.push(group);
       }
-      group.total += item.value as number;
-      group.units += (item.value as number) / most;
-      group.tiles.push({ index, label: item.label, value: item.value as number, box: { x: 0, y: 0, width: 0, height: 0 }, colour: group.colour, group: name });
+      group.total += value;
+      group.units += value / most;
+      group.tiles.push({ index, label: item.label, value, box: { x: 0, y: 0, width: 0, height: 0 }, colour: group.colour, group: name });
     }
     const faces = squarified(
       nested.map((group) => group.units),
@@ -240,13 +241,13 @@ export function TreemapChart({
       groups.push({ ...group, face, head, totalText, withTotal });
     }
   } else {
-    const positive = items.flatMap((item, index) => (drawn(item.value) ? [{ index, item }] : []));
+    const positive = items.flatMap((item, index) => (drawn(item.value) ? [{ index, label: item.label, value: item.value }] : []));
     const boxes = squarified(
-      positive.map(({ item }) => item.value as number),
+      positive.map(({ value }) => value),
       whole,
     );
-    for (const [position, { index, item }] of positive.entries()) {
-      flat.push({ index, label: item.label, value: item.value as number, box: boxes[position], colour: colourOf(position) });
+    for (const [position, { index, label: itemLabel, value }] of positive.entries()) {
+      flat.push({ index, label: itemLabel, value, box: boxes[position], colour: colourOf(position) });
     }
   }
 
@@ -282,7 +283,7 @@ export function TreemapChart({
   const format = (value: string | number | null, column: number) => {
     const number = typeof value === 'number' ? value : null;
     if (column === valueColumn) return valueOf(number);
-    if (column === shareColumn) return formatValue(number, { value_type: 'percent' }, locale);
+    if (column === shareColumn) return percentOf(number);
     return textOf(value, undefined, locale);
   };
 
