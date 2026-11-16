@@ -66,6 +66,16 @@ interface Step {
   size: number;
 }
 
+/**
+ * The running sum one delivered step moves to: a first step that is a total with a value sets it, a delta with a
+ * value adds to it, a null delta or a later total leaves it. The check and the drawing both move by it.
+ */
+function runningAfter(running: number, step: WaterfallData['steps'][number], index: number): number {
+  if (step.value === null) return running;
+  if ((step.kind ?? 'delta') === 'delta') return running + step.value;
+  return index === 0 ? step.value : running;
+}
+
 // @cpt-algo:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2
 /**
  * The waterfall's own check of its data: the first total after the first step whose delivered value is not the
@@ -85,8 +95,7 @@ export function checkWaterfall(data: WaterfallData): string | null {
     }
     // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-total
     // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-sum
-    if (total && index === 0 && step.value !== null) running = step.value;
-    else if (!total && step.value !== null) running += step.value;
+    running = runningAfter(running, step, index);
     // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-sum
     // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-card-checks:p2:inst-wc-card-waterfall-finite
     if (!Number.isFinite(running)) return `waterfall_chart: data.steps[${index}] moves the running sum out of the finite range`;
@@ -103,8 +112,7 @@ function stepsOf(data: WaterfallData): Step[] {
   for (const [index, step] of data.steps.entries()) {
     const kind = step.kind ?? 'delta';
     const start = running;
-    if (kind === 'total' && index === 0 && step.value !== null) running = step.value;
-    else if (kind === 'delta' && step.value !== null) running += step.value;
+    running = runningAfter(running, step, index);
     // A total draws the running sum from zero: its bar spans the whole sum, drawn down when the sum is below it.
     const end = running;
     const value = step.value;
