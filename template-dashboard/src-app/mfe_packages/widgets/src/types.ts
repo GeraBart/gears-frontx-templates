@@ -353,8 +353,8 @@ export interface ActivityFeedData {
   /**
    * 0 to 200 items in the delivered order, which the feed keeps. Each item needs a time (an ISO 8601 date-time or a
    * bare `YYYY-MM-DD` date, the one date rule) and a title of 1 to 120 characters, and may carry a text of up to 400
-   * characters, a tone of the shared tones, and a link target (the shared link rule). A time no date reads as fails
-   * the cell, naming the item by its position.
+   * characters, a tone of the shared tones, and a link target (the shared link rule). A time that is no such date
+   * fails the cell, naming the item by its position.
    */
   items: { time: string; title: string; text?: string; tone?: Tone; href?: string }[];
 }

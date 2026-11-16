@@ -2,8 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { MetricCard } from './cards/MetricCard';
 import { ActivityFeed } from './cards/ActivityFeed';
+import { MetricCard } from './cards/MetricCard';
 import { ProgressListCard } from './cards/ProgressListCard';
 import { RadialProgress } from './cards/RadialProgress';
 import { RankedListCard } from './cards/RankedListCard';
