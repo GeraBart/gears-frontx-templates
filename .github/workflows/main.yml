@@ -100,11 +100,21 @@ jobs:
     - name: Check template mfes import boundary (ADR-0003)
       run: npm run policy:template-mfes-import-boundary
 
+    # A .gitignore a template ships lands in every seeded project: none may
+    # ignore a path any template declares in its ownershipBoundaries (the
+    # shell's once hid every MFE package `frontx add` brought in). Unlike the
+    # other policy guards (findGuardedTemplateDirs), it finds templates by
+    # manifest presence (findTemplateDirs): a template without a manifest
+    # cannot be seeded, so it ships no .gitignore into a project.
+    - name: Check seeded .gitignore keeps template ground tracked
+      run: npm run policy:seeded-gitignore
+
   # template-dashboard has no frontx-template.json yet, so template-validate
-  # does not see it. The policy guards above still walk it: it is listed in
-  # PRE_MANIFEST_TEMPLATE_DIRS (scripts/template-discovery.mjs) until its
-  # manifest lands. Its two packages (src-app/mfe_packages/{dashboard,widgets})
-  # are type-checked and tested through the template's own dev harness.
+  # and the seeded .gitignore check do not see it. The other policy guards
+  # above still walk it: it is listed in PRE_MANIFEST_TEMPLATE_DIRS
+  # (scripts/template-discovery.mjs) until its manifest lands. Its two
+  # packages (src-app/mfe_packages/{dashboard,widgets}) are type-checked and
+  # tested through the template's own dev harness.
   dashboard-template:
     name: Dashboard Template Tests
     runs-on: ubuntu-latest

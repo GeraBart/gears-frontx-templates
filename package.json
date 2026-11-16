@@ -19,6 +19,7 @@
     "policy:template-lockfile-selflink": "node scripts/template-lockfile-selflink-check.mjs",
     "policy:token-format": "node scripts/token-format-check.mjs",
     "policy:template-mfes-import-boundary": "node scripts/template-mfes-import-boundary-check.mjs",
+    "policy:seeded-gitignore": "node scripts/seeded-gitignore-check.mjs",
     "policy:version-bump-on-change": "node scripts/version-bump-on-change-check.mjs"
   },
   "devDependencies": {
