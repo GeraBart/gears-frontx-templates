@@ -60,6 +60,9 @@ const DEFAULT_JOBS = 4;
 const onlyAt = argv.indexOf('--only');
 if (onlyAt !== -1 && onlyAt === argv.length - 1) failWith('--only needs the type of the bundle to build');
 const only = onlyAt === -1 ? undefined : argv[onlyAt + 1];
+// A value that starts with "-" is an option, not a type: fail fast here
+// instead of letting the vite build fail on a bundle root it cannot find.
+if (only !== undefined && only.startsWith('-')) failWith(`--only needs the type of the bundle to build, got "${only}"`);
 
 if (only !== undefined) {
   // A child: the per-bundle body, nothing else.
@@ -87,7 +90,7 @@ if (only !== undefined) {
       cap = parseJobs(argv[index], '--jobs');
     } else if (arg.startsWith('--jobs=')) {
       cap = parseJobs(arg.slice('--jobs='.length), '--jobs');
-    } else if (arg.startsWith('--')) {
+    } else if (arg.startsWith('-')) {
       failWith(`unknown option ${arg}: the parent takes --jobs N and the names of bundles to build`);
     } else {
       named.push(arg);
@@ -101,6 +104,25 @@ if (only !== undefined) {
   let next = 0;
   let running = 0;
   const failed = [];
+
+  // The parent told to stop on its own (SIGTERM from a CI step or a container
+  // stop, SIGINT sent to its pid only) takes every live child down with the
+  // same signal, then exits 130 or 143: no child is left building into dist/.
+  // A SIGKILL of the parent cannot be handled (no handler runs), so a parent
+  // killed that way stays out of reach here. The handlers go in once, before
+  // the first spawn, not per child.
+  const children = new Set();
+  const signalChildren = (signal) => {
+    for (const child of children) child.kill(signal);
+  };
+  process.on('SIGINT', () => {
+    signalChildren('SIGINT');
+    process.exit(130);
+  });
+  process.on('SIGTERM', () => {
+    signalChildren('SIGTERM');
+    process.exit(143);
+  });
 
   const finish = () => {
     if (failed.length) {
@@ -131,6 +153,7 @@ if (only !== undefined) {
         failed.push(type);
         continue;
       }
+      children.add(child);
       let out = '';
       let err = '';
       let settled = false;
@@ -148,6 +171,7 @@ if (only !== undefined) {
       const settle = (failedRun) => {
         if (settled) return;
         settled = true;
+        children.delete(child);
         running -= 1;
         // A child's output goes out whole, so two bundles never share a line.
         if (out) process.stdout.write(out.endsWith('\n') ? out : `${out}\n`);
