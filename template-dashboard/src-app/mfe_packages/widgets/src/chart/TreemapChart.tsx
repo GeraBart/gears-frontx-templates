@@ -59,7 +59,8 @@ export function checkTreemap(data: TreemapData): string | null {
  * filled greedily while the worst aspect ratio of the row improves. The values are scaled over their largest first,
  * so a total beyond the largest number (two 1.5e308 items) divides by finite numbers only. A box without room, or
  * no value, lays every tile out at 0 by 0 at the box's corner, and so does a value whose area scales to 0 (a
- * positive value too small beside the largest, 5e-324 beside 1e308), never a NaN one.
+ * positive value too small beside the largest, 5e-324 beside 1e308), never a NaN one, and so does a value left with
+ * no room by the rows before it.
  */
 function squarified(values: number[], box: TileBox): TileBox[] {
   if (values.length === 0 || !(box.width > 0) || !(box.height > 0)) return values.map(() => ({ x: box.x, y: box.y, width: 0, height: 0 }));
@@ -72,7 +73,9 @@ function squarified(values: number[], box: TileBox): TileBox[] {
   const laid = scaled.flatMap((area, at) => (area > 0 ? [at] : []));
   const rest = { ...box };
   let index = 0;
-  while (index < laid.length) {
+  // The room left after a row can round to 0 or a hair below while items remain (1e-20 beside 1): those items keep
+  // the 0 by 0 tile they start with, never an infinite or negative one.
+  while (index < laid.length && rest.width > 0 && rest.height > 0) {
     // A row lies along the shorter side of the room that is left: side by side in a strip across the top of a
     // taller (or square) room, stacked in a strip against the left of a wider one.
     const horizontal = rest.width <= rest.height;

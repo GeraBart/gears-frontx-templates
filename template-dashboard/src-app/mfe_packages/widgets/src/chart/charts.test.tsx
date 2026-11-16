@@ -1250,6 +1250,25 @@ describe('treemap_chart', () => {
     expect(rowsOf().slice(1).map((row) => row[0])).toEqual(['huge', 'tiny']);
   });
 
+  it('lays a tile out at 0 by 0 when the rows before it leave no room, in a wide box and a tall one', () => {
+    // 1e-20 beside 1 keeps an area above 0, but the first row takes the whole box once rounded, so no room is left.
+    const items: TreemapData['items'] = [
+      { label: 'huge', value: 1, group: null },
+      { label: 'tiny', value: 1e-20, group: null },
+    ];
+    sized(600, 300);
+    expect(tiles(draw(items).container).map(boxOf)).toEqual([
+      [0, 0, 600, 300],
+      [0, 0, 0, 0],
+    ]);
+    cleanup();
+    sized(300, 600);
+    expect(tiles(draw(items).container).map(boxOf)).toEqual([
+      [0, 0, 300, 600],
+      [0, 0, 0, 0],
+    ]);
+  });
+
   it('names every tile and its value whatever the tile shows, and colours it by its palette place', () => {
     const { container } = draw(ITEMS);
     expect(tiles(container).map((tile) => tile.getAttribute('aria-label'))).toEqual(['payments-api: 420', 'web-console: 260', 'mobile-app: 140']);
