@@ -492,6 +492,10 @@ describe('the shared date rule', () => {
   it.each([
     ['2026-11-09', Date.UTC(2026, 10, 9)],
     ['2028-02-29', Date.UTC(2028, 1, 29)],
+    // The earliest years, worked out from the calendar apart from Date: 719528 days before 1970 (the year 0 a leap
+    // year), and 99 years of 365 days, 25 of them leap, plus 364 days later.
+    ['0000-01-01', -62167219200000],
+    ['0099-12-31', -59011545600000],
     ['2026-02-29', null],
     ['2026-02-30', null],
     ['2026-13-01', null],

@@ -4,7 +4,7 @@ import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/co
 
 import { formatShare, formatValue, textOf, nonFiniteProblemOf } from '../format';
 import { legendOf, PALETTE } from './legend';
-import { timeOf as timeOfText } from '../time';
+import { dateFormatOf, timeOf as timeOfText } from '../time';
 import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
 import type { CartesianData, CartesianRender, CartesianSeriesOption, ReferenceLineOption } from '../types';
 import styles from '../widgets.module.css';
@@ -446,10 +446,11 @@ export function CartesianChart({
   const oneDay = times.length > 0 && new Date(first).toDateString() === new Date(last).toDateString();
   const dayFormat: Intl.DateTimeFormatOptions = { dateStyle: 'medium', ...(utcDays ? { timeZone: 'UTC' } : {}) };
   const hours: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', ...(timeStyle === 'medium' ? { second: '2-digit' } : {}) };
-  const tickDates = new Intl.DateTimeFormat(locale, days || last - first >= 2 * DAY ? dayFormat : oneDay ? { timeStyle } : { month: 'short', day: 'numeric', ...hours });
-  const fullDates = new Intl.DateTimeFormat(locale, days ? dayFormat : { dateStyle: 'medium', timeStyle });
-  const xText = (value: string | number | null) => (axis === 'time' && typeof value === 'number' ? fullDates.format(value) : textOf(value, undefined, locale));
-  const tickText = (value: string | number | null) => (axis === 'time' && typeof value === 'number' ? tickDates.format(value) : textOf(value, undefined, locale));
+  // A date before the year 1 writes its era, so the year 0 (1 BC) does not read as the year 1.
+  const tickDates = dateFormatOf(locale, days || last - first >= 2 * DAY ? dayFormat : oneDay ? { timeStyle } : { month: 'short', day: 'numeric', ...hours });
+  const fullDates = dateFormatOf(locale, days ? dayFormat : { dateStyle: 'medium', timeStyle });
+  const xText = (value: string | number | null) => (axis === 'time' && typeof value === 'number' ? fullDates(value) : textOf(value, undefined, locale));
+  const tickText = (value: string | number | null) => (axis === 'time' && typeof value === 'number' ? tickDates(value) : textOf(value, undefined, locale));
   const xLabel = render.x_axis?.label ?? texts.columns.x;
   const sizeLabel = render.size_label ?? texts.columns.size;
   // Sized scatter points: the largest delivered size sets the largest bubble, so sizes of all series compare.

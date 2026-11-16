@@ -36,3 +36,23 @@ export function timeOf(time: string): number | null {
   }
   return dayOf(time);
 }
+
+/**
+ * A date formatter that writes the era for a date before the year 1. Intl writes the year 0 (1 BC) as "1", the same
+ * as the year 1, and takes no era beside `dateStyle`; such a date is written instead by the components of the medium
+ * date style (and of the time style asked) with the short era, as "Jan 1, 1 BC", read in the same zone. Every later
+ * date, and a formatter that writes no year, keeps the formatter as asked.
+ */
+export function dateFormatOf(locale: string, options: Intl.DateTimeFormatOptions): (time: number) => string {
+  const asked = new Intl.DateTimeFormat(locale, options);
+  const { dateStyle, timeStyle, ...rest } = options;
+  if (dateStyle === undefined && rest.year === undefined) return (time) => asked.format(time);
+  const early = new Intl.DateTimeFormat(locale, {
+    ...rest,
+    ...(dateStyle === undefined ? {} : { year: 'numeric', month: 'short', day: 'numeric' }),
+    ...(timeStyle === undefined ? {} : { hour: 'numeric', minute: '2-digit', ...(timeStyle === 'short' ? {} : { second: '2-digit' }) }),
+    era: 'short',
+  });
+  const utc = asked.resolvedOptions().timeZone === 'UTC';
+  return (time) => ((utc ? new Date(time).getUTCFullYear() : new Date(time).getFullYear()) < 1 ? early : asked).format(time);
+}

@@ -7,7 +7,7 @@ import { nonFiniteProblemOf } from '../format';
 import { SafeLink } from '../links';
 import { DEFAULT_WIDGET_TEXTS, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
 import type { ActivityFeedData, ActivityFeedRender, Tone } from '../types';
-import { ISO_DATE_TIME, timeOf } from '../time';
+import { dateFormatOf, ISO_DATE_TIME, timeOf } from '../time';
 import { useDataVersion } from '../grid/useDataVersion';
 import styles from '../widgets.module.css';
 
@@ -57,8 +57,8 @@ const formatsOf = (locale: string) => {
   const tag = intlLocaleOf(locale);
   return {
     relative: new Intl.RelativeTimeFormat(tag, { numeric: 'auto' }),
-    dateTime: new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeStyle: 'short' }),
-    date: new Intl.DateTimeFormat(tag, { dateStyle: 'medium', timeZone: 'UTC' }),
+    dateTime: dateFormatOf(tag, { dateStyle: 'medium', timeStyle: 'short' }),
+    date: dateFormatOf(tag, { dateStyle: 'medium', timeZone: 'UTC' }),
   };
 };
 type Formats = ReturnType<typeof formatsOf>;
@@ -77,7 +77,7 @@ const relativeOf = (time: number, dateTime: boolean, now: number, format: Intl.R
 };
 
 /** A time as the host locale writes it: a bare date alone, a date-time with its time of day in the host zone. */
-const absoluteOf = (time: number, dateTime: boolean, formats: Formats): string => (dateTime ? formats.dateTime : formats.date).format(time);
+const absoluteOf = (time: number, dateTime: boolean, formats: Formats): string => (dateTime ? formats.dateTime : formats.date)(time);
 
 /** The icon of each tone an item may carry; a neutral item draws no mark, as a grid row of no colour does. */
 const FEED_MARKS: Partial<Record<Tone, LucideIcon>> = { success: CircleCheckIcon, warning: CircleAlertIcon, danger: CircleXIcon, info: InfoIcon };
