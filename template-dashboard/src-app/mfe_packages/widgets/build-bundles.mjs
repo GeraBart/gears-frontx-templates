@@ -113,18 +113,33 @@ if (only !== undefined) {
       const type = types[next];
       next += 1;
       running += 1;
-      const child = spawn(process.execPath, [script, '--only', type], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let child;
+      try {
+        child = spawn(process.execPath, [script, '--only', type], { stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (error) {
+        // Some errno values make spawn() throw instead of emitting 'error'
+        // (ENOMEM among them): report it, count the bundle failed, and do not
+        // count it as running, so the build ends with the failed summary
+        // instead of crashing.
+        writeSync(2, `${type}: ${error.message}\n`);
+        running -= 1;
+        failed.push(type);
+        continue;
+      }
       let out = '';
       let err = '';
       let settled = false;
-      child.stdout.setEncoding('utf8');
-      child.stderr.setEncoding('utf8');
-      child.stdout.on('data', (chunk) => { out += chunk; });
-      child.stderr.on('data', (chunk) => { err += chunk; });
-      // A child settles once, on the first of 'close' and 'error': a spawn
-      // that fails (EAGAIN, ENOMEM) emits 'error' and may never emit 'close',
-      // so the child is still counted, its error recorded, and the build ends
-      // with the failed summary instead of crashing on the unhandled event.
+      // EMFILE and ENFILE leave the child without pipes to read.
+      child.stdout?.setEncoding('utf8');
+      child.stderr?.setEncoding('utf8');
+      child.stdout?.on('data', (chunk) => { out += chunk; });
+      child.stderr?.on('data', (chunk) => { err += chunk; });
+      // A child settles once, on the first of 'close' and 'error'. 'error'
+      // covers the async spawn failures (EACCES, EAGAIN, EMFILE, ENFILE,
+      // ENOENT): such a child may never emit 'close', so it is still counted,
+      // its error recorded, and the build ends with the failed summary instead
+      // of crashing on the unhandled event. Other spawn failures throw from
+      // spawn() and are caught above.
       const settle = (failedRun) => {
         if (settled) return;
         settled = true;
