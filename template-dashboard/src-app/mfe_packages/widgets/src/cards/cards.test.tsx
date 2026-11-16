@@ -1144,11 +1144,15 @@ describe('activity_feed', () => {
 
   it('shows the items of the years 0000 to 0099, a date-time and a bare date, as the years they name', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    render(<ActivityFeed payload={{ render: { time_style: 'absolute' }, data: { items: [item('first', '0099-12-31T10:00:00Z'), item('second', '0099-12-30')] } }} />);
+    render(<ActivityFeed payload={{ render: { time_style: 'absolute' }, data: { items: [item('first', '0099-12-31T10:00:00Z'), item('second', '0099-12-30'), item('third', '0045-06-01'), item('fourth', '0000-01-01')] } }} />);
     expect(screen.queryByText('This widget cannot be shown')).toBeNull();
     expect(error).not.toHaveBeenCalled();
     expect(screen.getByText('first')).toBeTruthy();
     expect(screen.getByText('second')).toBeTruthy();
+    // A bare date reads in UTC, so its text holds in any zone; English shows the year 0 (1 BC) as 1, with no era.
+    expect(document.body.textContent).toContain('Dec 30, 99');
+    expect(document.body.textContent).toContain('Jun 1, 45');
+    expect(document.body.textContent).toMatch(/Jan 1, 1(?!\d)/);
     expect(document.body.textContent).not.toMatch(/19\d\d/);
   });
 
