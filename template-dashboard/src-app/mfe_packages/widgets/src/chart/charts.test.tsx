@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CartesianData, CartesianRender, FunnelData, FunnelRender, RadarData, RadarRender, TreemapData, TreemapRender, WaterfallData, WaterfallRender } from '../types';
+import type { ValueFormat } from '@gears-frontx/frontx-dashboard-root/contract';
 import { DEFAULT_WIDGET_TEXTS, type WidgetTexts } from '../states';
 import { CartesianChart, checkCartesian } from './CartesianChart';
 import { PieChart, checkPie } from './PieChart';
@@ -271,8 +272,10 @@ describe('cartesian_chart', () => {
 
   it('takes bare dates as points on a time axis, at their UTC midnight, and fails a date the calendar does not have', () => {
     const payload = (xs: string[]) => ({ render: { x_axis: { type: 'time' as const }, series: [{ name: 'A', type: 'line' as const }] }, data: { series: [{ name: 'A', points: xs.map((x) => ({ x, y: 1 })) }] } });
-    expect(checkCartesian(payload(['2026-11-09', '2026-11-10']).render, payload(['2026-11-09', '2026-11-10']).data)).toBeNull();
-    expect(checkCartesian(payload(['2026-02-30']).render, payload(['2026-02-30']).data)).toBe('cartesian_chart: series 0 point 0 needs an ISO 8601 date-time, a YYYY-MM-DD date or epoch milliseconds');
+    const days = payload(['2026-11-09', '2026-11-10']);
+    expect(checkCartesian(days.render, days.data)).toBeNull();
+    const feb30 = payload(['2026-02-30']);
+    expect(checkCartesian(feb30.render, feb30.data)).toBe('cartesian_chart: series 0 point 0 needs an ISO 8601 date-time, a YYYY-MM-DD date or epoch milliseconds');
     render(<CartesianChart payload={payload(['2026-11-09', '2026-11-10T00:00:00Z'])} label="Bare" />);
     expect(within(alternative('Bare')).getAllByRole('row', { hidden: true }).slice(1).map((row) => row.textContent?.replace(/\s/g, ' '))).toEqual(['Nov 9, 20261', 'Nov 10, 20261']);
   });
@@ -296,8 +299,10 @@ describe('cartesian_chart', () => {
 
   it('fails a date-time on a time axis whose day the calendar does not have, naming the series and the point', () => {
     const payload = (xs: string[]) => ({ render: { x_axis: { type: 'time' as const }, series: [{ name: 'A', type: 'line' as const }, { name: 'B', type: 'line' as const }] }, data: { series: [{ name: 'A', points: [{ x: '2026-11-09T10:00:00Z', y: 1 }] }, { name: 'B', points: xs.map((x) => ({ x, y: 1 })) }] } });
-    expect(checkCartesian(payload(['2026-02-28T10:00:00Z']).render, payload(['2026-02-28T10:00:00Z']).data)).toBeNull();
-    expect(checkCartesian(payload(['2026-02-28T10:00:00Z', '2026-02-30T10:00:00Z']).render, payload(['2026-02-28T10:00:00Z', '2026-02-30T10:00:00Z']).data)).toBe(
+    const baseline = payload(['2026-02-28T10:00:00Z']);
+    expect(checkCartesian(baseline.render, baseline.data)).toBeNull();
+    const withFeb30 = payload(['2026-02-28T10:00:00Z', '2026-02-30T10:00:00Z']);
+    expect(checkCartesian(withFeb30.render, withFeb30.data)).toBe(
       'cartesian_chart: series 1 point 1 needs an ISO 8601 date-time, a YYYY-MM-DD date or epoch milliseconds',
     );
   });
@@ -603,22 +608,16 @@ describe('pie_chart', () => {
   });
 });
 
-describe('funnel_chart', () => {
-  const STAGES: FunnelData['stages'] = [
-    { label: 'Opened', value: 200 },
-    { label: 'Reviewed', value: 150 },
-    { label: 'Approved', value: 120 },
-    { label: 'Merged', value: 96 },
-  ];
-  const draw = (stages: FunnelData['stages'], options: FunnelRender = {}, extra: object = {}) =>
-    render(<FunnelChart payload={{ render: options, data: { stages }, ...extra }} label="Pull requests" />);
-  const parts = (container: HTMLElement, part: string) => [...container.querySelectorAll('[data-stage]')].map((stage) => stage.querySelector(`[data-part="${part}"]`)?.textContent ?? null);
-  const shares = (container: HTMLElement) => [...container.querySelectorAll('[data-stage]')].map((stage) => stage.querySelector('[data-share]')?.getAttribute('data-share') ?? null);
-  const rowsOf = () => within(alternative('Pull requests')).getAllByRole('row', { hidden: true }).map((row) => [...row.children].map((cell) => cell.textContent));
+/** The payload fields a test passes beside the render and the data. */
+type Extra = { value_format?: ValueFormat };
 
-  // The widget's body as the ResizeObserver reports it.
+/**
+ * The widget's body as the ResizeObserver reports it, for the describe block that calls this: each test starts at 600
+ * by 300 px, `sized` sets another size (and, for a list, a size of its own apart from the widget's), and after each
+ * test the observer comes back and the mocks are restored.
+ */
+const stubSizedObserver = () => {
   const original = globalThis.ResizeObserver;
-  // A list size apart from the widget's, as the drill-down button takes height from the list but not from the widget.
   const sized = (width: number, height: number, list?: { width: number; height: number }) => {
     globalThis.ResizeObserver = class {
       constructor(private readonly callback: ResizeObserverCallback) {}
@@ -635,6 +634,26 @@ describe('funnel_chart', () => {
     globalThis.ResizeObserver = original;
     vi.restoreAllMocks();
   });
+  return sized;
+};
+
+describe('funnel_chart', () => {
+  const STAGES: FunnelData['stages'] = [
+    { label: 'Opened', value: 200 },
+    { label: 'Reviewed', value: 150 },
+    { label: 'Approved', value: 120 },
+    { label: 'Merged', value: 96 },
+  ];
+  const draw = (stages: FunnelData['stages'], options: FunnelRender = {}, extra: Extra = {}) =>
+    render(<FunnelChart payload={{ render: options, data: { stages }, ...extra }} label="Pull requests" />);
+  const parts = (container: HTMLElement, part: string) => [...container.querySelectorAll('[data-stage]')].map((stage) => stage.querySelector(`[data-part="${part}"]`)?.textContent ?? null);
+  const shares = (container: HTMLElement) => [...container.querySelectorAll('[data-stage]')].map((stage) => stage.querySelector('[data-share]')?.getAttribute('data-share') ?? null);
+  const rowsOf = () => within(alternative('Pull requests')).getAllByRole('row', { hidden: true }).map((row) => [...row.children].map((cell) => cell.textContent));
+
+  // The widget's body as the ResizeObserver reports it; a list size apart from the widget's, as the drill-down button
+  // takes height from the list but not from the widget. The observer of the page, for a test before any measurement.
+  const original = globalThis.ResizeObserver;
+  const sized = stubSizedObserver();
 
   it('draws one bar per stage, as wide as its value over the largest, with its label, value and conversion', () => {
     const { container } = draw(STAGES);
@@ -874,29 +893,6 @@ describe('funnel_chart', () => {
   });
 });
 
-/**
- * The widget's body as the ResizeObserver reports it, for the describe block that calls this: each test starts at 600
- * by 300 px, `sized` sets another size, and after each test the observer comes back and the mocks are restored.
- */
-const stubSizedObserver = () => {
-  const original = globalThis.ResizeObserver;
-  const sized = (width: number, height: number) => {
-    globalThis.ResizeObserver = class {
-      constructor(private readonly callback: ResizeObserverCallback) {}
-      observe(target: Element) {
-        this.callback([{ target, contentRect: { width, height } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
-  };
-  beforeEach(() => sized(600, 300));
-  afterEach(() => {
-    globalThis.ResizeObserver = original;
-    vi.restoreAllMocks();
-  });
-  return sized;
-};
 
 describe('radar_chart', () => {
   const POINTS: RadarData['points'] = [
@@ -907,7 +903,7 @@ describe('radar_chart', () => {
     { axis: 'Wed', series: 'Web', value: 0 },
     { axis: 'Wed', series: 'API', value: 5 },
   ];
-  const draw = (points: RadarData['points'], options: RadarRender = {}, extra: object = {}) =>
+  const draw = (points: RadarData['points'], options: RadarRender = {}, extra: Extra = {}) =>
     render(<RadarChart payload={{ render: options, data: { points }, ...extra }} label="Commits" />);
   const axisTicks = (container: HTMLElement) => [...container.querySelectorAll('.recharts-polar-angle-axis-tick-value')].map((tick) => tick.textContent);
   const polygons = (container: HTMLElement) => [...container.querySelectorAll('.recharts-radar-polygon path')];
@@ -1183,7 +1179,7 @@ describe('treemap_chart', () => {
     { label: 'web-console', value: 260, group: null },
     { label: 'mobile-app', value: 140, group: null },
   ];
-  const draw = (items: TreemapData['items'], options: TreemapRender = {}, extra: object = {}) =>
+  const draw = (items: TreemapData['items'], options: TreemapRender = {}, extra: Extra = {}) =>
     render(<TreemapChart payload={{ render: options, data: { items }, ...extra }} label="Commits" />);
   const rowsOf = () => within(alternative('Commits')).getAllByRole('row', { hidden: true }).map((row) => [...row.children].map((cell) => cell.textContent));
   const tiles = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('[class*="treemapTile"]')];
@@ -1639,7 +1635,7 @@ describe('waterfall_chart', () => {
     { label: 'Waiting to deploy', value: 2.1 },
     { label: 'Lead time', value: 26.4, kind: 'total' },
   ];
-  const draw = (steps: WaterfallData['steps'], options: WaterfallRender = {}, extra: object = {}) =>
+  const draw = (steps: WaterfallData['steps'], options: WaterfallRender = {}, extra: Extra = {}) =>
     render(<WaterfallChart payload={{ render: options, data: { steps }, ...extra }} label="Lead time" />);
   const rowsOf = () => within(alternative('Lead time')).getAllByRole('row', { hidden: true }).map((row) => [...row.children].map((cell) => cell.textContent));
   // A drawn bar: the transparent base of the stack renders its own shapes, and is not a bar of the chart.
@@ -1798,7 +1794,10 @@ describe('waterfall_chart', () => {
 
   it('touches the end of one bar and the start of the next with its connector, as the bars are laid out', () => {
     const { container } = draw(STEPS);
-    const rects = bars(container).map((bar) => ({ x: Number(bar.getAttribute('x')), width: Number(bar.getAttribute('width')) }));
+    // The bars stand in the tree per tone series, not left to right: sorted by x they line up with the connectors.
+    const rects = bars(container)
+      .map((bar) => ({ x: Number(bar.getAttribute('x')), width: Number(bar.getAttribute('width')) }))
+      .sort((one, other) => one.x - other.x);
     const lines = connectors(container);
     // The connector out of a bar leaves its right edge and arrives at the next bar's left edge.
     expect(Number(lines[0]!.getAttribute('x1'))).toBeCloseTo(rects[0]!.x + rects[0]!.width, 6);
