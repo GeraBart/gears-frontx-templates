@@ -37,6 +37,25 @@ const pie = (uuid: string, extra: Record<string, unknown> = {}) => ({
 
 const dashboardOf = (cells: unknown[]): Dashboard => ({ id: DASHBOARD, title: 'Order', layout: { cells } }) as unknown as Dashboard;
 
+/** A widget of one shipped type with one render field set, in a small cell: the type prefix, a demo widget, the field, the uuid tail and the value. */
+const withRender = (type: string, widget: { render: Record<string, unknown> }, field: string, uuid: string, value: unknown) => ({
+  size: 'small',
+  widget: { ...widget, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...widget.render, [field]: value } },
+});
+
+/** The problem the real store finds with a data instance of one data type, or null: the data type prefix and the uuid tail. */
+const problemOfFor = (dataPrefix: string, uuid: string) => (data: Record<string, unknown>) => {
+  const id = `${dataPrefix}1a2b3c4d-0000-4000-8000-0000000000${uuid}`;
+  const { types } = loaded();
+  try {
+    types.register({ ...data, id });
+  } catch (error) {
+    return String(error);
+  }
+  const { valid, errors } = types.validateInstance(id);
+  return valid ? null : JSON.stringify(errors);
+};
+
 describe('registration order under reference lookup', () => {
   it('registers the catalog and the demo dashboard with no failed cell', () => {
     const { types, outcome } = loaded();
@@ -182,8 +201,8 @@ describe('registration order under reference lookup', () => {
     const type = shipped.find((id) => id.endsWith('.radial_progress.v1~'))!;
     const radial = demoWidgets.find((widget) => widget.id.startsWith(type))!;
     const { types } = loaded();
-    const withDisplay = (uuid: string, display: unknown) => ({ size: 'small', widget: { ...radial, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...radial.render, display } } });
-    const result = registerDashboard(types, dashboardOf([withDisplay('30', 'percent'), withDisplay('31', 'value'), withDisplay('32', 'both'), withDisplay('33', 'ring')]));
+    const values = ['percent', 'value', 'both', 'ring'];
+    const result = registerDashboard(types, dashboardOf(values.map((value, index) => withRender(type, radial, 'display', `3${index}`, value))));
     expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(3, 'cell')]);
     expect(result.ok && result.failed.get(slotOf(3, 'cell'))).toMatch(/\/render\/display/);
   });
@@ -192,8 +211,8 @@ describe('registration order under reference lookup', () => {
     const type = shipped.find((id) => id.endsWith('.funnel_chart.v1~'))!;
     const funnel = demoWidgets.find((widget) => widget.id.startsWith(type))!;
     const { types } = loaded();
-    const withLabels = (uuid: string, value_labels: unknown) => ({ size: 'small', widget: { ...funnel, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...funnel.render, value_labels } } });
-    const result = registerDashboard(types, dashboardOf([withLabels('40', 'auto'), withLabels('41', 'always'), withLabels('42', 'never'), withLabels('43', 'inside')]));
+    const values = ['auto', 'always', 'never', 'inside'];
+    const result = registerDashboard(types, dashboardOf(values.map((value, index) => withRender(type, funnel, 'value_labels', `4${index}`, value))));
     expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(3, 'cell')]);
     expect(result.ok && result.failed.get(slotOf(3, 'cell'))).toMatch(/\/render\/value_labels/);
   });
@@ -202,8 +221,8 @@ describe('registration order under reference lookup', () => {
     const type = shipped.find((id) => id.endsWith('.radar_chart.v1~'))!;
     const radar = demoWidgets.find((widget) => widget.id.startsWith(type))!;
     const { types } = loaded();
-    const withLegend = (uuid: string, legend_position: unknown) => ({ size: 'small', widget: { ...radar, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...radar.render, legend_position } } });
-    const result = registerDashboard(types, dashboardOf([withLegend('50', 'top'), withLegend('51', 'right'), withLegend('52', 'bottom'), withLegend('53', 'left'), withLegend('54', 'none'), withLegend('55', 'outside')]));
+    const values = ['top', 'right', 'bottom', 'left', 'none', 'outside'];
+    const result = registerDashboard(types, dashboardOf(values.map((value, index) => withRender(type, radar, 'legend_position', `5${index}`, value))));
     expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(5, 'cell')]);
     expect(result.ok && result.failed.get(slotOf(5, 'cell'))).toMatch(/\/render\/legend_position/);
   });
@@ -212,8 +231,8 @@ describe('registration order under reference lookup', () => {
     const type = shipped.find((id) => id.endsWith('.treemap_chart.v1~'))!;
     const treemap = demoWidgets.find((widget) => widget.id.startsWith(type))!;
     const { types } = loaded();
-    const withLabels = (uuid: string, value_labels: unknown) => ({ size: 'small', widget: { ...treemap, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...treemap.render, value_labels } } });
-    const result = registerDashboard(types, dashboardOf([withLabels('60', 'auto'), withLabels('61', 'always'), withLabels('62', 'never'), withLabels('63', 'inside')]));
+    const values = ['auto', 'always', 'never', 'inside'];
+    const result = registerDashboard(types, dashboardOf(values.map((value, index) => withRender(type, treemap, 'value_labels', `6${index}`, value))));
     expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(3, 'cell')]);
     expect(result.ok && result.failed.get(slotOf(3, 'cell'))).toMatch(/\/render\/value_labels/);
   });
@@ -222,8 +241,8 @@ describe('registration order under reference lookup', () => {
     const type = shipped.find((id) => id.endsWith('.waterfall_chart.v1~'))!;
     const waterfall = demoWidgets.find((widget) => widget.id.startsWith(type))!;
     const { types } = loaded();
-    const withLabels = (uuid: string, value_labels: unknown) => ({ size: 'small', widget: { ...waterfall, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...waterfall.render, value_labels } } });
-    const result = registerDashboard(types, dashboardOf([withLabels('70', 'auto'), withLabels('71', 'always'), withLabels('72', 'never'), withLabels('73', 'sometimes')]));
+    const values = ['auto', 'always', 'never', 'sometimes'];
+    const result = registerDashboard(types, dashboardOf(values.map((value, index) => withRender(type, waterfall, 'value_labels', `7${index}`, value))));
     expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(3, 'cell')]);
     expect(result.ok && result.failed.get(slotOf(3, 'cell'))).toMatch(/\/render\/value_labels/);
   });
@@ -232,8 +251,8 @@ describe('registration order under reference lookup', () => {
     const type = shipped.find((id) => id.endsWith('.activity_feed.v1~'))!;
     const feed = demoWidgets.find((widget) => widget.id.startsWith(type))!;
     const { types } = loaded();
-    const withStyle = (uuid: string, time_style: unknown) => ({ size: 'small', widget: { ...feed, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...feed.render, time_style } } });
-    const result = registerDashboard(types, dashboardOf([withStyle('80', 'relative'), withStyle('81', 'absolute'), withStyle('82', 'soonest')]));
+    const values = ['relative', 'absolute', 'soonest'];
+    const result = registerDashboard(types, dashboardOf(values.map((value, index) => withRender(type, feed, 'time_style', `8${index}`, value))));
     expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(2, 'cell')]);
     expect(result.ok && result.failed.get(slotOf(2, 'cell'))).toMatch(/\/render\/time_style/);
   });
@@ -242,8 +261,8 @@ describe('registration order under reference lookup', () => {
     const type = shipped.find((id) => id.endsWith('.ranked_list_card.v1~'))!;
     const ranked = demoWidgets.find((widget) => widget.id.startsWith(type))!;
     const { types } = loaded();
-    const withTones = (uuid: string, status_tones: Record<string, unknown>) => ({ size: 'small', widget: { ...ranked, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...ranked.render, status_tones } } });
-    const result = registerDashboard(types, dashboardOf([withTones('20', { Open: 'info', Late: 'danger' }), withTones('21', { Open: 'purple' }), withTones('22', { '': 'info' })]));
+    const values = [{ Open: 'info', Late: 'danger' }, { Open: 'purple' }, { '': 'info' }];
+    const result = registerDashboard(types, dashboardOf(values.map((value, index) => withRender(type, ranked, 'status_tones', `2${index}`, value))));
     expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(1, 'cell'), slotOf(2, 'cell')]);
     expect(result.ok && result.failed.get(slotOf(1, 'cell'))).toMatch(/\/render\/status_tones/);
   });
@@ -838,16 +857,7 @@ describe('effective traits', () => {
 // The radial_progress data type on the real store: what a transform result must carry, as the root registers it.
 describe('the radial_progress data type', () => {
   const RADIAL_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.radial_progress.v1~';
-  const problemOf = (data: Record<string, unknown>) => {
-    const { types } = loaded();
-    try {
-      types.register({ ...data, id: `${RADIAL_DATA}1a2b3c4d-0000-4000-8000-0000000000b1` });
-    } catch (error) {
-      return String(error);
-    }
-    const { valid, errors } = types.validateInstance(`${RADIAL_DATA}1a2b3c4d-0000-4000-8000-0000000000b1`);
-    return valid ? null : JSON.stringify(errors);
-  };
+  const problemOf = problemOfFor(RADIAL_DATA, 'b1');
 
   it.each([
     ['a current, a target and a goal', { current: 3, target: 10, goal: 8 }],
@@ -868,16 +878,7 @@ describe('the radial_progress data type', () => {
 // The radar_chart data type on the real store: what a transform result must carry, as the root registers it.
 describe('the radar_chart data type', () => {
   const RADAR_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.radar_chart.v1~';
-  const problemOf = (data: Record<string, unknown>) => {
-    const { types } = loaded();
-    try {
-      types.register({ ...data, id: `${RADAR_DATA}1a2b3c4d-0000-4000-8000-0000000000d1` });
-    } catch (error) {
-      return String(error);
-    }
-    const { valid, errors } = types.validateInstance(`${RADAR_DATA}1a2b3c4d-0000-4000-8000-0000000000d1`);
-    return valid ? null : JSON.stringify(errors);
-  };
+  const problemOf = problemOfFor(RADAR_DATA, 'd1');
   const points = (count: number) =>
     Array.from({ length: count }, (_, index) => ({ axis: `a${index}`, series: null, value: index % 3 }));
 
@@ -908,16 +909,7 @@ describe('the radar_chart data type', () => {
 // The funnel_chart data type on the real store: what a transform result must carry, as the root registers it.
 describe('the funnel_chart data type', () => {
   const FUNNEL_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.funnel_chart.v1~';
-  const problemOf = (data: Record<string, unknown>) => {
-    const { types } = loaded();
-    try {
-      types.register({ ...data, id: `${FUNNEL_DATA}1a2b3c4d-0000-4000-8000-0000000000c1` });
-    } catch (error) {
-      return String(error);
-    }
-    const { valid, errors } = types.validateInstance(`${FUNNEL_DATA}1a2b3c4d-0000-4000-8000-0000000000c1`);
-    return valid ? null : JSON.stringify(errors);
-  };
+  const problemOf = problemOfFor(FUNNEL_DATA, 'c1');
   const stages = (count: number) => Array.from({ length: count }, (_, index) => ({ label: `Stage ${index + 1}`, value: 100 - index }));
 
   it.each([
@@ -944,16 +936,7 @@ describe('the funnel_chart data type', () => {
 // The treemap_chart data type on the real store: what a transform result must carry, as the root registers it.
 describe('the treemap_chart data type', () => {
   const TREEMAP_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.treemap_chart.v1~';
-  const problemOf = (data: Record<string, unknown>) => {
-    const { types } = loaded();
-    try {
-      types.register({ ...data, id: `${TREEMAP_DATA}1a2b3c4d-0000-4000-8000-0000000000e1` });
-    } catch (error) {
-      return String(error);
-    }
-    const { valid, errors } = types.validateInstance(`${TREEMAP_DATA}1a2b3c4d-0000-4000-8000-0000000000e1`);
-    return valid ? null : JSON.stringify(errors);
-  };
+  const problemOf = problemOfFor(TREEMAP_DATA, 'e1');
   const items = (count: number) => Array.from({ length: count }, (_, index) => ({ label: `i${index}`, value: index % 3, group: null }));
 
   it.each([
@@ -982,16 +965,7 @@ describe('the treemap_chart data type', () => {
 // The waterfall_chart data type on the real store: what a transform result must carry, as the root registers it.
 describe('the waterfall_chart data type', () => {
   const WATERFALL_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.waterfall_chart.v1~';
-  const problemOf = (data: Record<string, unknown>) => {
-    const { types } = loaded();
-    try {
-      types.register({ ...data, id: `${WATERFALL_DATA}1a2b3c4d-0000-4000-8000-0000000000f1` });
-    } catch (error) {
-      return String(error);
-    }
-    const { valid, errors } = types.validateInstance(`${WATERFALL_DATA}1a2b3c4d-0000-4000-8000-0000000000f1`);
-    return valid ? null : JSON.stringify(errors);
-  };
+  const problemOf = problemOfFor(WATERFALL_DATA, 'f1');
   const steps = (count: number) => Array.from({ length: count }, (_, index) => ({ label: `s${index}`, value: index % 4 - 1, kind: index % 3 === 2 ? 'total' : 'delta' }));
 
   it.each([
@@ -1020,16 +994,7 @@ describe('the waterfall_chart data type', () => {
 // The activity_feed data type on the real store: what a transform result must carry, as the root registers it.
 describe('the activity_feed data type', () => {
   const FEED_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.activity_feed.v1~';
-  const problemOf = (data: Record<string, unknown>) => {
-    const { types } = loaded();
-    try {
-      types.register({ ...data, id: `${FEED_DATA}1a2b3c4d-0000-4000-8000-0000000000a1` });
-    } catch (error) {
-      return String(error);
-    }
-    const { valid, errors } = types.validateInstance(`${FEED_DATA}1a2b3c4d-0000-4000-8000-0000000000a1`);
-    return valid ? null : JSON.stringify(errors);
-  };
+  const problemOf = problemOfFor(FEED_DATA, 'a1');
   const items = (count: number) => Array.from({ length: count }, (_, index) => ({ time: '2026-11-04', title: `item ${index}` }));
 
   it.each([
