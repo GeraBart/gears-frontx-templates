@@ -26,16 +26,41 @@ interface ColumnLabels {
 /**
  * The x labels of a matrix with columns `track` px wide, `gap` px apart, under labels as wide as `widths`: every one
  * while the widest fits its column; otherwise every `step`-th, the smallest step that lets the widest label stand whole
- * under its own column, centred, clear of the next named one. `before` is the room left of the first column.
+ * under its own column, centred, clear of the next named one. An edge label stands off centre, (widest - track) / 2
+ * nearer its named neighbour: the last column's label when it is named (it ends at the grid's end), and the first
+ * column's when centring would cross the grid's start, as the room left of the first column, `before`, is less than
+ * that shift. The step counts that shift too, so an edge label keeps the same space to its neighbour. With few columns
+ * no step may fit: the loop stops at the column count, so only the first label is named, at most `room` wide, and the
+ * kit's text cuts it.
  */
-function columnLabelsOf(track: number, gap: number, widths: number[], before = Number.POSITIVE_INFINITY): ColumnLabels {
+function columnLabelsOf(track: number, gap: number, widths: number[], before: number): ColumnLabels {
   const widest = widths.reduce((most, width) => Math.max(most, width), 0);
   // A width is read in whole pixels: half a pixel over the column still fits it.
   if (!(track > 0) || widest - 0.5 <= track) return { step: 1, room: track, firstAtStart: false };
+  const shift = (widest - track) / 2;
+  const firstAtStart = shift > before;
+  const fits = (step: number) => {
+    const pitch = step * (track + gap);
+    if (widest + LABEL_SPACE > pitch - gap) return false;
+    const edge = firstAtStart || (widths.length - 1) % step === 0;
+    // Centres a pitch apart, the edge label moved by the shift towards its neighbour: the space between the two is
+    // pitch - shift - widest, which must hold the label space.
+    return !edge || widest + shift + LABEL_SPACE <= pitch;
+  };
   let step = 2;
-  while (step < widths.length && widest + LABEL_SPACE > step * (track + gap) - gap) step += 1;
+  while (step < widths.length && !fits(step)) step += 1;
   const room = step * (track + gap) - gap;
   return { step, room, firstAtStart: (Math.min(widest, room) - track) / 2 > before };
+}
+
+/** The class and the inline style of the x label at `index` of `count`: a named one stands whole, an edge one at its edge. */
+function columnLabelOf(index: number, count: number, labels: ColumnLabels): { className: string; style?: CSSProperties } {
+  if (labels.step === 1) return { className: styles.heatColumnAxis };
+  if (index % labels.step !== 0) return { className: `${styles.heatColumnAxis} ${styles.heatColumnAxisSkipped}` };
+  let justifySelf: 'start' | 'end' | undefined;
+  if (index === count - 1) justifySelf = 'end';
+  else if (index === 0 && labels.firstAtStart) justifySelf = 'start';
+  return { className: `${styles.heatColumnAxis} ${styles.heatColumnAxisThin}`, style: { maxInlineSize: labels.room, justifySelf } };
 }
 
 const sameLabels = (a: ColumnLabels, b: ColumnLabels) => a.step === b.step && a.room === b.room && a.firstAtStart === b.firstAtStart;
@@ -129,7 +154,7 @@ export function Heatmap({
     const observer = new ResizeObserver(fit);
     observer.observe(matrixGrid);
     return () => observer.disconnect();
-  }, [matrixGrid, payload]);
+  }, [matrixGrid, payload, locale]);
   useLayoutEffect(() => {
     if (!calendarBox) return;
     const fit = () => {
@@ -325,10 +350,7 @@ export function Heatmap({
         {xs.map((x, index) => {
           // Labels wider than their columns name every step-th column: each named one stands whole under its own
           // column, centred over the unnamed ones beside it; the last column's label ends at the grid's end.
-          const thin = columnLabels.step > 1;
-          const named = index % columnLabels.step === 0;
-          const className = !thin ? styles.heatColumnAxis : named ? `${styles.heatColumnAxis} ${styles.heatColumnAxisThin}` : `${styles.heatColumnAxis} ${styles.heatColumnAxisSkipped}`;
-          const align = index === xs.length - 1 ? 'end' : index === 0 && columnLabels.firstAtStart ? 'start' : undefined;
+          const { className, style } = columnLabelOf(index, xs.length, columnLabels);
           return (
             <Text
               key={keyOf(x)}
@@ -336,7 +358,7 @@ export function Heatmap({
               tone="muted"
               render={<span />}
               className={className}
-              style={thin && named ? { maxInlineSize: columnLabels.room, justifySelf: align } : undefined}
+              style={style}
               title={textOf(x, undefined, locale)}
             >
               {textOf(x, undefined, locale)}

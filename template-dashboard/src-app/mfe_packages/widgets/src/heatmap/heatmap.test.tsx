@@ -131,11 +131,17 @@ describe('heatmap', () => {
   describe('x labels wider than their columns', () => {
     // Twelve two-hour blocks, as the hour heatmap of the reference dashboard.
     const HOURS: HeatmapData = { rows: Array.from({ length: 12 }, (_, block) => ({ x: `${String(block * 2).padStart(2, '0')}:00`, y: 'Mon', value: block })) };
-    /** jsdom lays nothing out: a tile measures `tile` px wide and every x label `label` px, as on a page of the given width. */
-    const measure = (tile: number, label: number) => {
+    /**
+     * jsdom lays nothing out: a tile measures `tile` px wide and every x label `label` px, as on a page of the given
+     * width, and the first column starts `before` px into the grid, after the y labels. jsdom applies no stylesheet, so
+     * the columns stand with no gap.
+     */
+    const measure = (tile: number, label: number, before = 40) => {
       vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-        const width = this.classList.contains('heatCell') ? tile : 0;
-        return { width, height: 0, top: 0, left: 0, right: width, bottom: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+        const cell = this.classList.contains('heatCell');
+        const width = cell ? tile : 0;
+        const left = cell ? before : 0;
+        return { width, height: 0, top: 0, left, right: left + width, bottom: 0, x: left, y: 0, toJSON: () => ({}) } as DOMRect;
       });
       vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockImplementation(function (this: Element) {
         return this.classList.contains('heatColumnAxis') ? label : 0;
@@ -161,6 +167,63 @@ describe('heatmap', () => {
       measure(12, 30);
       const { container } = render(<Heatmap payload={{ render: {}, data: HOURS }} label="Commits by hour" />);
       expect(named(container)).toEqual(['00:00', '06:00', '12:00', '18:00']);
+    });
+
+    /**
+     * The named labels as their spans on the x axis, from their justifySelf and maxInlineSize, with columns `tile` px
+     * wide and no gap: a centred label straddles its column's centre, a start one starts at its column, an end one ends
+     * at it.
+     */
+    const spans = (container: HTMLElement, tile: number, label: number) =>
+      [...container.querySelectorAll<HTMLElement>('.heatColumnAxis')].flatMap((element, index) => {
+        if (element.classList.contains('heatColumnAxisSkipped')) return [];
+        const width = Math.min(label, parseFloat(element.style.maxInlineSize));
+        const align = element.style.justifySelf;
+        let left = index * tile + (tile - width) / 2;
+        if (align === 'start') left = index * tile;
+        if (align === 'end') left = (index + 1) * tile - width;
+        return [{ index, align, left, right: left + width }];
+      });
+    const clear = (named: { left: number; right: number }[]) => named.slice(1).every((span, index) => span.left > named[index].right);
+    const columns = (count: number): HeatmapData => ({ rows: Array.from({ length: count }, (_, index) => ({ x: `c${index}`, y: 'Mon', value: index })) });
+
+    it('keeps a named last label, which ends at the grid end, clear of the named one before it', () => {
+      // 13 columns: at every second column the last is named, ends at its column's end and would cross its neighbour.
+      measure(20, 34);
+      const { container } = render(<Heatmap payload={{ render: {}, data: columns(13) }} label="Thirteen" />);
+      const named = spans(container, 20, 34);
+      expect(named.map((span) => span.index)).toEqual([0, 3, 6, 9, 12]);
+      expect(named[0].align).toBe('');
+      expect(named.at(-1)!.align).toBe('end');
+      expect(clear(named)).toBe(true);
+    });
+
+    it('keeps a first label that starts at its column, as centring would cross the grid start, clear of the next named one', () => {
+      // No room left of the first column: the first label starts at it and stands nearer the next named one.
+      measure(20, 34, 0);
+      const { container } = render(<Heatmap payload={{ render: {}, data: columns(12) }} label="Twelve" />);
+      const named = spans(container, 20, 34);
+      expect(named.map((span) => span.index)).toEqual([0, 3, 6, 9]);
+      expect(named[0].align).toBe('start');
+      expect(named.at(-1)!.align).toBe('');
+      expect(clear(named)).toBe(true);
+    });
+
+    it('names every second column while two columns hold a label and the space beside it, and every third past that', () => {
+      // Two 17 px columns hold a 30 px label and the 4 px space exactly; a 31 px label needs three.
+      measure(17, 30);
+      const { container: two } = render(<Heatmap payload={{ render: {}, data: HOURS }} label="Two" />);
+      expect(named(two)).toEqual(['00:00', '04:00', '08:00', '12:00', '16:00', '20:00']);
+      measure(17, 31);
+      const { container: three } = render(<Heatmap payload={{ render: {}, data: HOURS }} label="Three" />);
+      expect(named(three)).toEqual(['00:00', '06:00', '12:00', '18:00']);
+    });
+
+    it('names only the first column, at most as wide as all the columns, when no step lets a label stand whole', () => {
+      measure(20, 100);
+      const { container } = render(<Heatmap payload={{ render: {}, data: columns(3) }} label="Three columns" />);
+      expect(named(container)).toEqual(['c0']);
+      expect(parseFloat(container.querySelector<HTMLElement>('.heatColumnAxisThin')!.style.maxInlineSize)).toBe(60);
     });
 
     it('names every column whose label fits it', () => {
