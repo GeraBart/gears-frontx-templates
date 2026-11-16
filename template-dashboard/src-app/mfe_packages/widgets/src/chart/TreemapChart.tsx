@@ -135,6 +135,8 @@ interface Group {
   units: number;
   face: TileBox;
   head: TileBox | null;
+  /** The tiles' sum as written, or null when it passes the largest number. */
+  totalText: string | null;
   /** Whether the header writes the total (and with show_share the share) after the name. */
   withTotal: boolean;
   tiles: Tile[];
@@ -191,10 +193,7 @@ export function TreemapChart({
   const showShare = render.show_share === true;
   const valueLabels = render.value_labels ?? 'auto';
   // A group writes its raw sum while it is finite, and with show_share its share, which its units give.
-  const groupTotalOf = (group: { total: number; units: number }) => (Number.isFinite(group.total) ? valueOf(group.total) : null);
   const groupShareOf = (group: { units: number }) => percentOf(group.units / unitTotal);
-  const groupTotalTextOf = (group: { total: number; units: number }) =>
-    [groupTotalOf(group), ...(showShare ? [groupShareOf(group)] : [])].filter((part) => part !== null).join(' ');
   const grouped = items.some((item) => item.group !== null);
   const colourOf = (position: number) => PALETTE[position % PALETTE.length];
   const whole: TileBox = { x: 0, y: 0, width: box.width, height: box.height };
@@ -226,15 +225,16 @@ export function TreemapChart({
       // The header band takes its room only while the tiles keep the least tile under it, and the name fits; it
       // writes the group's total (and share) after the name while they fit too.
       const head = face.height >= HEADER + LEAST_TILE && widthOf(group.name) + 2 * PAD <= face.width ? { x: face.x, y: face.y, width: face.width, height: HEADER } : null;
-      const totalText = groupTotalTextOf(group);
-      const withTotal = head !== null && totalText !== '' && widthOf(`${group.name}, ${totalText}`) + 2 * PAD <= face.width;
+      const totalText = Number.isFinite(group.total) ? valueOf(group.total) : null;
+      const headText = [totalText, ...(showShare ? [groupShareOf(group)] : [])].filter((part) => part !== null).join(' ');
+      const withTotal = head !== null && headText !== '' && widthOf(`${group.name}, ${headText}`) + 2 * PAD <= face.width;
       const area = head ? { x: face.x, y: face.y + HEADER, width: face.width, height: face.height - HEADER } : face;
       const boxes = squarified(
         group.tiles.map((tile) => tile.value),
         area,
       );
       for (const [at, tile] of group.tiles.entries()) tile.box = boxes[at];
-      groups.push({ ...group, face, head, withTotal });
+      groups.push({ ...group, face, head, totalText, withTotal });
     }
   } else {
     const positive = items.flatMap((item, index) => (drawn(item.value) ? [{ index, item }] : []));
@@ -338,14 +338,14 @@ export function TreemapChart({
                         render={<span />}
                         className={styles.treemapGroupHead}
                         style={{ ...place(group.head), '--tile': group.colour } as CSSProperties}
-                        title={[groupTotalOf(group) === null ? group.name : `${group.name}: ${groupTotalOf(group)}`, ...(showShare ? [`${groupShareOf(group)} ${texts.treemap.ofTotal}`] : [])].join(', ')}
+                        title={[group.totalText === null ? group.name : `${group.name}: ${group.totalText}`, ...(showShare ? [`${groupShareOf(group)} ${texts.treemap.ofTotal}`] : [])].join(', ')}
                       >
                         {group.name}
                         {group.withTotal ? (
                           <>
                             {', '}
-                            {groupTotalOf(group) !== null ? <span className={styles.treemapValue}>{groupTotalOf(group)}</span> : null}
-                            {showShare && groupTotalOf(group) !== null ? ' ' : null}
+                            {group.totalText !== null ? <span className={styles.treemapValue}>{group.totalText}</span> : null}
+                            {showShare && group.totalText !== null ? ' ' : null}
                             {showShare ? <span className={styles.treemapShare}>{groupShareOf(group)}</span> : null}
                           </>
                         ) : null}

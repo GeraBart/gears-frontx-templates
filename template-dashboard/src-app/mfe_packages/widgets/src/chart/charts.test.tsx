@@ -1395,6 +1395,13 @@ describe('treemap_chart', () => {
     ]);
   });
 
+  it('sets the room the fit arithmetic counts around the text on the box, for the styles to draw: 8 px of padding and a 2 px line gap', () => {
+    sized(120, 160);
+    const box = tiles(draw(ITEMS).container)[0].parentElement!;
+    expect(box.style.getPropertyValue('--treemap-pad')).toBe('8px');
+    expect(box.style.getPropertyValue('--treemap-gap')).toBe('2px');
+  });
+
   it('writes the share of the total beside the value and in the tooltip with show_share, like other percents', () => {
     const { container } = draw(
       [
