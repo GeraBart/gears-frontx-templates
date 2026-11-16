@@ -1426,14 +1426,13 @@ describe('treemap_chart', () => {
       { label: 'c', value: 1, group: null },
     ];
     const { unmount } = draw(items, { show_share: true, drill_down: true });
-    const nullShare = rowsOf()[2][2];
+    // A null value and its share render as empty cells.
     expect(rowsOf()).toEqual([
       ['Label', 'Value', 'Share'],
       ['a', '3', '75%'],
-      ['b', rowsOf()[2][1], nullShare],
+      ['b', '', ''],
       ['c', '1', '25%'],
     ]);
-    expect(nullShare).not.toMatch(/%/);
     await user.click(screen.getByRole('button', { name: 'Show data' }));
     const region = await screen.findByRole('region', { name: 'Data of Commits' });
     expect(within(region).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['Label', 'Value', 'Share']);

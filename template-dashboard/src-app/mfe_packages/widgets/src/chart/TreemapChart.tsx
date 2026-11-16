@@ -268,7 +268,11 @@ export function TreemapChart({
   const columns = [texts.columns.label, ...(grouped ? [texts.treemap.group] : []), texts.columns.value, ...(showShare ? [texts.treemap.share] : [])];
   const table: ValuesTable = {
     columns,
-    rows: items.map((item) => [item.label, ...(grouped ? [item.group] : []), item.value, ...(showShare ? [item.value === null ? null : shareOf(item.value)] : [])]),
+    rows: items.map((item) => {
+      // A null value has no share either.
+      const share = item.value === null ? null : shareOf(item.value);
+      return [item.label, ...(grouped ? [item.group] : []), item.value, ...(showShare ? [share] : [])];
+    }),
   };
   const valueColumn = grouped ? 2 : 1;
   const shareColumn = showShare ? valueColumn + 1 : -1;
