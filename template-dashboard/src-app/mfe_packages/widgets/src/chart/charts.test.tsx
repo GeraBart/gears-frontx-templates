@@ -1047,6 +1047,19 @@ describe('radar_chart', () => {
     expect(draw(twoSeries(['Mon', 'Wed', 'Fri', 'Sun']), { legend_position: 'top' }).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(0);
   });
 
+  it('never counts a legend lower than its own padding as room for the axis labels', () => {
+    // A 300 by 150 px chart with a top legend 3 px high leaves a plot area 290 by 137 px: a circle of radius 54.8 centred
+    // at 75 px from the top. The label pointing up needs 76.8 px above the centre, short of the 75 px there; the legend's
+    // 12 px padding is taller than the legend itself and adds no room, so the labels hide.
+    const twoSeries = (axes: string[]) => axes.flatMap((axis) => [{ axis, series: 'Web', value: 3 }, { axis, series: 'API', value: 2 }]);
+    const rect = Element.prototype.getBoundingClientRect;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return this.classList.contains('recharts-legend-wrapper') ? ({ width: 290, height: 3, top: 0, left: 0, right: 290, bottom: 3, x: 0, y: 0 } as DOMRect) : rect.call(this);
+    });
+    sized(300, 150);
+    expect(draw(twoSeries(['Mon', 'Wed', 'Fri']), { legend_position: 'top' }).container.querySelectorAll('.recharts-polar-angle-axis-tick-value')).toHaveLength(0);
+  });
+
   it('fails the cell on a negative value, naming its position and never its value', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     draw([{ axis: 'Mon', series: 'Web', value: 3 }, { axis: 'Tue', series: 'Web', value: -1 }, { axis: 'Wed', series: 'Web', value: 2 }]);

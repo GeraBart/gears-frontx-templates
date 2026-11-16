@@ -32,7 +32,9 @@ const CHART_MARGIN = 5;
 const TICK_SIZE = 8;
 // A label above or under the circle ends one tick text line out of its vertex, its box starting 5 px out.
 const LABEL_REACH = 5 + TICK_TEXT_HEIGHT;
-// The kit legend pads its entries 12 px on the side that faces the plot; a label may reach into that padding.
+// The kit legend pads its entries 12 px on the side that faces the plot; a label above or under the circle may reach
+// into that padding. Beside the circle it may not, on purpose: the label's width there is a coarse per-character
+// estimate, and the browser measure shows a side legend counted from the chart centre to the plot edge with no padding.
 const LEGEND_PADDING = 12;
 // The room a label keeps clear of an edge or a legend.
 const FIT_MARGIN = 2;
@@ -43,17 +45,17 @@ const FIT_MARGIN = 2;
  * the labels of the lowest vertex under it (the bottom of the circle for an even count of axes, higher for an odd one).
  * A low or narrow cell, or a legend under the plot, leaves little of these rooms.
  */
-function labelsFit(chart: { width: number; height: number }, plot: { x: number; y: number; width: number; height: number }, axes: number, longest: number): boolean {
+function labelsFit(chart: { width: number; height: number }, plot: { x: number; y: number; width: number; height: number }, axisCount: number, longest: number): boolean {
   if (plot.width <= 0 || plot.height <= 0) return true;
   const radius = (OUTER_SHARE * Math.min(plot.width, plot.height)) / 2;
-  const legendAt = (offset: number, padding: number) => (offset > CHART_MARGIN ? offset - padding : 0);
+  const legendAt = (offset: number, padding: number) => (offset > CHART_MARGIN ? Math.max(0, offset - padding) : 0);
   const centreX = chart.width / 2;
   const centreY = chart.height / 2;
   const left = centreX - legendAt(plot.x, 0);
   const right = chart.width - legendAt(chart.width - plot.x - plot.width, 0) - centreX;
   const above = centreY - legendAt(plot.y, LEGEND_PADDING);
   const under = chart.height - legendAt(chart.height - plot.y - plot.height, LEGEND_PADDING) - centreY;
-  const lowest = axes % 2 === 0 ? radius : radius * Math.cos(Math.PI / axes);
+  const lowest = axisCount % 2 === 0 ? radius : radius * Math.cos(Math.PI / axisCount);
   const beside = radius + TICK_SIZE + longest * TICK_CHAR_WIDTH + FIT_MARGIN;
   return beside <= Math.min(left, right) && radius + LABEL_REACH + FIT_MARGIN <= above && lowest + LABEL_REACH + FIT_MARGIN <= under;
 }
@@ -63,11 +65,11 @@ function labelsFit(chart: { width: number; height: number }, plot: { x: number; 
  * beside the plot area its legend leaves, and keeps them in the tooltip and the text alternative; before the chart is
  * laid out the labels are kept.
  */
-function AngleAxis({ axes, longest }: { axes: number; longest: number }) {
+function AngleAxis({ axisCount, longest }: { axisCount: number; longest: number }) {
   const plot = usePlotArea();
   const width = useChartWidth();
   const height = useChartHeight();
-  const showLabels = !plot || !width || !height || labelsFit({ width, height }, plot, axes, longest);
+  const showLabels = !plot || !width || !height || labelsFit({ width, height }, plot, axisCount, longest);
   return <PolarAngleAxis dataKey="axis" tick={showLabels ? TICK : false} tickLine={false} />;
 }
 
@@ -197,7 +199,7 @@ export function RadarChart({
               }
             >
               <PolarGrid />
-              <AngleAxis axes={axes.length} longest={longest} />
+              <AngleAxis axisCount={axes.length} longest={longest} />
               {/* Along the first axis, which the chart draws straight up, so the value labels read level beside it. */}
               <PolarRadiusAxis
                 angle={90}
