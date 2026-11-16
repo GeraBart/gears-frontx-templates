@@ -39,10 +39,13 @@ Query options:
 `host/` is a dev-only plain React application with no FrontX shell. It embeds the demo dashboard as a component, through the real runtime, on the mock host: the served file, the GTS registration, the widget MFEs in their shadow roots and every binding run as in a product. Its own bundle holds no widget: it loads each widget type at runtime from its bundle, which the dev server serves from `src-app/mfe_packages/widgets/dist/` under `/widgets/`. `host/widget-bundles/` holds a product widget type the host never saw, a bundle that throws while it loads and an entry whose bundle files are missing (see [docs/embedding.md](docs/embedding.md#try-it)). They are dev-only fixtures of the host app, not shipped widgets, and name their types under `frontx.test`, the namespace for test and fixture ids; a product names its own types with its own vendor segment in place of `frontx.test`.
 
 ```bash
-npm run build:widgets   # every bundle under src-app/mfe_packages/widgets/bundles, into its dist/
-npm run dev:host        # serves http://127.0.0.1:5198/
+npm run build:widgets                 # every bundle under src-app/mfe_packages/widgets/bundles, into its dist/
+npm run build:widgets -- summary_card # one bundle only, after an edit that touches only that widget
+npm run dev:host                      # serves http://127.0.0.1:5198/
 npm run build:host && npm run preview:host   # the production build, on http://127.0.0.1:5197/
 ```
+
+`build:widgets` is needed once per clone or worktree, since `dist/` is not committed, and again after a change to widget code: the dev server serves the built bundles, not the widget sources, so an edit shows only after its bundle is rebuilt. It reads the files from `dist/` on every request (`cache-control: no-store`), so a rebuilt bundle shows on the next page load without restarting `dev:host`. With the bundles built, `dev:host` draws the dashboard within a few seconds; the first page load after a fresh `npm ci` takes longer while Vite prebundles the host's dependencies. An edit to code that several widgets share (`src-app/mfe_packages/widgets/src/`) needs every affected bundle rebuilt, so the full `build:widgets` is the safe choice there.
 
 Query options: `?theme=dark`, `?dashboard=<dashboard id>`, `?delay=<ms>` (the mock host's answer delay).
 
