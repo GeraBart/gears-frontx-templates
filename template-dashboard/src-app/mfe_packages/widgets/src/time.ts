@@ -8,9 +8,11 @@ export function dayOf(x: unknown): number | null {
   if (typeof x !== 'string') return null;
   const match = ISO_DATE.exec(x);
   if (!match) return null;
-  const time = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  // Date.UTC rolls 2026-02-30 over into March: a date that does not read back as itself is no date.
-  return new Date(time).toISOString().slice(0, 10) === x ? time : null;
+  // setUTCFullYear takes the year as it is, where Date.UTC would read the years 0 to 99 as 1900 to 1999.
+  const date = new Date(0);
+  date.setUTCFullYear(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  // It rolls 2026-02-30 over into March: a date that does not read back as itself is no date.
+  return date.toISOString().slice(0, 10) === x ? date.getTime() : null;
 }
 
 /**

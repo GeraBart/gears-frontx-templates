@@ -1142,6 +1142,16 @@ describe('activity_feed', () => {
     expect(error).toHaveBeenCalledWith('[widget] activity_feed: data.items[0] needs an ISO 8601 date-time or a YYYY-MM-DD date as its time');
   });
 
+  it('shows the items of the years 0000 to 0099, a date-time and a bare date, as the years they name', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<ActivityFeed payload={{ render: { time_style: 'absolute' }, data: { items: [item('first', '0099-12-31T10:00:00Z'), item('second', '0099-12-30')] } }} />);
+    expect(screen.queryByText('This widget cannot be shown')).toBeNull();
+    expect(error).not.toHaveBeenCalled();
+    expect(screen.getByText('first')).toBeTruthy();
+    expect(screen.getByText('second')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/19\d\d/);
+  });
+
   it('fails its cell naming the item whose date-time is on a day the calendar does not have', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     render(<ActivityFeed payload={{ render: {}, data: { items: [item('first', '2026-02-28T10:00:00Z'), item('second', '2026-02-30T10:00:00Z')] } }} />);

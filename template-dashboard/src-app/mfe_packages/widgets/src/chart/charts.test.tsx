@@ -277,6 +277,18 @@ describe('cartesian_chart', () => {
     expect(within(alternative('Bare')).getAllByRole('row', { hidden: true }).slice(1).map((row) => row.textContent?.replace(/\s/g, ' '))).toEqual(['Nov 9, 20261', 'Nov 10, 20261']);
   });
 
+  it('takes date-times and bare dates of the years 0000 to 0099 on a time axis as the years they name', () => {
+    const payload = (xs: string[]) => ({ render: { x_axis: { type: 'time' as const }, series: [{ name: 'A', type: 'line' as const }] }, data: { series: [{ name: 'A', points: xs.map((x) => ({ x, y: 1 })) }] } });
+    const early = ['0099-12-30', '0099-12-31T10:00:00Z'];
+    expect(checkCartesian(payload(early).render, payload(early).data)).toBeNull();
+    expect(checkCartesian(payload(['0000-01-01']).render, payload(['0000-01-01']).data)).toBeNull();
+    render(<CartesianChart payload={payload(early)} label="Early" />);
+    const rows = within(alternative('Early')).getAllByRole('row', { hidden: true }).slice(1).map((row) => row.textContent?.replace(/\s/g, ' '));
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row?.includes(', 99'))).toBe(true);
+    expect(rows.join(' ')).not.toMatch(/19\d\d/);
+  });
+
   it('fails a date-time on a time axis whose day the calendar does not have, naming the series and the point', () => {
     const payload = (xs: string[]) => ({ render: { x_axis: { type: 'time' as const }, series: [{ name: 'A', type: 'line' as const }, { name: 'B', type: 'line' as const }] }, data: { series: [{ name: 'A', points: [{ x: '2026-11-09T10:00:00Z', y: 1 }] }, { name: 'B', points: xs.map((x) => ({ x, y: 1 })) }] } });
     expect(checkCartesian(payload(['2026-02-28T10:00:00Z']).render, payload(['2026-02-28T10:00:00Z']).data)).toBeNull();
