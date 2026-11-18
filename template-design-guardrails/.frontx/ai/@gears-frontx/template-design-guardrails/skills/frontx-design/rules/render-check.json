@@ -17,8 +17,10 @@
     {"gate": "TYP-001", "rules": ["tiny-text", "small-control-text", "clipped-text"], "note": "Floors are the kit's --text-mono-size and --text-label-size; the fix is the kit role, never a literal size."},
     {"gate": "LAY-005", "rules": ["control-height-mismatch"], "note": "Fix with matching kit size variants, never spacers or margins."},
     {"gate": "LAY-005", "rules": ["card-missing-padding"], "note": "Padding floor and range in references/layout.md; the full-bleed media card is already exempt."},
+    {"gate": "LAY-004", "rules": ["adjacent-sections-no-gap"], "note": "The runtime half of the spacing gate (the review rubric holds the rest): sibling sections, regions or screen-root children painting distinct surfaces whose boxes touch. Separate them with spacing scale steps or a divider; two sections sharing one background are one surface, not a finding."},
     {"gate": "SYS-004", "rules": ["dead-spacing-class"], "note": "A class no CSS rule defines: replace it with a CSS Module rule on a --space-* token, never with inline styles."},
-    {"gate": "COL-001", "rules": ["design-md-contrast"], "note": "A DESIGN.md components pair below its WCAG 2.2 AA text threshold in a theme, measured in the rendered app with --design-md; a pair the page could not paint is a needs-review entry. A pair on kit tokens goes to the kit owner and under Known Gaps (references/design-md.md)."}
+    {"gate": "COL-001", "rules": ["design-md-contrast"], "note": "A DESIGN.md components pair below its WCAG 2.2 AA text threshold in a theme, measured in the rendered app with --design-md; a pair the page could not paint is a needs-review entry. A pair on kit tokens goes to the kit owner and under Known Gaps (references/design-md.md)."},
+    {"gate": "COL-001", "rules": ["control-surface-contrast"], "note": "WCAG 1.4.11 non-text contrast, the filled-control case axe's text rule cannot see: a button, [role=button], input, select or textarea whose painted surface misses 3:1 against the surface under it while no border it draws reaches 3:1 either. A transparent surface (ghost, link) is judged by its text under axe/color-contrast."}
   ],
   "designMdContrast": {
     "ruleId": "design-md-contrast",

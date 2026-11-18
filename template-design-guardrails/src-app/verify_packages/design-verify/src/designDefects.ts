@@ -26,6 +26,26 @@
  *     the scroller's visible content box; bounded containers carry horizontal
  *     padding; the one exemption is a card filled by a full-bleed media child);
  *     a negative inset reports as card-content-overflow instead;
+ *   - control-surface contrast (WCAG 1.4.11 non-text contrast for the one
+ *     case axe's text rule cannot see: a filled control whose painted
+ *     surface meets the band under it at less than 3:1 while drawing no
+ *     border that reaches 3:1 either. A control counts as a filled accent
+ *     only when its own surface stands out from the screen's own surface -
+ *     the background of the screen root the sweep resolves - by at least
+ *     1.5:1; a control with a transparent surface, a ghost or link button,
+ *     is judged by its text, which axe covers. Neutral controls (the kit's
+ *     outline and secondary buttons, whose surfaces sit at the page's own
+ *     colours) and form fields (input, select, textarea, and the kit's field
+ *     triggers) are NOT measured here: axe's text rule and the review judge
+ *     them);
+ *   - touching sections (two stacked sibling sections, regions or screen-root
+ *     children painting distinct surfaces whose boxes meet with no gap on
+ *     their shared horizontal edge - the runtime half of the spacing gate,
+ *     which until now only the review rubric judged. The rule judges stacked
+ *     sections: side-by-side pairs overlap so deeply on the vertical axis
+ *     that the shared-gap bound leaves them out. Two sections sharing one
+ *     background with their content separated by their own padding are not a
+ *     finding);
  *   - dead spacing class (a spacing utility class present in the DOM that
  *     no CSS rule defines: the source reads correct, the padding renders as
  *     nothing; screens style spacing with CSS Modules on kit tokens instead).
@@ -422,6 +442,188 @@ export function findCardEdgeFlush(
 }
 
 /**
+ * WCAG 1.4.11 non-text contrast floor: a control's surface or boundary must
+ * reach 3:1 against the surface next to it.
+ */
+export const NON_TEXT_CONTRAST_MIN = 3;
+
+/** An sRGB colour as computed styles report it: channels 0-255, alpha 0-1. */
+export interface Rgba {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
+/** What a page with no painted background shows: the canvas, opaque white. */
+const CANVAS: Rgba = { r: 255, g: 255, b: 255, a: 1 };
+
+const RGB_LEGACY_RE = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/;
+const RGB_SPACE_RE = /^rgba?\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*(?:\/\s*([\d.]+)\s*)?\)$/;
+
+/**
+ * Parses the colour forms a computed style reports: `rgb()` and `rgba()` in
+ * the legacy comma and the modern space syntax, and the `transparent`
+ * keyword. A colour in another space (oklch, color()) has no rgb form here:
+ * null, and the caller skips what it cannot measure rather than guess.
+ * Exported for unit tests.
+ */
+export function parseCssColor(value: string): Rgba | null {
+  const text = value.trim().toLowerCase();
+  if (text === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
+  const match = RGB_LEGACY_RE.exec(text) ?? RGB_SPACE_RE.exec(text);
+  if (!match) return null;
+  const [, r, g, b, a] = match;
+  return { r: Number(r), g: Number(g), b: Number(b), a: a === undefined ? 1 : Number(a) };
+}
+
+/**
+ * Source-over compositing of one colour onto another. An opaque backdrop
+ * makes the result opaque; the channels are premultiplied only inside the
+ * formula, the result carries straight channels. Exported for unit tests.
+ */
+export function compositeOver(fore: Rgba, back: Rgba): Rgba {
+  const a = fore.a + back.a * (1 - fore.a);
+  if (a === 0) return { r: 0, g: 0, b: 0, a: 0 };
+  const mix = (f: number, b: number) => (f * fore.a + b * back.a * (1 - fore.a)) / a;
+  return {
+    r: Math.round(mix(fore.r, back.r)),
+    g: Math.round(mix(fore.g, back.g)),
+    b: Math.round(mix(fore.b, back.b)),
+    a,
+  };
+}
+
+/** WCAG 2.2 relative luminance of a straight-channel sRGB colour. */
+export function relativeLuminance({ r, g, b }: Rgba): number {
+  const linear = (channel: number) => {
+    const s = channel / 255;
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+}
+
+/** WCAG contrast ratio of two colours, 1:1 to 21:1. */
+export function contrastRatio(a: Rgba, b: Rgba): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  const hi = Math.max(la, lb);
+  const lo = Math.min(la, lb);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * Pure rule for control-surface contrast: report when the painted surface
+ * misses the 3:1 floor AND no visible border reaches it either. A null
+ * border ratio means the control draws no measurable border. Exported for
+ * unit tests.
+ */
+export function isControlSurfaceDefect(surface: { ratio: number; borderRatio: number | null }): boolean {
+  if (surface.ratio >= NON_TEXT_CONTRAST_MIN) return false;
+  return surface.borderRatio === null || surface.borderRatio < NON_TEXT_CONTRAST_MIN;
+}
+
+/** How far apart two painted edges may sit and still read as touching. */
+export const SECTION_TOUCH_TOLERANCE_PX = 1;
+
+/** One section's box and the surface it paints, as the gap rule compares them. */
+export interface SectionSurface {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  /** Painted background with alpha resolved against what is under it; null when none. */
+  background: Rgba | null;
+  /** A visible border's colour, else null. */
+  border: Rgba | null;
+  /**
+   * The border colour per side, where the caller knows them. The shared-edge
+   * rule reads these; a surface without them (a unit-test box) reads as
+   * painting no side borders, so its one `border` colour never counts as a
+   * divider on the shared edge.
+   */
+  borders?: {
+    top: Rgba | null;
+    right: Rgba | null;
+    bottom: Rgba | null;
+    left: Rgba | null;
+  };
+}
+
+/** Whether a section paints anything this rule judges. */
+export function sectionPaints(section: Pick<SectionSurface, 'background' | 'border'>): boolean {
+  return section.background !== null || section.border !== null;
+}
+
+/**
+ * Whether two sections' painted surfaces differ: equal backgrounds with
+ * equal (or no) borders are one surface, and content separated inside one
+ * surface is the sections' own padding business, not a gap finding.
+ * Exported for unit tests.
+ */
+export function surfacesDistinct(a: SectionSurface, b: SectionSurface): boolean {
+  const sameColour = (x: Rgba | null, y: Rgba | null) =>
+    x === null || y === null ? x === y : x.r === y.r && x.g === y.g && x.b === y.b && Math.abs(x.a - y.a) < 1 / 255;
+  return !sameColour(a.background, b.background) || !sameColour(a.border, b.border);
+}
+
+/**
+ * The borders sitting on the edge two boxes share: the upper one's bottom and
+ * the lower one's top for boxes stacked vertically, the left one's right and
+ * the right one's left for boxes side by side. A pair touches on one axis and
+ * overlaps on the other, and the axis it overlaps along is the negative gap:
+ * stacked boxes meet on their vertical edges while their widths overlap. The
+ * touching-sections rule only reports stacked adjacency, so its side-by-side
+ * branch is reachable here only for a pair whose boxes overlap on neither
+ * axis by more than the tolerance - a degenerate diagonal case, not genuine
+ * side-by-side sections.
+ * Exported for unit tests.
+ */
+export function bordersOnSharedEdge(a: SectionSurface, b: SectionSurface): Array<Rgba | null> {
+  const verticalGap = Math.max(a.top, b.top) - Math.min(a.bottom, b.bottom);
+  const horizontalGap = Math.max(a.left, b.left) - Math.min(a.right, b.right);
+  const upper = a.top <= b.top ? a : b;
+  const lower = a.top <= b.top ? b : a;
+  const left = a.left <= b.left ? a : b;
+  const right = a.left <= b.left ? b : a;
+  return verticalGap > horizontalGap
+    ? [upper.borders?.bottom ?? null, lower.borders?.top ?? null]
+    : [left.borders?.right ?? null, right.borders?.left ?? null];
+}
+
+/**
+ * Pure rule for touching sections: among sibling sections given with their
+ * surfaces, every pair whose painted edges meet (a gap under the tolerance,
+ * neither separated nor overlapping) while both paint, their surfaces
+ * differ, and no border of theirs sits on the shared edge - a visible border
+ * there is the divider the remedy names, whatever the pair's other borders
+ * do. Stacked adjacency only: the gap is the vertical one, so side-by-side
+ * pairs overlap too deeply on this axis to ever qualify (see the module
+ * header). One entry per touching pair; exported for unit tests.
+ */
+export function findTouchingSectionPairs(sections: readonly SectionSurface[]): Array<{ a: number; b: number }> {
+  const pairs: Array<{ a: number; b: number }> = [];
+  for (let i = 0; i < sections.length; i++) {
+    for (let j = i + 1; j < sections.length; j++) {
+      const x = sections[i];
+      const y = sections[j];
+      // Stacked boxes: the lower one's top against the upper one's bottom.
+      // Boxes overlapping further than the tolerance are a layout bug of a
+      // different kind, not adjacency; boxes side by side overlap so deeply
+      // on this axis that the same bound leaves them out.
+      const gap = Math.max(x.top, y.top) - Math.min(x.bottom, y.bottom);
+      if (gap >= SECTION_TOUCH_TOLERANCE_PX || gap <= -SECTION_TOUCH_TOLERANCE_PX) continue;
+      if (Math.min(x.right, y.right) - Math.max(x.left, y.left) <= 0) continue;
+      if (!sectionPaints(x) || !sectionPaints(y)) continue;
+      if (!surfacesDistinct(x, y)) continue;
+      if (bordersOnSharedEdge(x, y).some((colour) => colour !== null)) continue;
+      pairs.push({ a: i, b: j });
+    }
+  }
+  return pairs;
+}
+
+/**
  * Utility-class spacing grammar for the dead-class probe. Bare numeric
  * classes only: variants (`md:p-8`) and arbitrary values (`p-[13px]`) are
  * out of scope. The failure mode this rule catches is a utility class no
@@ -711,6 +913,221 @@ function collectCardPaddingFindings(card: Element, cardStyle: CSSStyleDeclaratio
   );
 }
 
+/**
+ * Filled controls the surface-contrast rule measures. The kit Button
+ * renders a native button (base-ui's nativeButton default), so the tag
+ * list covers it; `[role="button"]` covers the render-prop forms and
+ * home-made clickables. Inputs count when they paint a background.
+ */
+const CONTROL_SURFACE_SELECTOR = 'button, [role="button"], input, select, textarea';
+
+/**
+ * The effective background under `el`: the ancestors' backgrounds from the
+ * nearest one down to and including the first opaque one, composited
+ * bottom-up over the canvas. Walks across the shadow host boundary the way
+ * layoutParent does, and reads the page surface off body and html, which
+ * layoutParent stops before.
+ *
+ * Returns null when the measurement is not possible: a colour in the chain
+ * that parses as painted but not as sRGB (Chromium serialises a color-mix
+ * as oklab()), which cannot be read as transparent or as painted, so the
+ * caller skips what it stands behind rather than walk past it. `cache`
+ * memoises one sweep's answers.
+ */
+function effectiveBackgroundUnder(el: Element, cache?: Map<Element, Rgba | null>): Rgba | null {
+  if (cache?.has(el)) return cache.get(el)!;
+  const layers: Rgba[] = [];
+  let unmeasurable = false;
+  const consider = (node: Element | null): boolean => {
+    if (node === null) return false;
+    const style = getComputedStyle(node);
+    // An image the node paints over its background colour (a gradient, a url)
+    // is what actually shows: the declared colour cannot stand in for it and
+    // its painted contribution cannot be resolved here, so the backdrop it
+    // stands over is unknowable, not transparent.
+    const image = style.backgroundImage;
+    if (image !== '' && image !== 'none') {
+      unmeasurable = true;
+      return true;
+    }
+    const colour = parseCssColor(style.backgroundColor);
+    if (colour === null) {
+      // An unparsable painted colour blocks the whole walk: the backdrop it
+      // stands over is unknowable, not transparent.
+      unmeasurable = true;
+      return true;
+    }
+    if (colour.a <= 0) return false;
+    layers.push(colour);
+    return colour.a >= 1;
+  };
+  let cur: Element | null = el;
+  while ((cur = layoutParent(cur)) !== null) {
+    if (consider(cur)) break;
+  }
+  if (!unmeasurable && !layers.some((layer) => layer.a >= 1)) {
+    consider(document.body);
+    consider(document.documentElement);
+  }
+  if (unmeasurable) {
+    cache?.set(el, null);
+    return null;
+  }
+  let backdrop = CANVAS;
+  for (let i = layers.length - 1; i >= 0; i--) backdrop = compositeOver(layers[i], backdrop);
+  cache?.set(el, backdrop);
+  return backdrop;
+}
+
+/**
+ * Whether the element's background is clipped inside its border
+ * (`background-clip: padding-box` or `content-box`, on every layer, `text`
+ * included): the border then paints straight over the backdrop, not over the
+ * element's own background. The default (`border-box`, an unset value) keeps
+ * the background under the border.
+ */
+function backgroundClipsInsideBorder(style: CSSStyleDeclaration): boolean {
+  const clip = style.getPropertyValue('background-clip');
+  if (clip === '') return false;
+  const layers = clip.split(',').map((layer) => layer.trim().toLowerCase());
+  return layers.every((layer) => layer === 'padding-box' || layer === 'content-box' || layer === 'text');
+}
+
+/**
+ * The control's visible border sides with their colours resolved over the
+ * surface the border paints on (`beneath`): the surface rule takes the
+ * strongest of them, the section rule the first, as a divider. A border
+ * drawn in a transparent colour is no border.
+ */
+function visibleBorderColours(
+  style: CSSStyleDeclaration,
+  beneath: Rgba
+): Array<{ side: 'top' | 'right' | 'bottom' | 'left'; colour: Rgba }> {
+  const sides: Array<{ side: 'top' | 'right' | 'bottom' | 'left'; colour: Rgba }> = [];
+  for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+    if (!borderSideVisible(style.getPropertyValue(`border-${side}-width`), style.getPropertyValue(`border-${side}-style`))) continue;
+    const colour = parseCssColor(style.getPropertyValue(`border-${side}-color`));
+    if (colour === null || colour.a === 0) continue;
+    sides.push({ side, colour: colour.a >= 1 ? colour : compositeOver(colour, beneath) });
+  }
+  return sides;
+}
+
+function collectControlSurfaceFindings(
+  controls: readonly Element[],
+  backdrops?: Map<Element, Rgba | null>
+): DesignDefectFinding[] {
+  const findings: DesignDefectFinding[] = [];
+  for (const el of controls) {
+    const style = getComputedStyle(el);
+    const surface = parseCssColor(style.backgroundColor);
+    // An unparsable painted surface (a color-mix Chromium reports as oklab())
+    // cannot be measured and is not a ghost: skip the control. A transparent
+    // one is a ghost or link control, whose text is the cue axe's
+    // color-contrast judges; there is no surface to measure here.
+    if (surface === null || surface.a === 0) continue;
+    // Inactive controls are exempt from WCAG 1.4.11 (:disabled also covers a
+    // control a disabled fieldset holds, which the attribute check missed).
+    if (el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true') continue;
+    const backdrop = effectiveBackgroundUnder(el, backdrops);
+    // What the control stands over cannot be read: skip it, do not measure
+    // against a guessed canvas.
+    if (backdrop === null) continue;
+    const ratio = contrastRatio(compositeOver(surface, backdrop), backdrop);
+    // The strongest border the control draws, against the surface the border
+    // itself paints on: where the background extends under the border
+    // (background-clip border-box, the default) the border composites over
+    // the control's own painted surface, where the clip keeps the background
+    // inside the border it composites over the backdrop. A boundary that
+    // reaches 3:1 on its own saves a quiet surface (the kit's outline
+    // buttons).
+    let borderRatio: number | null = null;
+    const borderBeneath = backgroundClipsInsideBorder(style) ? backdrop : compositeOver(surface, backdrop);
+    for (const { colour } of visibleBorderColours(style, borderBeneath)) {
+      const sideRatio = contrastRatio(colour, backdrop);
+      if (borderRatio === null || sideRatio > borderRatio) borderRatio = sideRatio;
+    }
+    if (!isControlSurfaceDefect({ ratio, borderRatio })) continue;
+    findings.push({
+      id: 'control-surface-contrast',
+      detail:
+        `filled control meets the surface under it at ${ratio.toFixed(2)}:1 (minimum ${NON_TEXT_CONTRAST_MIN}:1)` +
+        (borderRatio === null ? '' : `; its border reaches only ${borderRatio.toFixed(2)}:1`) +
+        ' - a control surface or its border must reach non-text contrast against the band under it',
+      target: describeElement(el),
+    });
+  }
+  return findings;
+}
+
+/** One visible border side's colour, resolved over the surface beneath the border; else null. */
+function sectionBorder(style: CSSStyleDeclaration, beneath: Rgba): Rgba | null {
+  return visibleBorderColours(style, beneath)[0]?.colour ?? null;
+}
+
+function collectSectionGapFindings(
+  groups: Iterable<readonly Element[]>,
+  backdrops?: Map<Element, Rgba | null>
+): DesignDefectFinding[] {
+  const findings: DesignDefectFinding[] = [];
+  for (const group of groups) {
+    let measurable = true;
+    const surfaces = group.map((el): SectionSurface => {
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      const backdrop = effectiveBackgroundUnder(el, backdrops);
+      const painted = parseCssColor(style.backgroundColor);
+      // A colour neither this section nor what stands under it can be read
+      // as (a color-mix Chromium reports as oklab()) makes the pair's
+      // surfaces unknowable: the group drops out of the comparison instead
+      // of reading as no background or as painted.
+      if (backdrop === null || painted === null) {
+        measurable = false;
+        return {
+          top: rect.top,
+          bottom: rect.bottom,
+          left: rect.left,
+          right: rect.right,
+          background: null,
+          border: null,
+        };
+      }
+      const borders: NonNullable<SectionSurface['borders']> = {
+        top: null,
+        right: null,
+        bottom: null,
+        left: null,
+      };
+      // The surface the section's own background paints: what a border with
+      // background-clip border-box (the default) composites over, the way a
+      // control's translucent border does. A background clipped inside the
+      // border leaves the border over the backdrop.
+      const ownBackground = painted.a === 0 ? backdrop : compositeOver(painted, backdrop);
+      const borderBeneath = backgroundClipsInsideBorder(style) ? backdrop : ownBackground;
+      for (const { side, colour } of visibleBorderColours(style, borderBeneath)) borders[side] = colour;
+      return {
+        top: rect.top,
+        bottom: rect.bottom,
+        left: rect.left,
+        right: rect.right,
+        background: painted.a === 0 ? null : ownBackground,
+        border: sectionBorder(style, borderBeneath),
+        borders,
+      };
+    });
+    if (!measurable) continue;
+    for (const { a, b } of findTouchingSectionPairs(surfaces)) {
+      const gap = Math.round(Math.abs(Math.max(surfaces[a].top, surfaces[b].top) - Math.min(surfaces[a].bottom, surfaces[b].bottom)));
+      findings.push({
+        id: 'adjacent-sections-no-gap',
+        detail: `adjacent sections with different surfaces touch (${gap}px between their painted edges) - distinct surfaces separate with spacing scale steps or a divider on their shared edge`,
+        target: `${describeElement(group[a])} vs ${describeElement(group[b])}`,
+      });
+    }
+  }
+  return findings;
+}
+
 /** Best-effort CSS-path-ish locator for console output. */
 function describeElement(el: Element): string {
   const id = el.id ? `#${el.id}` : '';
@@ -749,6 +1166,32 @@ function isRendered(el: Element): boolean {
   if (rect.width === 0 && rect.height === 0) return false;
   const style = getComputedStyle(el);
   return style.display !== 'none' && style.visibility !== 'hidden';
+}
+
+/**
+ * Whether the user can see and reach a control well enough for the surface
+ * rule to judge it. A control hidden from assistive tech by an aria-hidden
+ * ancestor (in its own tree or across a shadow-host boundary: closest()
+ * stays inside one tree, so the walk steps out the way layoutParent does,
+ * while this sweep everywhere else crosses that boundary), fully
+ * transparent, of type=hidden, or in the 1px clipped
+ * visually-hidden pattern (Base UI's hidden inputs: 1px box, no border, and
+ * Chromium's white `Field` surface) is either invisible or exempt, and
+ * measuring it reports kit Selects and Comboboxes that carry one of those
+ * accessibility patterns. Disabled is decided in the collector itself.
+ */
+function isMeasurableControl(el: Element): boolean {
+  let current: Element | null = el;
+  while (current !== null) {
+    if (current.closest('[aria-hidden="true"]') !== null) return false;
+    current = layoutParent(current);
+  }
+  if (el.getAttribute('type')?.toLowerCase() === 'hidden') return false;
+  const style = getComputedStyle(el);
+  if (style.opacity === '0') return false;
+  const rect = el.getBoundingClientRect();
+  if (rect.width <= 1 && rect.height <= 1) return false;
+  return true;
 }
 
 /** Does this element have a direct (non-descendant) non-whitespace text node? */
@@ -867,6 +1310,9 @@ export function collectHeadingSkipFindings(
 function collectLayoutFindings(): DesignDefectFinding[] {
   const findings: DesignDefectFinding[] = [];
   const floors = readTextFloors();
+  // One sweep's backdrop answers: every control and section under the same
+  // ancestors reads the same chain, so it is computed once.
+  const backdrops = new Map<Element, Rgba | null>();
 
   const scroller = document.scrollingElement;
   if (scroller && scroller.scrollWidth > scroller.clientWidth + OVERFLOW_TOLERANCE_PX) {
@@ -881,6 +1327,11 @@ function collectLayoutFindings(): DesignDefectFinding[] {
   const headingEls: Element[] = [];
   const controlRows = new Map<Element, Element[]>();
   const spacingTokens = new Map<Document | ShadowRoot, Map<string, number>>();
+  const surfaceControls: Element[] = [];
+  // Sections group under the element that lays them out (their layout parent,
+  // stepping out of a shadow root to its host): only siblings can touch, so
+  // a section inside one container is never compared with one in another.
+  const sectionGroups = new Map<Element, Element[]>();
 
   for (const el of walkElements(document)) {
     if (!isRendered(el) || isStudioChrome(el)) continue;
@@ -905,6 +1356,31 @@ function collectLayoutFindings(): DesignDefectFinding[] {
       }
     }
 
+    if (el.matches(CONTROL_SURFACE_SELECTOR) && isMeasurableControl(el)) surfaceControls.push(el);
+
+    const style = getComputedStyle(el);
+
+    // A section candidate: a section or region element, or a direct child of
+    // the screen root that paints a surface of its own - a child of the main
+    // landmark, or a top-level child of a screen's shadow root when its host
+    // sits inside one (MFE screens render into shadow roots, where
+    // parentElement is null).
+    const paintsSurface = hasOpaqueBackground(style) || borderSideVisible(style.borderTopWidth, style.borderTopStyle);
+    const inScreenRoot =
+      el.parentElement?.matches('main, [role="main"]') === true ||
+      (el.parentElement === null &&
+        el.getRootNode() instanceof ShadowRoot &&
+        (el.getRootNode() as ShadowRoot).host.closest('main, [role="main"]') !== null);
+    const isSectionCandidate = el.tagName === 'SECTION' || el.getAttribute('role') === 'region' || (paintsSurface && inScreenRoot);
+    if (isSectionCandidate) {
+      const parent = layoutParent(el);
+      if (parent !== null) {
+        const group = sectionGroups.get(parent) ?? [];
+        group.push(el);
+        sectionGroups.set(parent, group);
+      }
+    }
+
     const headingMatch = /^H([1-6])$/.exec(el.tagName);
     if (headingMatch) {
       headingLevels.push(Number(headingMatch[1]));
@@ -916,11 +1392,10 @@ function collectLayoutFindings(): DesignDefectFinding[] {
       !MEDIA_TAGS.has(el.tagName.toUpperCase()) &&
       !CONTROL_ROLES.has(el.getAttribute('role') ?? '')
     ) {
-      findings.push(...collectCardPaddingFindings(el, getComputedStyle(el)));
+      findings.push(...collectCardPaddingFindings(el, style));
     }
 
     if (hasDirectText(el)) {
-      const style = getComputedStyle(el);
       const fontSize = Number.parseFloat(style.fontSize);
       if (isTinyText(fontSize, floors.tinyTextPx)) {
         findings.push({
@@ -971,6 +1446,9 @@ function collectLayoutFindings(): DesignDefectFinding[] {
   }
 
   findings.push(...collectHeadingSkipFindings(headingLevels, headingEls));
+
+  findings.push(...collectControlSurfaceFindings(surfaceControls, backdrops));
+  findings.push(...collectSectionGapFindings(sectionGroups.values(), backdrops));
 
   for (const [root, tokens] of spacingTokens) {
     findings.push(...probeDeadSpacingTokens(root, tokens));

@@ -221,6 +221,29 @@ div.flex-1.overflow-auto` becomes `LAY-002 (blocker, never) ·
 page-horizontal-scroll at 320 CSS px · evidence: that line · location:
 div.flex-1.overflow-auto (the shell's screen container)`.
 
+Two objective checks measure what axe's text rule cannot see; both report
+under the `[design-defects]` prefix with the gates `rules/render-check.json`
+gives them:
+
+- `control-surface-contrast` (COL-001): a filled control (a button, a
+  `[role=button]`, an input, select or textarea that paints a background)
+  whose painted surface misses WCAG 1.4.11's 3:1 against the surface under
+  it, translucent surfaces composited over what is behind them, while no
+  border the control draws reaches 3:1 either. A control with a transparent
+  surface (a ghost or link button) is judged by its text, which
+  `axe/color-contrast` covers.
+- `adjacent-sections-no-gap` (LAY-004, the runtime half of the spacing gate;
+  the review rubric holds the rest of it): sibling sections or regions -
+  grouped under the element that lays them out, a screen's shadow host
+  included - and
+  direct children of the screen root painting distinct surfaces whose boxes
+  touch with less than 1 px between their painted edges. Two sections
+  sharing one background, their content separated by their own padding, are
+  one surface and not a finding; a visible border on the pair's shared edge
+  is the divider the remedy names and not a finding either; a surface whose
+  colour cannot be parsed (a `color-mix` the browser reports as `oklab()`)
+  is unmeasurable and skips the pair instead of reading as transparent.
+
 The checker walks open shadow roots. An axe locator inside one names each
 shadow host and then the element, joined by `>>>` (`my-widget >>> p`). That
 is for reading, not CSS: query each part through the previous host's

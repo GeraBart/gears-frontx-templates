@@ -12,20 +12,27 @@ import {
   CONTROL_TEXT_PX,
   FULL_BLEED_TOLERANCE_PX,
   MIN_CARD_PADDING_PX,
+  NON_TEXT_CONTRAST_MIN,
   SCROLL_EDGE_TOLERANCE_PX,
+  SECTION_TOUCH_TOLERANCE_PX,
   TINY_TEXT_PX,
   axeResultsToFindings,
   clipInkToScrollers,
   collectHeadingSkipFindings,
+  compositeOver,
+  contrastRatio,
   findCardEdgeFlush,
   findControlHeightMismatches,
   findHeadingSkips,
   findPageScrollers,
+  findTouchingSectionPairs,
   installDesignDefectCheck,
   isClippedText,
+  isControlSurfaceDefect,
   isFullBleedMedia,
   isSmallControlText,
   isTinyText,
+  parseCssColor,
   parseCssLengthPx,
   readTextFloors,
   runDesignDefectCheck,
@@ -34,7 +41,7 @@ import {
   soleLayoutChild,
   spacingProbeSpec,
 } from '../src/designDefects';
-import type { LayoutRole } from '../src/designDefects';
+import type { DesignDefectFinding, LayoutRole, Rgba, SectionSurface } from '../src/designDefects';
 
 // axe-core's run is stubbed per test: the sweep-failure test below (K-002)
 // makes it reject to assert the rejection is caught, not left as an
@@ -433,6 +440,125 @@ describe('isFullBleedMedia', () => {
   });
 });
 
+describe('control-surface-contrast maths', () => {
+  const white: Rgba = { r: 255, g: 255, b: 255, a: 1 };
+
+  it('parses the colour forms computed styles report, and nothing else', () => {
+    expect(parseCssColor('rgb(255, 0, 0)')).toEqual({ r: 255, g: 0, b: 0, a: 1 });
+    expect(parseCssColor('rgba(16, 32, 48, 0.5)')).toEqual({ r: 16, g: 32, b: 48, a: 0.5 });
+    expect(parseCssColor('rgb(16 32 48 / 0.25)')).toEqual({ r: 16, g: 32, b: 48, a: 0.25 });
+    expect(parseCssColor('transparent')).toEqual({ r: 0, g: 0, b: 0, a: 0 });
+    // Computed styles of other colour spaces and every non-colour: unmeasurable.
+    expect(parseCssColor('oklch(0.7 0.1 200)')).toBeNull();
+    expect(parseCssColor('color(srgb 1 0 0)')).toBeNull();
+    expect(parseCssColor('')).toBeNull();
+    expect(parseCssColor('none')).toBeNull();
+  });
+
+  it('composites a translucent surface over what is under it', () => {
+    expect(compositeOver({ r: 255, g: 0, b: 0, a: 0.5 }, white)).toEqual({ r: 255, g: 128, b: 128, a: 1 });
+    // A fully transparent fore leaves the backdrop; a fully opaque one wins.
+    expect(compositeOver({ r: 0, g: 0, b: 0, a: 0 }, white)).toEqual(white);
+    expect(compositeOver({ r: 10, g: 20, b: 30, a: 1 }, { r: 200, g: 200, b: 200, a: 1 })).toEqual({
+      r: 10,
+      g: 20,
+      b: 30,
+      a: 1,
+    });
+  });
+
+  it('gives the WCAG ratios: black on white 21:1, a mid grey far under the floor', () => {
+    expect(contrastRatio({ r: 0, g: 0, b: 0, a: 1 }, white)).toBeCloseTo(21);
+    expect(contrastRatio(white, { r: 0, g: 0, b: 0, a: 1 })).toBeCloseTo(21);
+    expect(contrastRatio({ r: 224, g: 224, b: 224, a: 1 }, white)).toBeLessThan(2);
+    expect(contrastRatio({ r: 255, g: 0, b: 0, a: 1 }, white)).toBeGreaterThan(3);
+  });
+
+  it('reports a surface under the floor, spares one that reaches it', () => {
+    expect(isControlSurfaceDefect({ ratio: 1.3, borderRatio: null })).toBe(true);
+    expect(isControlSurfaceDefect({ ratio: NON_TEXT_CONTRAST_MIN, borderRatio: null })).toBe(false);
+    expect(isControlSurfaceDefect({ ratio: 4, borderRatio: null })).toBe(false);
+  });
+
+  it('spares a quiet surface when its border reaches the floor, reports a weak one', () => {
+    expect(isControlSurfaceDefect({ ratio: 1.3, borderRatio: 3.2 })).toBe(false);
+    expect(isControlSurfaceDefect({ ratio: 1.3, borderRatio: NON_TEXT_CONTRAST_MIN })).toBe(false);
+    expect(isControlSurfaceDefect({ ratio: 1.3, borderRatio: 2.9 })).toBe(true);
+  });
+});
+
+describe('findTouchingSectionPairs', () => {
+  const box = (over: Partial<SectionSurface>): SectionSurface => ({
+    top: 0,
+    bottom: 100,
+    left: 0,
+    right: 500,
+    background: { r: 255, g: 255, b: 255, a: 1 },
+    border: null,
+    ...over,
+  });
+
+  it('reports two stacked sections whose painted edges meet', () => {
+    const sections = [
+      box({ top: 0, bottom: 200, background: { r: 255, g: 255, b: 255, a: 1 } }),
+      box({ top: 200, bottom: 400, background: { r: 240, g: 240, b: 240, a: 1 } }),
+    ];
+    expect(findTouchingSectionPairs(sections)).toEqual([{ a: 0, b: 1 }]);
+  });
+
+  it('spares sections separated by a gap', () => {
+    const sections = [
+      box({ top: 0, bottom: 200 }),
+      box({ top: 200 + SECTION_TOUCH_TOLERANCE_PX, bottom: 400, background: { r: 240, g: 240, b: 240, a: 1 } }),
+    ];
+    expect(findTouchingSectionPairs(sections)).toEqual([]);
+  });
+
+  it('spares two sections sharing one background - their padding separates the content', () => {
+    const sections = [
+      box({ top: 0, bottom: 200, background: { r: 255, g: 255, b: 255, a: 1 } }),
+      box({ top: 200, bottom: 400, background: { r: 255, g: 255, b: 255, a: 1 } }),
+    ];
+    expect(findTouchingSectionPairs(sections)).toEqual([]);
+  });
+
+  it('spares sections side by side and ones painting nothing', () => {
+    const sideBySide = [
+      box({ top: 0, bottom: 100, left: 0, right: 200 }),
+      box({ top: 0, bottom: 100, left: 200, right: 400, background: { r: 240, g: 240, b: 240, a: 1 } }),
+    ];
+    expect(findTouchingSectionPairs(sideBySide)).toEqual([]);
+    const unpainted = [
+      box({ top: 0, bottom: 100, background: null }),
+      box({ top: 100, bottom: 200, background: { r: 240, g: 240, b: 240, a: 1 } }),
+    ];
+    expect(findTouchingSectionPairs(unpainted)).toEqual([]);
+  });
+
+  it('spares a pair a border on their shared edge divides, and reads a border elsewhere as a distinct surface', () => {
+    // The divider the remedy names: a visible border where the two boxes
+    // meet (the upper one's bottom, or the lower one's top) separates them.
+    const divider = [
+      box({ top: 0, bottom: 100, border: { r: 17, g: 17, b: 17, a: 1 }, borders: { top: null, right: null, bottom: { r: 17, g: 17, b: 17, a: 1 }, left: null } }),
+      box({ top: 100, bottom: 200, background: { r: 240, g: 240, b: 240, a: 1 } }),
+    ];
+    expect(findTouchingSectionPairs(divider)).toEqual([]);
+    // The same border on the pair's outer edge says nothing about the seam:
+    // distinct surfaces still touch.
+    const elsewhere = [
+      box({ top: 0, bottom: 100 }),
+      box({ top: 100, bottom: 200, background: { r: 240, g: 240, b: 240, a: 1 }, border: { r: 229, g: 229, b: 229, a: 1 }, borders: { top: null, right: null, bottom: null, left: { r: 229, g: 229, b: 229, a: 1 } } }),
+    ];
+    expect(findTouchingSectionPairs(elsewhere)).toEqual([{ a: 0, b: 1 }]);
+    // The same border on both sides is one surface treatment, not a divider.
+    const sameBorder = [
+      box({ top: 0, bottom: 100, border: { r: 229, g: 229, b: 229, a: 1 } }),
+      box({ top: 100, bottom: 200, border: { r: 229, g: 229, b: 229, a: 1 } }),
+    ];
+    expect(findTouchingSectionPairs(sameBorder)).toEqual([]);
+  });
+});
+
 describe('spacingProbeSpec', () => {
   it('maps padding and margin utilities to the sides they must move', () => {
     expect(spacingProbeSpec('p-8')).toEqual({ kind: 'self', properties: ['padding-top'] });
@@ -635,5 +761,330 @@ describe('runDesignDefectCheck console output', () => {
       '[design-defects] 1 item(s) need review — undecided, so this state is not clean:',
       '[design-defects] needs review axe-incomplete/color-contrast: axe could not decide this: background gradient — p.synced',
     ]);
+  });
+});
+
+describe('the sweep over composed DOM (jsdom, painted boxes faked)', () => {
+  // jsdom has no layout, so the sweep's boxes are faked: one rect per
+  // element, everything else (computed colours, display) comes from the
+  // inline styles jsdom does resolve. This exercises the walk and the two
+  // collectors' DOM side; the maths above pins the rules themselves.
+  interface FakeRect {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+    width: number;
+    height: number;
+  }
+  /**
+   * Paints one box per target (a selector, or an element a shadow root
+   * holds) at the given top, height and (400 by default) width: each test
+   * lists only its layout, and the rect map is built here. Restored with the
+   * other mocks in afterEach.
+   */
+  function paintBoxes(layout: Array<[target: string | Element, top: number, height: number, width?: number]>): void {
+    const rects = new Map<Element, FakeRect>();
+    for (const [target, top, height, width = 400] of layout) {
+      const el = typeof target === 'string' ? document.querySelector(target)! : target;
+      rects.set(el, { top, bottom: top + height, left: 0, right: width, width, height });
+    }
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return (rects.get(this) ?? { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }) as DOMRect;
+    });
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+    // restoreAllMocks also restores the rect spy above.
+    vi.restoreAllMocks();
+  });
+
+  async function sweep(): Promise<DesignDefectFinding[]> {
+    axeRun.mockResolvedValueOnce({ violations: [], incomplete: [] });
+    return runDesignDefectCheck();
+  }
+
+  it('control-surface-contrast: a filled control on a band of its own colour is reported, a contrasting one and a ghost are not', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div style="background-color: rgb(255, 255, 255); position: static;">
+          <button id="quiet" style="background-color: rgb(224, 224, 224); border: 0;">Save</button>
+          <button id="loud" style="background-color: rgb(255, 0, 0); border: 0;">Cancel</button>
+          <button id="ghost" style="background-color: transparent; border: 0;">Help</button>
+        </div>
+      </main>
+    `;
+    paintBoxes([
+      ['div', 0, 300],
+      ['#quiet', 10, 36],
+      ['#loud', 60, 36],
+      ['#ghost', 110, 36],
+    ]);
+
+    const findings = await sweep();
+
+    expect(findings.map((finding) => finding.id)).toEqual(['control-surface-contrast']);
+    expect(findings[0]).toMatchObject({ target: 'button#quiet' });
+  });
+
+  it('control-surface-contrast: a border that reaches 3:1 saves a quiet surface', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div style="background-color: rgb(255, 255, 255);">
+          <button id="outlined" style="background-color: rgb(224, 224, 224); border: 1px solid rgb(0, 0, 0);">Save</button>
+        </div>
+      </main>
+    `;
+    paintBoxes([
+      ['div', 0, 300],
+      ['#outlined', 10, 36],
+    ]);
+
+    expect(await sweep()).toEqual([]);
+  });
+
+  it('control-surface-contrast: a control the user cannot see or reach is not measured', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div style="background-color: rgb(255, 255, 255);">
+          <button id="hidden-region" style="background-color: rgb(224, 224, 224); border: 0;" aria-hidden="true">Save</button>
+          <div aria-hidden="true"><button id="hidden-parent" style="background-color: rgb(224, 224, 224); border: 0;">Save</button></div>
+          <button id="transparent" style="background-color: rgb(224, 224, 224); border: 0; opacity: 0;">Save</button>
+          <input id="offscreen" type="hidden" style="background-color: rgb(224, 224, 224);" />
+          <button id="clipped" style="background-color: rgb(224, 224, 224); border: 0; position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0);">Save</button>
+          <button id="inert" style="background-color: rgb(224, 224, 224); border: 0;" disabled>Save</button>
+          <fieldset disabled><button id="fieldset-inert" style="background-color: rgb(224, 224, 224); border: 0;">Save</button></fieldset>
+          <button id="quiet" style="background-color: rgb(224, 224, 224); border: 0;">Save</button>
+        </div>
+      </main>
+    `;
+    paintBoxes([
+      ['div', 0, 400],
+      ['#hidden-region', 10, 36],
+      ['#hidden-parent', 50, 36],
+      ['#transparent', 90, 36],
+      ['#offscreen', 130, 20],
+      ['#clipped', 170, 1, 1],
+      ['#inert', 210, 36],
+      ['#fieldset-inert', 250, 36],
+      ['#quiet', 290, 36],
+    ]);
+
+    const findings = await sweep();
+
+    // Every invisible or inactive control drops out; the one visible,
+    // enabled quiet control is still judged on its (failing) surface.
+    expect(findings.map((finding) => finding.id)).toEqual(['control-surface-contrast']);
+    expect(findings[0]).toMatchObject({ target: 'button#quiet' });
+  });
+
+  // closest() does not leave a shadow root, while this sweep crosses the host
+  // boundary everywhere else: an aria-hidden host has to hide the controls
+  // its shadow root holds, or a control the user never sees is measured and
+  // reported exactly at the boundary the rest of the sweep handles.
+  it('control-surface-contrast: an aria-hidden shadow host hides the controls its shadow root holds', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div style="background-color: rgb(255, 255, 255);">
+          <div id="hidden-host" aria-hidden="true" style="background-color: rgb(255, 255, 255);"></div>
+          <div id="band" style="background-color: rgb(255, 0, 0);">
+            <button id="quiet" style="background-color: rgb(255, 0, 0); border: 0;">Save</button>
+          </div>
+        </div>
+      </main>
+    `;
+    const shadow = document.querySelector('#hidden-host')!.attachShadow({ mode: 'open' });
+    shadow.innerHTML =
+      '<div id="shadow-band" style="background-color: rgb(255, 0, 0);">' +
+      '<button id="shadowed" style="background-color: rgb(255, 0, 0); border: 0;">Save</button></div>';
+    paintBoxes([
+      ['div', 0, 400],
+      [shadow.querySelector('#shadow-band')!, 0, 100],
+      [shadow.querySelector('#shadowed')!, 10, 36],
+      ['#band', 150, 100],
+      ['#quiet', 160, 36],
+    ]);
+
+    const findings = await sweep();
+
+    // The shadowed accent control sits on a band of its own colour and would
+    // read 1:1, but its host hides it from assistive tech; the visible
+    // light-DOM control is still judged.
+    expect(findings.map((finding) => finding.id)).toEqual(['control-surface-contrast']);
+    expect(findings[0]).toMatchObject({ target: 'button#quiet' });
+  });
+
+  // A band painting an image over its background colour (an opaque white
+  // gradient here) shows the image, not the colour the stylesheet declares:
+  // the colour underneath cannot stand in for what the control visibly
+  // stands over, so the pair is unmeasurable and drops out instead of
+  // reporting a 1:1 the rendered page does not have.
+  it('control-surface-contrast: a backdrop that paints a background-image is not measured against its background colour', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div style="background-color: rgb(255, 255, 255);">
+          <div id="band" style="background-color: rgb(255, 0, 0); background-image: linear-gradient(rgb(255, 255, 255), rgb(255, 255, 255));">
+            <button id="accent" style="background-color: rgb(255, 0, 0); border: 0;">Save</button>
+          </div>
+        </div>
+      </main>
+    `;
+    paintBoxes([
+      ['div', 0, 400],
+      ['#band', 0, 200],
+      ['#accent', 10, 36],
+    ]);
+
+    expect(await sweep()).toEqual([]);
+  });
+
+  // The border paints over the control's own background (background-clip
+  // defaults to border-box), not straight over the band: a translucent border
+  // darkened by a dark surface can reach 3:1 where compositing it over the
+  // band alone reads it quiet.
+  it('control-surface-contrast: a translucent border is composited over the surface it paints on', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div id="band" style="background-color: rgb(255, 255, 255);">
+          <button id="bordered" style="background-color: rgb(160, 160, 160); border: 2px solid rgba(0, 0, 0, 0.3);">Save</button>
+        </div>
+      </main>
+    `;
+    paintBoxes([
+      ['#band', 0, 200],
+      ['#bordered', 10, 36],
+    ]);
+
+    // rgb(160,160,160) over white with a 2px rgba(0,0,0,.3) border: the
+    // border composites to rgb(112,112,112) over the control's own surface
+    // and reaches about 4.95:1, past the 3:1 floor.
+    expect(await sweep()).toEqual([]);
+  });
+
+  // The same control with the background clipped inside the border paints no
+  // background under it: the border composites over the band, reads 2.10:1
+  // and the surface defect is reported.
+  it('control-surface-contrast: a translucent border over a background clipped inside it is judged against the band', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div id="band" style="background-color: rgb(255, 255, 255);">
+          <button id="clipped" style="background-color: rgb(160, 160, 160); background-clip: padding-box; border: 2px solid rgba(0, 0, 0, 0.3);">Save</button>
+        </div>
+      </main>
+    `;
+    paintBoxes([
+      ['#band', 0, 200],
+      ['#clipped', 10, 36],
+    ]);
+
+    const findings = await sweep();
+
+    expect(findings.map((finding) => finding.id)).toEqual(['control-surface-contrast']);
+    expect(findings[0]).toMatchObject({ target: 'button#clipped' });
+  });
+
+  it('adjacent-sections-no-gap: touching sections with different surfaces are reported, separated or same-colour ones are not', async () => {
+    document.body.innerHTML = `
+      <main>
+        <section id="upper" style="background-color: rgb(255, 255, 255);"></section>
+        <section id="lower" style="background-color: rgb(240, 240, 240);"></section>
+        <section id="apart" style="background-color: rgb(0, 0, 0);"></section>
+      </main>
+    `;
+    paintBoxes([
+      ['#upper', 0, 200],
+      ['#lower', 200, 200], // touches the upper one
+      ['#apart', 410, 200], // 10px below the lower one
+    ]);
+
+    const findings = await sweep();
+
+    expect(findings.map((finding) => finding.id)).toEqual(['adjacent-sections-no-gap']);
+    expect(findings[0]).toMatchObject({ target: 'section#upper vs section#lower' });
+  });
+
+  it('adjacent-sections-no-gap: two sections sharing one background are not a finding', async () => {
+    document.body.innerHTML = `
+      <main>
+        <section id="upper" style="background-color: rgb(255, 255, 255);"></section>
+        <section id="lower" style="background-color: rgb(255, 255, 255);"></section>
+      </main>
+    `;
+    paintBoxes([
+      ['#upper', 0, 200],
+      ['#lower', 200, 200],
+    ]);
+
+    expect(await sweep()).toEqual([]);
+  });
+
+  it('adjacent-sections-no-gap: a visible border on the shared edge is the divider the remedy names', async () => {
+    document.body.innerHTML = `
+      <main>
+        <section id="upper" style="background-color: rgb(255, 255, 255); border-bottom: 1px solid rgb(17, 17, 17);"></section>
+        <section id="lower" style="background-color: rgb(240, 240, 240);"></section>
+      </main>
+    `;
+    paintBoxes([
+      ['#upper', 0, 200],
+      ['#lower', 200, 200],
+    ]);
+
+    expect(await sweep()).toEqual([]);
+  });
+
+  // Sections compare only against the siblings their layout parent holds: a
+  // section inside one container is never judged against one in another, and
+  // a screen renders its surfaces inside its own shadow root, whose top-level
+  // children are the screen-root children the rule describes.
+  it('adjacent-sections-no-gap: only siblings under one layout parent compare, including top-level children of a screen shadow root', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div id="wrap-a"><section id="in-a" style="background-color: rgb(255, 255, 255);"></section></div>
+        <div id="wrap-b"><section id="in-b" style="background-color: rgb(0, 0, 0);"></section></div>
+        <div id="screen"></div>
+      </main>
+    `;
+    // Two screens of the same page, each with its own shadow root: the upper
+    // band of one touches the lower band of the other in viewport space, but
+    // they belong to different hosts, so they never compare. The bands are
+    // plain painted divs: top-level children of a screen's shadow root, with
+    // no parentElement, reach the rule through the shadow host branch.
+    const hostA = document.querySelector('#screen')!;
+    const shadowA = hostA.attachShadow({ mode: 'open' });
+    shadowA.innerHTML = `
+      <div id="s-top" style="background-color: rgb(255, 255, 255);"></div>
+      <div id="s-bottom" style="background-color: rgb(0, 0, 0);"></div>
+    `;
+    paintBoxes([
+      ['#in-a', 0, 100],
+      ['#in-b', 100, 100], // touches #in-a in viewport space, different parent
+      [shadowA.querySelector('#s-top')!, 500, 100],
+      [shadowA.querySelector('#s-bottom')!, 600, 100], // touches #s-top inside the same shadow root
+    ]);
+
+    const findings = await sweep();
+
+    expect(findings.map((finding) => finding.id)).toEqual(['adjacent-sections-no-gap']);
+    expect(findings[0]).toMatchObject({ target: 'div#s-top vs div#s-bottom' });
+  });
+
+  it('adjacent-sections-no-gap: sections whose surfaces cannot be parsed are skipped, not read as transparent', async () => {
+    document.body.innerHTML = `
+      <main>
+        <section id="upper" style="background-color: oklab(0.5 0.1 0.2); border-top: 1px solid rgb(17, 17, 17);"></section>
+        <section id="lower" style="background-color: rgb(240, 240, 240);"></section>
+      </main>
+    `;
+    paintBoxes([
+      ['#upper', 0, 200],
+      ['#lower', 200, 200],
+    ]);
+
+    // The unparsable painted colour (a color-mix Chromium reports as oklab())
+    // makes the pair unmeasurable: no finding either way, not a finding read
+    // off a transparent guess.
+    expect(await sweep()).toEqual([]);
   });
 });
