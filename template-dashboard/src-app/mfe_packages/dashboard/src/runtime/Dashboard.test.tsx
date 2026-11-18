@@ -122,6 +122,99 @@ describe('Dashboard on the real registry', () => {
     expect(errors.mock.calls.filter(([line]) => String(line).includes('pie_chart.v1~') && String(line).includes('is left out'))).toHaveLength(pies);
   }, 15_000);
 
+  it('mounts the product entry of a re-pointed pie_chart with each pie cell\'s render and data', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // Way (b) of "Replace a template widget type": the catalog pie bundle stays off the served widget list, and the
+    // product's own part carries the pie widget type with its `entry` trait set to the product's entry, the catalog
+    // render and data types unchanged, and the product bundle's manifest and entry.
+    const PIE = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.pie_chart.v1~';
+    const PIE_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.pie_chart.v1~';
+    const PIE_RENDER = 'gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.pie_chart_render.v1~';
+    const PRODUCT_MANIFEST = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.product.widgets.pie_chart.v1';
+    const PRODUCT_ENTRY = 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.product.mfe.pie_chart.v1';
+    const catalogPie = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE}`)!;
+    const catalogManifest = IN_BUNDLE_PARTS.instances.find((instance) => String(instance.id).endsWith('.widgets.pie_chart.v1'))!;
+    const catalogEntry = IN_BUNDLE_PARTS.instances.find((instance) => instance.id === `${ENTRY}pie_chart.v1`)!;
+    const product = {
+      types: [
+        { ...catalogPie, 'x-gts-traits': { ...((catalogPie as { 'x-gts-traits'?: Record<string, unknown> })['x-gts-traits'] ?? {}), entry: PRODUCT_ENTRY } },
+        ...BUNDLE_TYPES.pie_chart.filter((type) => String(type.$id) !== `gts://${PIE}`),
+      ],
+      instances: [{ ...catalogManifest, id: PRODUCT_MANIFEST }, { ...catalogEntry, id: PRODUCT_ENTRY, manifest: PRODUCT_MANIFEST }],
+    };
+    const otherParts = {
+      types: IN_BUNDLE_PARTS.types.filter((type) => !BUNDLE_TYPES.pie_chart.includes(type)),
+      instances: IN_BUNDLE_PARTS.instances.filter((instance) => !String(instance.id).endsWith('.pie_chart.v1')),
+    };
+    const file = composeServedFile(DEMO_WITHOUT_BUNDLES, otherParts, product);
+    // The pie cells of the demo dashboard, in file order: the CI pie, the capacity pie, and the one whose data
+    // request is the demo's own failing API path.
+    const demo = file.instances.find((instance) => instance.id === DEMO_DASHBOARD_ID) as {
+      layout: { cells: { widget: { id: string; title: string; render: Record<string, unknown>; data: { params?: { split?: unknown }; transform: string } } }[] };
+    };
+    const pies = demo.layout.cells.filter((cell) => cell.widget.id.includes('.pie_chart.'));
+    expect(pies.map((cell) => cell.widget.title)).toEqual(['CI runs by outcome', 'Review capacity', 'Incidents (failing API)']);
+    const [ciPie, capacityPie, failingPie] = pies;
+    // The data the CI pie cell requests in the demo, as the mock API answers it for the period the host passes.
+    const mock = createMockHost({ delayMs: 0, file });
+    const outcomes = (await mock.request({ method: 'GET', path: '/api/demo/ci/outcomes?period=30d' }, new AbortController().signal)) as Record<string, number>;
+    // A product entry whose lifecycle records every mount and every render_widget payload it is given.
+    const served: { render: Record<string, unknown>; data: Record<string, unknown> }[] = [];
+    let productMounts = 0;
+    const productEntry = (): MfeEntryLifecycle => ({
+      mount(container, bridge) {
+        productMounts += 1;
+        const output = document.createElement('output');
+        output.textContent = 'mounted';
+        container.appendChild(output);
+        bridge.registerActionHandler(
+          RENDER_WIDGET_ACTION_ID,
+          ActionHandler.fromFunction(async (_type, payload) => {
+            const { render, data } = payload as { render: Record<string, unknown>; data: Record<string, unknown> };
+            served.push({ render, data });
+            output.textContent = `mounted; data ${Object.keys(data ?? {}).sort().join(',')}`;
+          }),
+        );
+      },
+      unmount() {},
+    });
+    // The catalog pie entry stays in the map, counted: a re-pointed cell must never reach it.
+    let catalogPieMounts = 0;
+    const countedCatalogPie = () => ((catalogPieMounts += 1), probeEntry());
+    const root = new DashboardRoot({ host: mock, entries: { ...entries, [`${ENTRY}pie_chart.v1`]: countedCatalogPie, [PRODUCT_ENTRY]: productEntry }, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} />);
+    await waitFor(() => expect(served).toHaveLength(2), { timeout: 5000 });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(served).toHaveLength(2);
+    // The product entry mounted for each pie cell of the dashboard, and for no other cell.
+    expect(productMounts).toBe(pies.length);
+    expect(shadowTexts(container).filter((text) => text.includes('data id,slices'))).toHaveLength(2);
+    const stampOf = (cell: (typeof pies)[number]) => renderStampIdOf(PIE_RENDER, cell.widget.id, 'cell');
+    const servedFor = (cell: (typeof pies)[number]) => served.find((payload) => payload.render.id === stampOf(cell))!;
+    // Each render_widget carries the pie cell's render, stamped with the pie render type the product's copy names, and the pie cell's data.
+    expect(servedFor(ciPie).render).toEqual({ ...ciPie.widget.render, id: stampOf(ciPie) });
+    expect(servedFor(ciPie).data).toEqual({
+      id: stampIdOf(PIE_DATA, ciPie.widget.id, 'cell'),
+      slices: [
+        { label: 'Passed', value: outcomes.passed },
+        { label: 'Failed', value: outcomes.failed },
+        { label: 'Cancelled', value: outcomes.cancelled },
+        { label: 'Skipped', value: outcomes.skipped },
+      ],
+    });
+    expect(servedFor(capacityPie).render).toEqual({ ...capacityPie.widget.render, id: stampOf(capacityPie) });
+    expect(servedFor(capacityPie).data).toEqual({ id: stampIdOf(PIE_DATA, capacityPie.widget.id, 'cell'), slices: capacityPie.widget.data.params!.split });
+    // The failing-API pie cell keeps the cannot-be-shown state the demo shows for it without the re-point, with its
+    // own request line; no pie cell fails for the re-point.
+    await waitFor(() => expect(screen.getAllByText('This widget cannot be shown')).toHaveLength(1), { timeout: 5000 });
+    const lines = errors.mock.calls.map(([line]) => String(line));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain(failingPie.widget.id);
+    expect(lines[0]).toContain('/api/demo/broken');
+    expect(catalogPieMounts).toBe(0);
+    errors.mockRestore();
+  }, 15_000);
+
   it('passes bundleOrigins to the entry handler: a bundle on another origin fails only its own cells, before any fetch', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const load = vi.spyOn(MfeHandlerMF.prototype, 'load').mockRejectedValue(new Error('no bundle server in jsdom'));
