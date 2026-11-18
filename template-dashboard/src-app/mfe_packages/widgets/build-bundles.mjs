@@ -141,7 +141,8 @@ if (only !== undefined) {
       process.exitCode = 1;
       return;
     }
-    const listed = readdirSync(outDir).filter((name) => existsSync(path.join(outDir, name, 'widget.gts.json')));
+    // Sorted, so the list is the same on every file system: readdirSync order is the directory's own.
+    const listed = readdirSync(outDir).filter((name) => existsSync(path.join(outDir, name, 'widget.gts.json'))).sort();
     writeFileSync(path.join(outDir, 'widgets.json'), `${JSON.stringify(listed.map((type) => `${base}${type}/widget.gts.json`), null, 2)}\n`);
   };
 

@@ -56,15 +56,21 @@ afterAll(() => {
 const outPath = (...names) => path.join(scratch, 'out', ...names);
 
 // One parent run over the scratch bundles. Every run starts from an empty out
-// dir; seedWidgetsJson puts an old list in it first. onFirstChild runs once,
-// when the first build child shows up in the process table. The runner's test
+// dir; seedWidgetsJson puts an old list in it first, and seedParts puts part
+// directories of a previous build in it first, so a run that names bundles
+// rewrites the list over them. onFirstChild runs once, when the first build
+// child shows up in the process table. The runner's test
 // env goes out: the federation plugin of the bundle build loads no plugins
 // when it sees NODE_ENV=test or VITEST set, and a real shell does not set
 // either.
-const runBuild = ({ args = [], env = {}, seedWidgetsJson = false, onFirstChild } = {}) => {
+const runBuild = ({ args = [], env = {}, seedWidgetsJson = false, seedParts = [], onFirstChild } = {}) => {
   rmSync(outPath(), { recursive: true, force: true });
   mkdirSync(outPath(), { recursive: true });
   if (seedWidgetsJson) writeFileSync(outPath('widgets.json'), '["/widgets/stale_type/widget.gts.json"]\n');
+  for (const type of seedParts) {
+    mkdirSync(outPath(type), { recursive: true });
+    writeFileSync(outPath(type, 'widget.gts.json'), '{}\n');
+  }
   const childEnv = { ...process.env, WIDGET_BUNDLES_DIR: path.join(scratch, 'bundles'), WIDGET_BUNDLES_OUT: outPath(), ...env };
   for (const key of ['NODE_ENV', 'VITEST', 'JEST_WORKER_ID']) delete childEnv[key];
   return new Promise((resolve) => {
@@ -169,5 +175,22 @@ describe('build-bundles.mjs', () => {
     const deadline = Date.now() + 10_000;
     while (run.childPids.some(isRunning) && Date.now() < deadline) await sleep(50);
     expect(run.childPids.some(isRunning)).toBe(false);
+  }, 120_000);
+
+  it('the part of a built bundle carries its mfe.json schemas and then its served.gts.json types, and the list it writes is sorted', async () => {
+    // One extra type in the bundle's own served.gts.json: the part lists the schemas first, then it.
+    const extra = { $id: 'gts://gts.frontx.test.widget.extra.v1~', $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' };
+    writeFileSync(path.join(scratch, 'bundles', OK, 'served.gts.json'), `${JSON.stringify({ types: [extra], instances: [] }, null, 2)}\n`);
+    // Parts a previous build left behind: the rewritten list names every part in the out dir, sorted.
+    const run = await runBuild({ args: [OK], seedParts: ['zeta_widget', 'alpha_widget'] });
+    expect(run.code, run.stderr).toBe(0);
+    const part = JSON.parse(readFileSync(outPath(OK, 'widget.gts.json'), 'utf-8'));
+    const mfe = JSON.parse(readFileSync(path.join(scratch, 'bundles', OK, 'mfe.json'), 'utf-8'));
+    expect(part.types).toEqual([...mfe.schemas, extra]);
+    expect(JSON.parse(readFileSync(outPath('widgets.json'), 'utf-8'))).toEqual([
+      '/widgets/alpha_widget/widget.gts.json',
+      '/widgets/ok_widget/widget.gts.json',
+      '/widgets/zeta_widget/widget.gts.json',
+    ]);
   }, 120_000);
 });
