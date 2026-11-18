@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Dashboard, ServedFile } from '../contract';
 import { IN_BUNDLE_PARTS } from '@gears-frontx/frontx-dashboard-widgets/testing';
 import { STAND_IN, STAND_IN_TYPE_ID } from '../gts';
-import CATALOG from '../../served/catalog.gts.json';
 import { DEMO_DASHBOARD_ID, DEMO_SERVED_FILE as DEMO_WITHOUT_BUNDLES } from '../mock/mockHost';
 import { composeServedFile } from './served';
 
@@ -75,20 +74,20 @@ describe('registration order under reference lookup', () => {
 
   // A widget that fails its own type stays a failure of its own cell. Every shipped widget type closes its
   // render object: each row takes a valid widget of that type from the demo dashboards and changes its render.
-  const shipped = CATALOG.types.map((type) => String(type.$id).replace(/^gts:\/\//, '')).filter((id) => id.startsWith('gts.frontx.dashboard.widget.widget.v1~'));
+  const shipped = IN_BUNDLE_PARTS.types.map((type) => String(type.$id).replace(/^gts:\/\//, '')).filter((id) => id.startsWith('gts.frontx.dashboard.widget.widget.v1~'));
   const demoWidgets = DEMO_WITHOUT_BUNDLES.instances.flatMap((item) =>
     ((item as { layout?: { cells?: Array<{ widget?: { id: string; render: Record<string, unknown> } }> } }).layout?.cells ?? []).flatMap((c) => (c.widget ? [c.widget] : [])),
   );
   // The fields and required fields each render type of the catalog declares, read from its own allOf part.
   const renderTypes = new Map(
-    CATALOG.types
+    IN_BUNDLE_PARTS.types
       .filter((type) => /_render\.v1~$/.test(String(type.$id)))
       .map((type) => {
         const own = ((type as { allOf?: Array<{ properties?: Record<string, unknown>; required?: string[] }> }).allOf ?? []).find((part) => part.properties) ?? {};
         return [/\.([a-z_]+)_render\.v1~$/.exec(String(type.$id))![1], { fields: Object.keys(own.properties ?? {}), required: own.required ?? [] }] as const;
       }),
   );
-  it('finds the fifteen shipped widget types and their fifteen render types in the catalog, so the table below is not empty', () => {
+  it('finds the fifteen shipped widget types and their fifteen render types in the bundles, so the table below is not empty', () => {
     expect(shipped).toHaveLength(15);
     expect([...renderTypes.keys()].sort()).toEqual(shipped.map((type) => /\.([a-z_]+)\.v1~$/.exec(type)![1]).sort());
   });
@@ -98,7 +97,7 @@ describe('registration order under reference lookup', () => {
   it('ships the pinned required fields of each render type', () => {
     type Part = { $ref?: string; required?: string[] };
     const required = Object.fromEntries(
-      CATALOG.types
+      IN_BUNDLE_PARTS.types
         .filter((type) => /_render\.v1~$/.test(String(type.$id)))
         .map((type) => {
           const parts = [type as Part, ...((type as { allOf?: Part[] }).allOf ?? []).filter((part) => !part.$ref)];
@@ -534,6 +533,9 @@ describe('the served file in parts', () => {
   /** One catalog bundle's part: its manifest and entry from the in-bundle parts. */
   const bundlePart = (widget: string): ServedFile => ({ types: [], instances: IN_BUNDLE_PARTS.instances.filter((instance) => String(instance.id).endsWith(`.${widget}.v1`)) });
   const others = IN_BUNDLE_PARTS.instances.filter((instance) => !String(instance.id).endsWith('.pie_chart.v1'));
+  // The part of the bundles the subject part leaves out of these answers: it carries the bundles' types, as the
+  // parts of a served answer do, so a rejected subject part is the only thing that fails cells.
+  const otherPart = { types: IN_BUNDLE_PARTS.types, instances: others };
   const demoDashboard = () => DEMO_WITHOUT_BUNDLES.instances.find((instance) => instance.id === DEMO_DASHBOARD_ID) as unknown as Dashboard;
   const slotsOf = (widget: string) =>
     demoDashboard().layout.cells.flatMap((cell, index) => [
@@ -554,7 +556,7 @@ describe('the served file in parts', () => {
   it('leaves out a part whose manifest the registry rejects, with one console line, and fails only the cells it serves', () => {
     const pie = bundlePart('pie_chart');
     const broken = { ...pie, instances: pie.instances.map((instance) => (instance.id === PIE_MANIFEST ? { ...instance, name: 7 } : instance)) };
-    const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, broken]);
+    const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, broken]);
     expect(outcome.ok).toBe(true);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(new RegExp(`the widget part "${PIE_MANIFEST.replace(/[.~]/g, '\\$&')}" is left out: .+`));
@@ -567,7 +569,7 @@ describe('the served file in parts', () => {
   it('leaves out a part whose entry the registry rejects even when its manifest already registered', () => {
     const pie = bundlePart('pie_chart');
     const broken = { ...pie, instances: pie.instances.map((instance) => (instance.id === PIE_ENTRY ? { ...instance, manifest: 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.test.mfe.none.v1' } : instance)) };
-    const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, broken]);
+    const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, broken]);
     expect(lines).toHaveLength(1);
     const result = registerDashboard(types, demoDashboard(), outcome.ok ? outcome.rejected : undefined);
     expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
@@ -575,7 +577,7 @@ describe('the served file in parts', () => {
 
   it('leaves out a part whose type the registry rejects', () => {
     const bad = { $id: 'gts://not a type id', $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' };
-    const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...bundlePart('pie_chart'), types: [bad] }]);
+    const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...bundlePart('pie_chart'), types: [bad] }]);
     expect(lines).toHaveLength(1);
     const result = registerDashboard(types, demoDashboard(), outcome.ok ? outcome.rejected : undefined);
     expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
@@ -589,10 +591,10 @@ describe('the served file in parts', () => {
     const rest = others.filter((instance) => !String(instance.id).endsWith('.metric_card.v1'));
     // Built apart, the same type can carry its keys in another order: it is still the same type.
     const reordered = Object.fromEntries(Object.entries(dataType).reverse());
-    const alike = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: rest }, { ...metric, types: [dataType] }, { ...pie, types: [reordered] }]);
+    const alike = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: rest }, { ...metric, types: [dataType] }, { ...pie, types: [reordered] }]);
     expect(alike.lines).toEqual([]);
     expect(alike.outcome.ok && alike.outcome.rejected.size).toBe(0);
-    const differing = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: rest }, { ...metric, types: [dataType] }, { ...pie, types: [changed] }]);
+    const differing = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: rest }, { ...metric, types: [dataType] }, { ...pie, types: [changed] }]);
     expect(differing.lines).toHaveLength(1);
     expect(differing.lines[0]).toMatch(/pie_chart.* is left out: .*frontx\.test\.widget_data\.shared\.v1~ .*already/);
     // The first definition stands; only the later part's cells fail.
@@ -613,7 +615,7 @@ describe('the served file in parts', () => {
     const OWN_DASHBOARD = 'gts.frontx.dashboard.dashboard.dashboard.v1~5b1e2d3c-4a5f-4e6d-8c7b-9a0b1c2d3e4f';
     const ownDashboard = { ...demoDashboard(), id: OWN_DASHBOARD, title: 'Pie only' };
     const badInstance = { id: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.broken.v1', manifest: 7 };
-    const pieType = () => DEMO_WITHOUT_BUNDLES.types.find((type) => String(type.$id) === `gts://${PIE}`)!;
+    const pieType = () => IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE}`)!;
     const dataType = { $id: 'gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.test.widget_data.shared.v1~', $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', allOf: [{ $ref: 'gts://gts.frontx.dashboard.widget_data.widget_data.v1~' }] };
     const failedSlots = (loadedFile: ReturnType<typeof loadedParts>) => {
       const result = registerDashboard(loadedFile.types, demoDashboard(), loadedFile.outcome.ok ? loadedFile.outcome.rejected : undefined);
@@ -622,10 +624,10 @@ describe('the served file in parts', () => {
 
     it('loads the dashboard of a part that registers, and never the dashboard of a part it leaves out, wherever the failing item sits', () => {
       const pie = bundlePart('pie_chart');
-      const healthy = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...pie, instances: [...pie.instances, ownDashboard] }]);
+      const healthy = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...pie, instances: [...pie.instances, ownDashboard] }]);
       expect(healthy.outcome.ok && healthy.outcome.dashboards.has(OWN_DASHBOARD)).toBe(true);
       for (const instances of [[...pie.instances, ownDashboard, badInstance], [...pie.instances, badInstance, ownDashboard]]) {
-        const { outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...pie, instances }]);
+        const { outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...pie, instances }]);
         expect(lines).toHaveLength(1);
         expect(outcome.ok && outcome.dashboards.has(OWN_DASHBOARD)).toBe(false);
       }
@@ -634,7 +636,7 @@ describe('the served file in parts', () => {
     it('leaves out a part that brings a dashboard the base file already serves, and keeps the base dashboard', () => {
       const pie = bundlePart('pie_chart');
       const takeover = { ...demoDashboard(), title: 'Taken over' };
-      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...pie, instances: [...pie.instances, takeover] }]);
+      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...pie, instances: [...pie.instances, takeover] }]);
       expect(loadedFile.lines).toEqual([expect.stringMatching(/pie_chart.* is left out: its dashboard .* is already served otherwise$/)]);
       expect(loadedFile.outcome.ok && loadedFile.outcome.dashboards.get(DEMO_DASHBOARD_ID)?.title).toBe(demoDashboard().title);
       expect(failedSlots(loadedFile)).toEqual(pieSlots());
@@ -643,7 +645,7 @@ describe('the served file in parts', () => {
     it('takes a part that brings a dashboard the base file already serves with the same content, keys in any order', () => {
       const pie = bundlePart('pie_chart');
       const alike = Object.fromEntries(Object.entries(demoDashboard()).reverse());
-      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...pie, instances: [...pie.instances, alike] }]);
+      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...pie, instances: [...pie.instances, alike] }]);
       expect(loadedFile.lines).toEqual([]);
       expect(loadedFile.outcome.ok && loadedFile.outcome.dashboards.get(DEMO_DASHBOARD_ID)).toEqual(demoDashboard());
       expect(failedSlots(loadedFile)).toEqual([]);
@@ -655,7 +657,7 @@ describe('the served file in parts', () => {
       const changed = { ...dataType, required: ['value'] };
       const loadedFile = loadedParts([
         DEMO_WITHOUT_BUNDLES,
-        { types: [], instances: rest },
+        { types: otherPart.types, instances: rest },
         // Its own new type first, then a catalog type it brings otherwise.
         { ...metric, types: [dataType, { ...pieType(), description: 'otherwise' }] },
         { ...bundlePart('pie_chart'), types: [changed] },
@@ -673,7 +675,7 @@ describe('the served file in parts', () => {
       const metric = bundlePart('metric_card');
       const rest = others.filter((instance) => !String(instance.id).endsWith('.metric_card.v1'));
       const changed = { ...dataType, required: ['value'] };
-      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: rest }, { ...metric, types: [dataType, bad] }, { ...bundlePart('pie_chart'), types: [changed] }]);
+      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: rest }, { ...metric, types: [dataType, bad] }, { ...bundlePart('pie_chart'), types: [changed] }]);
       expect(loadedFile.lines).toEqual([
         expect.stringMatching(/metric_card.* is left out: the registry rejected it: /),
         expect.stringMatching(/pie_chart.* is left out: its type .*frontx\.test\.widget_data\.shared\.v1~ is already defined otherwise$/),
@@ -685,7 +687,7 @@ describe('the served file in parts', () => {
     it('fails no cell of a healthy part through an entry a rejected part brings alike', () => {
       const pie = bundlePart('pie_chart');
       const entry = pie.instances.find((instance) => instance.id === PIE_ENTRY)!;
-      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, pie, { types: [{ ...pieType(), description: 'otherwise' }], instances: [{ ...entry }] }]);
+      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, pie, { types: [{ ...pieType(), description: 'otherwise' }], instances: [{ ...entry }] }]);
       expect(loadedFile.lines).toHaveLength(1);
       expect(loadedFile.outcome.ok && [...loadedFile.outcome.rejected.keys()]).toEqual([]);
       expect(failedSlots(loadedFile)).toEqual([]);
@@ -695,7 +697,7 @@ describe('the served file in parts', () => {
       const pie = bundlePart('pie_chart');
       const entry = pie.instances.find((instance) => instance.id === PIE_ENTRY)!;
       const copied = { ...entry, manifest: 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.metric_card.v1' };
-      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, pie, { types: [], instances: [copied] }]);
+      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, pie, { types: [], instances: [copied] }]);
       expect(loadedFile.lines).toEqual([expect.stringMatching(/part number 4 of the answer \(the served file is number 1\) is left out: its instance .*pie_chart\.v1 is already registered otherwise$/)]);
       expect(loadedFile.outcome.ok && loadedFile.outcome.rejected.size).toBe(0);
       expect(failedSlots(loadedFile)).toEqual([]);
@@ -707,11 +709,11 @@ describe('the served file in parts', () => {
       const entry = pie.instances.find((instance) => instance.id === PIE_ENTRY)!;
       for (const [record, change] of [[manifest, { name: 'otherwise' }], [entry, { exposedModule: './otherwise' }], [ownDashboard, { title: 'Otherwise' }]] as const) {
         const what = String(record.id).startsWith('gts.frontx.dashboard.dashboard.') ? 'dashboard' : 'instance';
-        const twice = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...pie, instances: [...pie.instances, ownDashboard, { ...record, ...change }] }]);
+        const twice = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...pie, instances: [...pie.instances, ownDashboard, { ...record, ...change }] }]);
         expect(twice.lines).toEqual([expect.stringMatching(new RegExp(`pie_chart.* is left out: its ${what} ${String(record.id).replace(/[.~]/g, '\\$&')} comes twice, the second otherwise$`))]);
         expect(twice.outcome.ok && twice.outcome.dashboards.has(OWN_DASHBOARD)).toBe(false);
         expect(failedSlots(twice)).toEqual(pieSlots());
-        const alike = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...pie, instances: [...pie.instances, ownDashboard, Object.fromEntries(Object.entries(record).reverse())] }]);
+        const alike = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...pie, instances: [...pie.instances, ownDashboard, Object.fromEntries(Object.entries(record).reverse())] }]);
         expect(alike.lines).toEqual([]);
         expect(failedSlots(alike)).toEqual([]);
       }
@@ -724,7 +726,7 @@ describe('the served file in parts', () => {
 
     it('leaves two records with no id to the registry, so the part line names its own reason, not a repeated id', () => {
       const pie = bundlePart('pie_chart');
-      const { lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...pie, instances: [...pie.instances, { name: 'one' }, { name: 'two' }] }]);
+      const { lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...pie, instances: [...pie.instances, { name: 'one' }, { name: 'two' }] }]);
       expect(lines).toEqual([expect.stringMatching(/pie_chart.* is left out: /)]);
       expect(lines[0]).not.toMatch(/comes twice/);
     });
@@ -732,7 +734,7 @@ describe('the served file in parts', () => {
     it('fails no cell of a later healthy part through what an earlier rejected part left behind', () => {
       const pie = bundlePart('pie_chart');
       const broken = { ...pie, instances: pie.instances.map((instance) => (instance.id === PIE_ENTRY ? { ...instance, manifest: 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.test.mfe.none.v1' } : instance)) };
-      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, broken, pie]);
+      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, broken, pie]);
       expect(loadedFile.lines).toHaveLength(1);
       expect(loadedFile.outcome.ok && loadedFile.outcome.rejected.size).toBe(0);
       expect(failedSlots(loadedFile)).toEqual([]);
@@ -744,10 +746,10 @@ describe('the served file in parts', () => {
       ['a lifecycle stage of the plugin', loadLifecycleStages()[0] as unknown as Record<string, unknown>, { description: 'otherwise' }],
     ])('leaves out a part that brings %s otherwise, and takes one that brings it alike', (_name, record, change) => {
       const pie = bundlePart('pie_chart');
-      const otherwise = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...pie, instances: [...pie.instances, { ...record, ...change }] }]);
+      const otherwise = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...pie, instances: [...pie.instances, { ...record, ...change }] }]);
       expect(otherwise.lines).toEqual([expect.stringMatching(new RegExp(`is left out: its instance ${String(record.id).replace(/[.~]/g, '\\$&')} is already registered otherwise$`))]);
       expect(failedSlots(otherwise)).toEqual(pieSlots());
-      const alike = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...pie, instances: [...pie.instances, { ...record }] }]);
+      const alike = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...pie, instances: [...pie.instances, { ...record }] }]);
       expect(alike.lines).toEqual([]);
       expect(failedSlots(alike)).toEqual([]);
     });
@@ -758,7 +760,7 @@ describe('the served file in parts', () => {
       ['an instance whose id cannot be read', () => Object.defineProperty({}, 'id', { enumerable: true, get: () => { throw new Error('unreadable'); } })],
     ])('leaves out a part that throws on %s with its one line, and keeps the other parts', (_name, record) => {
       const pie = bundlePart('pie_chart');
-      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...pie, instances: [...pie.instances, record()] }]);
+      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...pie, instances: [...pie.instances, record()] }]);
       expect(loadedFile.outcome.ok).toBe(true);
       expect(loadedFile.lines).toEqual([expect.stringMatching(/^\[dashboard\] the widget part .+ is left out: it cannot be read: /)]);
       expect(failedSlots(loadedFile)).toEqual(pieSlots());
@@ -773,7 +775,7 @@ describe('the served file in parts', () => {
     it('quotes and caps the part name in its console line', () => {
       const pie = bundlePart('pie_chart');
       const long = `${'gts.frontx.mfes.mfe.mf_manifest.v1~'}frontx.test.widgets.${'x'.repeat(300)}\n[dashboard] forged.v1`;
-      const { lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { ...pie, instances: [...pie.instances, { id: long, name: 7 }] }]);
+      const { lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { ...pie, instances: [...pie.instances, { id: long, name: 7 }] }]);
       expect(lines).toHaveLength(1);
       expect(lines[0]).not.toContain('\n');
       expect(lines[0]).toMatch(/^\[dashboard\] the widget part "gts\.frontx\.mfes\.mfe\.mf_manifest\.v1~frontx\.dashboard\.widgets\.pie_chart\.v1, .*\.\.\." is left out: /);
@@ -782,7 +784,7 @@ describe('the served file in parts', () => {
 
     it('escapes every line break and control character a part id brings into its console line, in the name and in the reason', () => {
       const id = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.test.widgets.a\u2028b\u2029c\u0085d\u007fe\u009bf\u0000g\rh.v1';
-      const { lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: [], instances: others }, { types: [], instances: [{ id, name: 7 }] }]);
+      const { lines } = loadedParts([DEMO_WITHOUT_BUNDLES, { types: otherPart.types, instances: others }, { types: [], instances: [{ id, name: 7 }] }]);
       expect(lines).toHaveLength(1);
       expect(lines[0]).toContain('frontx.test.widgets.a\\u2028b\\u2029c\\u0085d\\u007fe\\u009bf\\u0000g\\rh.v1" is left out');
       expect(lines[0]).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/);
@@ -810,7 +812,7 @@ describe('the render type of a widget type', () => {
   // and an extra render field failing each of them).
   it('is, for every catalog widget type, its own render type, one to one with the catalog render types', () => {
     const types = loaded().types;
-    const ids = CATALOG.types.filter((type) => !(type as { 'x-gts-abstract'?: boolean })['x-gts-abstract']).map((type) => String(type.$id).replace(/^gts:\/\//, ''));
+    const ids = IN_BUNDLE_PARTS.types.filter((type) => !(type as { 'x-gts-abstract'?: boolean })['x-gts-abstract']).map((type) => String(type.$id).replace(/^gts:\/\//, ''));
     const named = ids.filter((id) => id.startsWith('gts.frontx.dashboard.widget.widget.v1~')).map((id) => [id, renderTypeOf(types, id)] as const);
     const derived = ids.filter((id) => id.startsWith(base) && id !== base);
     for (const [id, renderType] of named) expect(renderType, `${id} names a render type of its own`).not.toBe(base);

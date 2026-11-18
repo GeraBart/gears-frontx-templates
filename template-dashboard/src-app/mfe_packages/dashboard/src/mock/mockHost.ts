@@ -314,7 +314,7 @@ const FIXTURES: Record<string, (body: unknown, query: URLSearchParams) => unknow
   },
 };
 
-/** The served file of the demo without its widget bundles: the catalog types and the demo dashboards. */
+/** The served file of the demo without its widget bundles: the catalog file and the demo dashboards. */
 export const DEMO_SERVED_FILE: ServedFile = composeServedFile(catalog as ServedFile, demo as ServedFile);
 
 export const DEMO_DASHBOARD_ID = 'gts.frontx.dashboard.dashboard.dashboard.v1~6a0f3c1e-8b2d-4f47-9e15-3c7a2b9d0e41';
@@ -324,7 +324,7 @@ export const DEMO_DASHBOARD_ID = 'gts.frontx.dashboard.dashboard.dashboard.v1~6a
  * (`dist/widgets.json` of the widgets package, served next to the bundles):
  * the served file is then `file` (or the files of a list it is) followed by
  * the part of every bundle on that list, each registered on its own, read on each dashboard request, so a bundle published or re-pointed shows
- * on the next page load. `file` replaces the demo file (catalog types and demo
+ * on the next page load. `file` replaces the demo file (the catalog file and demo
  * dashboards), for tests and for checks of a broken file. `delayMs` delays
  * every answer like a network would.
  */

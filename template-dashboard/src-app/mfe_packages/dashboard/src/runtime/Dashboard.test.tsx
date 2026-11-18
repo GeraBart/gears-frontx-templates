@@ -96,9 +96,10 @@ describe('Dashboard on the real registry', () => {
 
   it('fails only the cells of a served widget part the registry rejects, and renders the rest of the dashboard', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    // The served widget list names one part per catalog bundle; the pie chart's manifest is one the registry rejects.
+    // The served widget list names one part per catalog bundle, each with the types its bundle declares; the pie
+    // chart's manifest is one the registry rejects.
     const parts = TYPES.map((type) => ({
-      types: [],
+      types: IN_BUNDLE_PARTS.types.filter((schema) => String(schema.$id).includes(`.${type}`)),
       instances: IN_BUNDLE_PARTS.instances
         .filter((instance) => String(instance.id).endsWith(`.${type}.v1`))
         .map((instance) => (type === 'pie_chart' && String(instance.id).includes('mf_manifest') ? { ...instance, name: 7 } : instance)),

@@ -9,6 +9,8 @@ export const entryIdOf = (widgetType: string) => `${ENTRY_MF_TYPE_ID}frontx.dash
 interface BundleSource {
   manifest: { id: string; remoteEntry: string };
   entries: Array<Record<string, unknown> & { id: string }>;
+  /** The widget, render and data types the bundle declares, as its built part carries them. */
+  schemas?: ServedFile['types'];
 }
 
 const renderers = import.meta.glob<WidgetRenderer>('../bundles/*/lifecycle.tsx', { eager: true, import: 'render' });
@@ -30,11 +32,13 @@ export const WIDGET_ENTRIES: Readonly<Record<string, () => MfeEntryLifecycle>> =
 
 /**
  * The served-file parts of the catalog bundles without a build: each bundle's
- * manifest and entry, with no chunks to load. With `WIDGET_ENTRIES` the root
- * never loads a chunk, so the manifests only have to register.
+ * manifest and entry, and the types its mfe.json declares in schemas, in
+ * bundle order, as the build writes them into the bundle's part. With
+ * `WIDGET_ENTRIES` the root never loads a chunk, so the manifests only have
+ * to register.
  */
 export const IN_BUNDLE_PARTS: ServedFile = {
-  types: [],
+  types: bundles.flatMap(({ source }) => source.schemas ?? []),
   instances: bundles.flatMap(({ source }) => [
     {
       id: source.manifest.id,
