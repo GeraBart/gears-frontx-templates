@@ -99,7 +99,7 @@ A widget type the template does not define ships the same way, with no change to
 
 To ship a fixed `pie_chart`, change its code, run `npm run build:widgets -- pie_chart`, and publish only `dist/pie_chart/`: its part keeps its address, so the published `widgets.json` does not change, and the other bundles stay as they are. The fix shows on the next page load. A fix keeps the type's `render` and data schemas; an incompatible change is a new widget type version.
 
-To point a template widget type at a bundle of the product instead, build the product's bundle as above and set the template type's `entry` trait to the product's entry id in the product's copy of the served file; the template's copy does not change. To roll back, publish the previous bundle and its part again.
+To point a template widget type at a bundle of the product instead, build the product's bundle as above and set the template type's `entry` trait to the product's entry id in the type's `schemas`, one of two ways. Either change the trait in that template bundle's own `mfe.json` in the product's copy of the template and rebuild its part, or keep that bundle off the served widget list and let the product's bundle declare the type: a part may not replace a type another part brought, so the product's `schemas` then carry the template type with the product's entry id and its render and data types unchanged. The first way is a change in the product's copy of the template; the second changes no template file. To roll back, publish the previous bundle and its part again.
 
 ### Bundle addresses, CORS and same origin
 

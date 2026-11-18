@@ -653,7 +653,7 @@ The template publishes one public surface, its dashboard and widget contract. It
 2. The product developer passes the root the product's `DashboardHost` (the shipped `fetchHost` over the product's same-origin API, or the product's own) in the product's copy.
 3. The product developer places the dashboard root and gives it a container, a dashboard id, and the theme and language values.
 4. The product developer serves the product's copy of the runtime-loaded JSON.
-5. Where the product needs its own widget, the product developer points a template widget type to it in that copy.
+5. Where the product needs its own widget, the product developer points a template widget type to it by setting the type's `entry` trait to the product's entry in a bundle's `mfe.json` `schemas`: in that template bundle's own `mfe.json` in the product's copy of the template, with its part rebuilt, or in a bundle of the product whose `schemas` declare the type, with the template bundle off the widget list.
 
 **Postconditions**:
 - The product shows dashboards from its runtime-loaded JSON, with no data code and no change to the template.
@@ -683,7 +683,7 @@ The template publishes one public surface, its dashboard and widget contract. It
 - [ ] An expression that reads anything other than its request's response, or for a widget with written-in data those values, fails, and its cell or larger view shows cannot-be-shown.
 - [ ] A request with no answer within the timeout set in the DESIGN makes every cell or larger view that uses it show cannot-be-shown.
 - [ ] A dashboard that the product generates is shown in the same way as one that it writes by hand, and the product checks a generated dashboard against the published types and the layout checks before showing it.
-- [ ] A product that points a template widget type to a different widget, in its own copy of the runtime-loaded JSON, shows that widget in every dashboard using the type, with no change to the template.
+- [ ] A product that points a template widget type to a different widget, by setting the type's `entry` trait in a bundle's `mfe.json` in its copy of the template and rebuilding its part, or by serving a bundle of its own that declares the type with the template bundle off its widget list, shows that widget in every dashboard using the type; the first is a change in the product's copy of the template, the second needs no template change.
 - [ ] A complete dashboard shows within 3 seconds at p95 (provisional) under the reference conditions fixed in the DESIGN, counted from the moment the dashboard viewer opens the dashboard.
 - [ ] Switching the host between the light and dark theme switches the dashboard root, every shown widget, and a widget open in its larger view without reload: the page is not reloaded, no loading states show again, no request is sent, and the viewer's position on the dashboard and an open larger view are kept. The dashboard uses the host's design-system look.
 - [ ] Two dashboards open at the same time (in two browser tabs, or side by side when the template is copied into separately loaded screens) each show only their own content.

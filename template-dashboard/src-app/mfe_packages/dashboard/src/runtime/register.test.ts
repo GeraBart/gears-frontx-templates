@@ -609,6 +609,32 @@ describe('the served file in parts', () => {
     expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
   });
 
+  it('serves the re-point of a catalog widget type to the product entry: the catalog part off the list, a product part carrying the type, and no failed cell', () => {
+    // The re-point the guides describe: the catalog pie bundle stays off the widget list, and a product bundle's part
+    // carries the pie widget type with its `entry` trait set to the product's own entry, the catalog render and data
+    // types unchanged, and the product bundle's manifest and entry.
+    const catalogPie = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE}`)!;
+    const catalogManifest = IN_BUNDLE_PARTS.instances.find((instance) => instance.id === PIE_MANIFEST)!;
+    const catalogEntry = IN_BUNDLE_PARTS.instances.find((instance) => instance.id === PIE_ENTRY)!;
+    const PRODUCT_MANIFEST = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.product.widgets.pie_chart.v1';
+    const PRODUCT_ENTRY = 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.product.mfe.pie_chart.v1';
+    const product = {
+      types: [
+        { ...catalogPie, 'x-gts-traits': { ...((catalogPie as { 'x-gts-traits'?: Record<string, unknown> })['x-gts-traits'] ?? {}), entry: PRODUCT_ENTRY } },
+        ...bundleTypes('pie_chart').filter((type) => String(type.$id) !== `gts://${PIE}`),
+      ],
+      instances: [{ ...catalogManifest, id: PRODUCT_MANIFEST }, { ...catalogEntry, id: PRODUCT_ENTRY, manifest: PRODUCT_MANIFEST }],
+    };
+    const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), product]);
+    expect(lines).toEqual([]);
+    expect(outcome.ok).toBe(true);
+    // The product's copy of the type is the one in the store, and its effective entry is the product's own.
+    expect(outcome.ok && types.getSchema(PIE)).toEqual(product.types[0]);
+    expect(outcome.ok && effectiveTraits(types, PIE)).toEqual({ entry: PRODUCT_ENTRY, data_type: PIE_DATA });
+    const result = registerDashboard(types, demoDashboard(), outcome.ok ? outcome.rejected : undefined);
+    expect(result).toMatchObject({ ok: true, failed: new Map() });
+  });
+
   it('still fails every dashboard when the first part, the base file, is rejected', () => {
     const clash = { $id: 'gts://gts.frontx.dashboard.widget.widget.v1~', $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' };
     expect(loadedParts([{ ...DEMO_WITHOUT_BUNDLES, types: [clash, ...DEMO_WITHOUT_BUNDLES.types] }, IN_BUNDLE_PARTS]).outcome).toMatchObject({
