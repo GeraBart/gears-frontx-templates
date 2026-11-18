@@ -19,7 +19,7 @@ printf 'registry=https://registry.npmjs.org/\n' > "$NPM_CONFIG_USERCONFIG"
 npm ci
 ```
 
-- Timings: rough numbers. `npm ci` takes about 2 minutes (113 s). `npm run build:widgets` on the 15 bundles takes about 72 s one at a time and about 31 s at 4 at a time (the `--jobs` default), with a peak of about 3 GB of memory; all 15 at once takes about 17 s and about 10 GB. `npm run dev:host` reports Vite ready in under a second and answers the first page request about 5 s after the command starts.
+- Timings: rough numbers. `npm ci` takes about 2 minutes (113 s). `npm run build:widgets` on the 15 bundles takes about 72 s one at a time and about 31 s at 4 at a time (the `--jobs` default), with a peak of about 3 GB of memory. All 15 at once takes about 17 s and about 10 GB. `npm run dev:host` reports Vite ready in under a second and answers the first page request about 5 s after the command starts.
 
 ## Dev preview
 
