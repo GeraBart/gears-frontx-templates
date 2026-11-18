@@ -203,11 +203,13 @@ function leftOut(types: TypeSystemPlugin, widgetId: string, rejected: Rejected):
   try {
     const typeId = typeOfWidget(widgetId);
     const traits = effectiveTraits(types, typeId);
-    const entry = rejected.instances.get(String(traits.entry));
+    const entry = typeof traits.entry === 'string' ? rejected.instances.get(traits.entry) : undefined;
     if (entry) return entry;
     // The type can sit in the base file with an entry of its own, so the entry names no left-out part while the
-    // part's render and data type ids do: the cells of the type fail with the part's line all the same.
-    return rejected.types.get(renderTypeOf(types, typeId)) ?? rejected.types.get(String(traits.data_type));
+    // part's render and data type ids do: the cells of the type fail with the part's line all the same. A trait
+    // that is no id, as a data_type a type has none of, names no part and is looked up by nothing.
+    const dataType = traits.data_type;
+    return rejected.types.get(renderTypeOf(types, typeId)) ?? (typeof dataType === 'string' ? rejected.types.get(dataType) : undefined);
   } catch {
     // A type that does not resolve fails the widget's own registration below.
     return undefined;

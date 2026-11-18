@@ -678,6 +678,19 @@ describe('the served file in parts', () => {
     expect(result.ok && result.failed.get(pieSlots()[0])).toMatch(/^the widget part ".*pie_chart.*" is left out: its type .* is already defined otherwise$/);
   });
 
+  it('fails no cell of the healthy parts when a left-out part declares a type the registry refuses for its id', () => {
+    // The refused id is recorded in the type map all the same; a widget type without a data_type trait must not
+    // look it up under the string "undefined" and fail with an unrelated part's line, wherever the part sits.
+    const rogue = { types: [{ $id: 'gts://undefined', type: 'object' }], instances: [] };
+    for (const parts of [[DEMO_WITHOUT_BUNDLES, rogue, IN_BUNDLE_PARTS], [DEMO_WITHOUT_BUNDLES, IN_BUNDLE_PARTS, rogue]]) {
+      const { types, outcome, lines } = loadedParts(parts);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toMatch(/is left out: the registry rejected it: /);
+      const result = registerDashboard(types, demoDashboard(), outcome.ok ? outcome.rejected : undefined);
+      expect(result.ok && [...result.failed.keys()]).toEqual([]);
+    }
+  });
+
   it('still fails every dashboard when the first part, the base file, is rejected', () => {
     const clash = { $id: 'gts://gts.frontx.dashboard.widget.widget.v1~', $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' };
     expect(loadedParts([{ ...DEMO_WITHOUT_BUNDLES, types: [clash, ...DEMO_WITHOUT_BUNDLES.types] }, IN_BUNDLE_PARTS]).outcome).toMatchObject({
