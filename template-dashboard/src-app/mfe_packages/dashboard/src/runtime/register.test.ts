@@ -584,6 +584,22 @@ describe('the served file in parts', () => {
     expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
   });
 
+  it('leaves out a part the registry rejects after its manifest and entry registered, and fails its cells with its line', () => {
+    // The manifest and entry the part registered before its broken entry are its own, not healthy ones: the cells
+    // they serve fail with the part line (DESIGN §3.6 step 4), wherever the failing item of the part sits.
+    const pie = bundlePart('pie_chart');
+    const brokenEntry = { id: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.broken.v1', manifest: 7 };
+    const broken = { ...pie, instances: [...pie.instances, brokenEntry] };
+    const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), broken]);
+    expect(outcome.ok).toBe(true);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(new RegExp(`the widget part "${PIE_MANIFEST.replace(/[.~]/g, '\\$&')}" is left out: the registry rejected it: `));
+    const result = registerDashboard(types, demoDashboard(), outcome.ok ? outcome.rejected : undefined);
+    expect(pieSlots().length).toBeGreaterThan(0);
+    expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
+    expect(result.ok && result.failed.get(pieSlots()[0])).toMatch(/^the widget part ".*pie_chart.*" is left out: the registry rejected it: /);
+  });
+
   it('leaves out a part whose type the registry rejects', () => {
     const pie = bundlePart('pie_chart');
     const bad = { $id: 'gts://not a type id', $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' };
@@ -759,12 +775,13 @@ describe('the served file in parts', () => {
       expect(failedSlots(loadedFile)).toEqual([]);
     });
 
-    it('records nothing for the pie type when a rejected part names it as an instance id, and fails no cell', () => {
+    it('fails no cell when a rejected part names a registered type as an instance id', () => {
       // The instance id of a rejected part can equal a registered widget type id; the instance and type ids stay in
-      // two maps, and each recording is guarded against both stores, so the healthy pie cells keep registering.
+      // two maps, and a cell reads the instance map only for its widget's entry, so the healthy pie cells keep
+      // registering and no type id of the part is recorded.
       const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), bundlePart('pie_chart'), { types: [], instances: [{ id: PIE }, 7] }]);
       expect(loadedFile.lines).toHaveLength(1);
-      expect(loadedFile.outcome.ok && recordedIds(loadedFile)).toEqual([]);
+      expect(loadedFile.outcome.ok && [...loadedFile.outcome.rejected.types.keys()]).toEqual([]);
       expect(failedSlots(loadedFile)).toEqual([]);
     });
 

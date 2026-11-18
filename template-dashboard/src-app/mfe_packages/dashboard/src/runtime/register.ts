@@ -183,10 +183,10 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
     // The reason quotes ids from the part as well (a registry message, an id held otherwise), so it is escaped the same way.
     const line = `the widget part ${name} is left out: ${escapeControls(reason)}`;
     console.error(`[dashboard] ${line}`);
-    // A rejected part held nothing, so `held` still names what registered before it: those ids stay healthy. Each
-    // recording is guarded against both stores, so an instance id that equals a registered type id, or a type id
-    // that equals a held instance id, is recorded by neither and fails no cell of the other kind.
-    for (const id of ids) if (!held.instances.has(id) && !types.getSchema(id)) rejected.instances.set(id, line);
+    // A rejected part held nothing, so `held` still names what registered before it: those ids stay healthy. An
+    // instance id is recorded only when nothing held it; a type id that equals a held instance id is recorded by
+    // neither and fails no cell of the other kind.
+    for (const id of ids) if (!held.instances.has(id)) rejected.instances.set(id, line);
     // A type the store already has stays healthy, so only the types the part declared and did not register are recorded.
     for (const id of typeIds) if (!types.getSchema(id) && !held.instances.has(id)) rejected.types.set(id, line);
   });
