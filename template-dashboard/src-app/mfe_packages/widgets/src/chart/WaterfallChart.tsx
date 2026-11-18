@@ -237,6 +237,13 @@ export function WaterfallChart({
 
   const format = (value: string | number | null) => (typeof value === 'number' ? formatValue(value, value_format, locale) : (value ?? ''));
   const change = (index: number) => changeOf(data.steps[index], steps[index], value_format, locale);
+  // The change a step's data view row holds, as its Change cell shows it: a delta its delivered value, a total the
+  // running sum it draws, a null delta none. A total delivered as null shows the sum, so it sorts by it too.
+  const changeValue = (index: number): number | null => {
+    const step = data.steps[index];
+    if ((step.kind ?? 'delta') === 'delta') return step.value;
+    return steps[index]?.end ?? step.value ?? 0;
+  };
   // One cell of the data view and the text alternative: the label as text, the change signed, the running total.
   const cellOf = (value: string | number | null, column: number, row: number) => {
     if (column === 0) return textOf(value, undefined, locale);
@@ -245,7 +252,7 @@ export function WaterfallChart({
   };
   const table: ValuesTable = {
     columns: [texts.columns.label, texts.waterfall.change, texts.waterfall.running],
-    rows: steps.map((step) => [data.steps[step.index].label, data.steps[step.index].value, step.end]),
+    rows: steps.map((step) => [data.steps[step.index].label, changeValue(step.index), step.end]),
   };
   // The tones the drawn bars take: the legend names only these.
   const present = new Set(TONES.filter((tone) => steps.some((step) => step.size > 0 && step[tone] !== null)));

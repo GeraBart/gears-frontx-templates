@@ -1967,6 +1967,28 @@ describe('waterfall_chart', () => {
     expect(rows.find((row) => row.includes('Sum'))).toEqual(['Sum', '5.000000000', '5.000000000']);
   });
 
+  it('sorts the data view by the change a total shows, the running sum it draws, when its delivered value is null', async () => {
+    const user = userEvent.setup();
+    draw(
+      [
+        { label: 'A', value: 1 },
+        { label: 'B', value: 2 },
+        { label: 'Sum', value: null, kind: 'total' },
+        { label: 'C', value: 10 },
+      ],
+      { drill_down: true },
+    );
+    await user.click(screen.getByRole('button', { name: 'Show data' }));
+    const region = await screen.findByRole('region', { name: 'Data of Lead time' });
+    const labels = () => within(region).getAllByRole('row', { hidden: true }).slice(1).map((row) => row.children[0]?.textContent);
+    // One click sorts the Change column descending, a second ascending; the total delivered as null shows the sum 3
+    // the steps before it moved to, so it sorts between the +2 and the +10 and not with the empty cells at the end.
+    const sorting = within(region).getByRole('button', { name: /sorting of 'Change'/ });
+    await user.click(sorting);
+    await user.click(sorting);
+    await vi.waitFor(() => expect(labels()).toEqual(['A', 'B', 'Sum', 'C']));
+  });
+
   it.each([
     ['all null', [{ label: 'a', value: null }, { label: 'b', value: null }] as WaterfallData['steps']],
     ['a total at the untouched sum', [{ label: 'a', value: 0, kind: 'total' }, { label: 'b', value: null }] as WaterfallData['steps']],
