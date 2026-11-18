@@ -736,9 +736,11 @@ Stateful packages are listed in `shared` too, and per-instance memory is held pe
 | Entries | Packages used |
 |---------|---------------|
 | Every widget entry | React with React DOM; the FrontX MFE runtime for the entry's bridge and lifecycle; `@gears-frontx/ui-kit`; and its own widget code only (the cell frame lives in the root) |
-| Entries of `cartesian_chart`, `pie_chart` | in addition, Recharts, pinned to the version ui-kit pins, composed inside the ui-kit chart component, and lucide-react, pinned to the version ui-kit pins, for the chart actions |
+| Entries of `cartesian_chart`, `pie_chart`, `radar_chart`, `waterfall_chart` | in addition, Recharts, pinned to the version ui-kit pins, composed inside the ui-kit chart component, and lucide-react, pinned to the version ui-kit pins, for the chart actions |
 | Entry of `grid` | in addition, lucide-react, pinned to the version ui-kit pins; the grid is the ui-kit DataGrid |
 | Entry of `heatmap` | nothing beyond ui-kit: the heatmap draws its tiles from kit tokens |
+| Entry of `treemap_chart` | nothing beyond ui-kit: the treemap lays out its own tiles with no chart library |
+| Entry of `activity_feed` | in addition, lucide-react, pinned to the version ui-kit pins, for the tone marks |
 | Entry of `markdown_card` | in addition, markdown-it |
 
 A schema missing along the type chain is a failure, never a partial result.

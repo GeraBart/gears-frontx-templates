@@ -4,7 +4,7 @@ version: 1
 priority: p1
 date: 2026-11-09
 decision-makers: template-dashboard architecture maintainers
-description: "Decision record for the charts of the catalog chart widget types: the ui-kit chart component (the shadcn chart on Recharts) for cartesian_chart and pie_chart, with series colours from the kit's chart tokens of the scope the host theme id maps to, and the heatmap drawn by its widget from kit tokens with no chart library; counted by the DESIGN budget rule."
+description: "Decision record for the charts of the catalog chart widget types: the ui-kit chart component (the shadcn chart on Recharts) for cartesian_chart, pie_chart, radar_chart and waterfall_chart, with series colours from the kit's chart tokens of the scope the host theme id maps to, and the heatmap drawn by its widget from kit tokens with no chart library; counted by the DESIGN budget rule."
 ---
 
 # ADR-0004: Charting library
@@ -57,7 +57,7 @@ FrontX isolates every widget instance: each evaluates its own copy of its code (
 
 Chosen option: "The ui-kit chart component on Recharts", because it is the chart of the kit the template already depends on, so the charts match the rest of the product, and its colours are CSS custom properties of the kit's own light and dark scopes, so a theme switch needs no theme code at all.
 
-**Composition.** `cartesian_chart` and `pie_chart` render a kit `ChartContainer` with a `ChartConfig` built from the delivered series or slices, and compose the Recharts chart inside it: `ComposedChart` with `Bar`, `Line`, `Area` and `Scatter` for a cartesian chart, `PieChart` with `Pie` for a pie chart, with the kit's `ChartTooltip` and `ChartLegend` and their `*Content` components. The widget sets `--chart-aspect-ratio: auto` on the container so the chart fills its cell. Recharts is a dependency of the widgets package pinned to the version the kit pins.
+**Composition.** `cartesian_chart`, `pie_chart`, `radar_chart` and `waterfall_chart` render a kit `ChartContainer` with a `ChartConfig` built from the delivered series, slices, axes or steps, and compose the Recharts chart inside it: `ComposedChart` with `Bar`, `Line`, `Area` and `Scatter` for a cartesian chart, `PieChart` with `Pie` for a pie chart, `RadarChart` with `Radar` for a radar chart, and `BarChart` with `Bar` for a waterfall chart, with the kit's `ChartTooltip` and `ChartTooltipContent`, and the cartesian, pie and radar charts adding the kit's `ChartLegend` and `ChartLegendContent`. The widget sets `--chart-aspect-ratio: auto` on the container so the chart fills its cell. Recharts is a dependency of the widgets package pinned to the version the kit pins.
 
 **Colours and theme.** Each series or slice takes a step of the kit's series palette, `var(--chart-1)` to `var(--chart-5)`, in a fixed order that keeps neighbours apart and wraps after the fifth. The palette steps, the grid lines, the axes, the tooltip and the legend are kit tokens, so they follow the light or dark scope the widget selected from the host theme id. A theme switch changes the scope and nothing else: no theme object is built or registered, and no request is sent.
 
@@ -135,4 +135,4 @@ This decision directly addresses the following requirements or design elements:
 * `cpt-frontx-dashboard-fr-theme` - chart colours follow the host theme id through the kit scope it maps to, and a theme switch restyles every chart without a request.
 * `cpt-frontx-dashboard-nfr-bundle-budget` - chart widget entries and the shared Recharts and ui-kit dependencies are counted by the rule of the DESIGN.
 * `cpt-frontx-dashboard-nfr-initial-render` - the per-instance evaluation cost of Recharts counts against the initial-render budget.
-* `cpt-frontx-dashboard-fr-widget-catalog` - the chart widget types `cartesian_chart` and `pie_chart` use this library, and `heatmap` draws its tiles from kit tokens.
+* `cpt-frontx-dashboard-fr-widget-catalog` - the chart widget types `cartesian_chart`, `pie_chart`, `radar_chart` and `waterfall_chart` use this library, and `heatmap` draws its tiles from kit tokens.
