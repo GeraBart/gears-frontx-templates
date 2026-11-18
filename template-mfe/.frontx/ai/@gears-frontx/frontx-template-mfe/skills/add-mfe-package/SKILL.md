@@ -136,6 +136,37 @@ authority on each step.
    `import.meta.env.DEV` is `false` inside MFE code even in development —
    never gate dev-only hooks or debug affordances on it in an MFE package;
    only the host app runs on a true dev server.
+
+   Not all of the scaffold's tests are example content: `HomeScreen.test.tsx`
+   and `lifecycle.test.tsx` also cover plumbing that outlives the screen, so
+   replace only the cases that assert what is being replaced.
+   Replaced with the screen:
+   - `HomeScreen.test.tsx`: "renders bridge-provided values and API status
+     data", "renders the API error message when the status call fails",
+     "announces a busy region instead of bridge values before translations are
+     ready", "announces a busy region beside the bridge values while the API
+     request is pending".
+   - `lifecycle.test.tsx`: "renders the real home screen with the provided
+     bridge", and the example status payload its `beforeEach` supplies for it.
+   Kept, and they must keep passing:
+   - `HomeScreen.test.tsx`: "renders no kit scope of its own while the theme
+     changes around it", "re-reads current properties when the host swaps the
+     bridge instance", "reacts to bridge property updates and unsubscribes on
+     unmount", "sets the host direction from the primary subtag of a
+     region-tagged language". The first asserts the screen root carries no
+     `data-theme` at all across theme changes (the lifecycle stamps the kit
+     scope on the shadow host); "re-reads current properties when the host
+     swaps the bridge instance" and "sets the host direction from the primary
+     subtag of a region-tagged language" query the scaffold's `screen-theme`
+     and `screen-language` testids, while "reacts to bridge property updates
+     and unsubscribes on unmount" matches the rendered theme and language
+     values with `findByText`/`getByText`; all three also assert the host
+     direction (`host.dir`), so re-point those queries at the new screen
+     rather than deleting the cases.
+   - `lifecycle.test.tsx`: every other case - app binding, token re-anchoring,
+     base mount, and the eight host-scope cases (light, dark, theme change after
+     unmount, duplicate mount, second container, missing theme, non-string
+     theme, plain element container).
 7. **Regenerate manifests** — run `npm run generate:mfe-manifests` so the host's
    `public/generated-mfe-manifests.json` picks up the new package; this step is
    mandatory before the new MFE is discoverable at runtime. It is also the
