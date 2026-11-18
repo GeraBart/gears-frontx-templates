@@ -17,9 +17,9 @@ import { uuidv5, type Role } from './ids';
  * 2. the served file: its types, then its manifests and entries; a rejection fails every dashboard in the file;
  *    a file served in parts registers the base file so, then each widget part on its own, in order: a rejected
  *    part is left out with one console line, its dashboards are dropped, and the manifest and entry ids it failed
- *    to bring are recorded as rejected;
- * 3. each embedded widget instance on its own; a rejection, or an entry left out with its part, is the failure
- *    of that cell or larger view;
+ *    to bring, with the type ids it declared and did not register, are recorded as rejected;
+ * 3. each embedded widget instance on its own; a rejection, or the widget's type or entry left out with its part,
+ *    is the failure of that cell or larger view;
  * 4. a stand-in for each widget that failed in step 3, so the dashboard still names a registered widget there;
  * 5. the dashboard instance, which checks each embedded widget against the open widget base.
  */
@@ -38,9 +38,9 @@ export function registerBundle(types: TypeSystemPlugin): Set<string> {
 }
 
 /**
- * `rejected` maps each manifest and entry id that a left-out widget part failed to bring to the reason: the cells whose
- * widget type names one of those entries fail with it. An id the base file or a registered part already brought is
- * never in it.
+ * `rejected` maps each manifest and entry id that a left-out widget part failed to bring, and each type id it
+ * declared that did not register, to the reason: the cells whose widget type names one of those entries, or whose
+ * type is one of those ids, fail with it. An id the base file or a registered part already brought is never in it.
  */
 export type FileOutcome = { ok: true; dashboards: Map<string, Dashboard>; rejected: ReadonlyMap<string, string> } | { ok: false; problem: string };
 
@@ -153,7 +153,9 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
   const rejected = new Map<string, string>();
   parts.forEach((part, index) => {
     let ids: string[] = [];
+    let typeIds: string[] = [];
     const reason = guarded(() => {
+      if (isObject(part) && Array.isArray(part.types)) typeIds = part.types.filter(isObject).map(idOf).filter(Boolean);
       const instances = isObject(part) && Array.isArray(part.instances) ? part.instances.filter(isObject) : [];
       ids = instances.map(idOfInstance).filter((id) => id && !id.startsWith(DASHBOARD_TYPE_ID));
       return registerPart(types, part, bundleIds, held, false);
@@ -161,6 +163,7 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
     if (!reason) {
       // A healthy part's own registration replaces what an earlier rejected part left under the same id.
       for (const id of ids) rejected.delete(id);
+      for (const id of typeIds) rejected.delete(id);
       return;
     }
     const listed = ids.filter((id) => id.startsWith(MANIFEST_TYPE_PREFIX)).join(', ');
@@ -171,13 +174,19 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
     console.error(`[dashboard] ${line}`);
     // A rejected part held nothing, so `held` still names what registered before it: those ids stay healthy.
     for (const id of ids) if (!held.instances.has(id)) rejected.set(id, line);
+    // A type the store already has stays healthy, so only the types the part declared and did not register are recorded.
+    for (const id of typeIds) if (!types.getSchema(id)) rejected.set(id, line);
   });
   return { ok: true, dashboards: held.dashboards, rejected };
 }
 
-/** The reason the entry of a widget's type was left out with its part, or nothing. */
+/** The reason the widget's type or its entry was left out with its part, or nothing. */
 function leftOut(types: TypeSystemPlugin, widgetId: string, rejected: ReadonlyMap<string, string>): string | undefined {
   if (rejected.size === 0) return undefined;
+  // The part that declared the widget's type may be the one left out, before the type registered: its line, not the
+  // registry's, is the reason the cell fails.
+  const part = rejected.get(typeOfWidget(widgetId));
+  if (part) return part;
   try {
     return rejected.get(String(effectiveTraits(types, typeOfWidget(widgetId)).entry));
   } catch {
