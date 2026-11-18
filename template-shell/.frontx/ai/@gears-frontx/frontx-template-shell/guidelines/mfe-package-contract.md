@@ -236,7 +236,11 @@ font (system-ui) there, and zeroes margin and padding on every element.
 ## What the shell does with a conforming package
 
 - `npm run dev:all` (`scripts/dev-all.ts`) builds every conforming package,
-  starts its preview server on the port read from step 1, and runs the host.
+  starts its preview server on the port read from step 1, and runs the host. A
+  package rebuilt by hand while `dev:all` runs keeps its old entry in the
+  manifest the host already fetched: `npm run generate:mfe-manifests` picks up
+  its new hashed asset paths, and a page reload then loads it without
+  restarting `dev:all`.
 - `npm run build:mfes` (`scripts/build-mfes.ts`) builds every conforming
   package with zero MFEs present, printing "skipping" and exiting 0 — the
   shell-only seed (no `template-mfe` applied) must stay green.

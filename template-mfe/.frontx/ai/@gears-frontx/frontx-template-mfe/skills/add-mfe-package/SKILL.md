@@ -138,7 +138,10 @@ authority on each step.
    only the host app runs on a true dev server.
 7. **Regenerate manifests** — run `npm run generate:mfe-manifests` so the host's
    `public/generated-mfe-manifests.json` picks up the new package; this step is
-   mandatory before the new MFE is discoverable at runtime.
+   mandatory before the new MFE is discoverable at runtime. It is also the
+   command that picks up a package rebuilt by hand (`npm run build` in that
+   package) while `dev:all` runs: the manifest gains the new hashed asset paths
+   and the next page load finds them, with no restart of `dev:all`.
 8. **Verify** — while iterating on the MFE, scope checks to its workspace:
    `npm run type-check --workspace=<package-name>` and
    `npm run test:unit --workspace=<package-name>` (a full `type-check` or
