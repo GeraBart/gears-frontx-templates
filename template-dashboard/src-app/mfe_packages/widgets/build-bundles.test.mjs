@@ -6,7 +6,7 @@
  * the way the real bundles do and nothing a test builds lands in the real
  * bundles/ or dist/. One bundle compiles and one does not, so a failing run
  * also shows its failed: line. Every run is a real build, which takes seconds,
- * so this file is slower than the rest of the suite.
+ * so this file runs slower than the rest of the suite.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
