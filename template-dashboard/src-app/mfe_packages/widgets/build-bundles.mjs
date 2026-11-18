@@ -15,10 +15,22 @@
  * new bundle once one child failed: the build then exits 1 and its last line
  * names every failed bundle. dist/widgets.json is written once, at the end,
  * only when every bundle built: the served widget list, the address of every
- * part built so far. A full build (no bundle named on the command line)
- * removes the previous dist/widgets.json before the first bundle builds, so a
- * failed build leaves no stale list behind; a run that names bundles leaves
- * the list as it is until it rewrites it at the end. Each bundle gets its
+ * part it lists. A full build (no bundle named on the command line) owns the
+ * catalog of its out dir: it removes the previous dist/widgets.json before the
+ * first bundle builds, so a failed build leaves no stale list behind, and
+ * lists only the bundles of this run that built, so a part directory an
+ * earlier build left in the out dir stays on disk but is no longer listed, and
+ * nothing loads it; a run that names bundles starts from the existing list,
+ * the parts of the last full build plus the bundles built by name since,
+ * keeps its entries and adds the bundles it built, so a part the list no
+ * longer names stays off it; only when no list
+ * is there to start from, after a failed full build say, does it rewrite the
+ * list from every part directory of the out dir, as before. A list that is
+ * not a list of addresses, or one that names an address under another
+ * WIDGET_BUNDLE_BASE, stops the run before the first bundle builds, an entry
+ * whose part is not in the out dir is dropped with a warning, and the
+ * fallback says it is listing every part directory; any run leaves the list
+ * as it is when it fails. Each bundle gets its
  * served-file part next to it,
  * dist/<widget_type>/widget.gts.json: the manifest and the entry the FrontX
  * manifest pipeline completed from the build, the types the bundle's mfe.json
@@ -105,13 +117,23 @@ if (only !== undefined) {
   // A type named twice still builds once: two children would write one dist/<type>.
   const types = [...new Set(named.length ? named : readdirSync(bundlesDir).filter((name) => existsSync(path.join(bundlesDir, name, 'mfe.json'))))];
   const count = cap ?? Math.min(DEFAULT_JOBS, os.availableParallelism(), types.length);
-  // A full build drops the previous widgets.json before the first bundle
-  // builds: the list is then written only when every bundle built, so a failed
-  // build leaves no stale list for the dev host to serve over a mix of old and
-  // new bundles. A run that names bundles keeps the list until the end, as
-  // before.
+  // A full build owns the catalog of its out dir: it drops the previous
+  // widgets.json before the first bundle builds, and the list it writes at the
+  // end names only the bundles of this run, so a failed build leaves no stale
+  // list for the dev host to serve over a mix of old and new bundles, and a
+  // part directory an earlier build left in the out dir stays on disk but is
+  // no longer listed, so nothing loads it (the runtime and the schema store
+  // reach a part only through the list). A run that names bundles starts from
+  // the existing widgets.json, the list the build itself writes: its
+  // addresses map back to the part names of the catalog, the bundles of this
+  // run join them, and a part directory the list no longer names stays off
+  // it. Only when no widgets.json is there to start from, after a failed full
+  // build say, does the run read the entries back from every
+  // dist/*/widget.gts.json, and the list stays as it is when the run fails,
+  // as before.
   const widgetsPath = path.join(outDir, 'widgets.json');
-  if (named.length === 0 && existsSync(widgetsPath)) unlinkSync(widgetsPath);
+  const full = named.length === 0;
+  if (full && existsSync(widgetsPath)) unlinkSync(widgetsPath);
   let next = 0;
   let running = 0;
   const failed = [];
@@ -135,14 +157,56 @@ if (only !== undefined) {
     process.exit(143);
   });
 
+  // The entries a run that names bundles starts from, read and checked before the first child spawns, so a list
+  // this run cannot use stops the run before anything is built for nothing. A list that does not read back as a
+  // list of addresses stops the run with the way out; so does an address under another base, which the filter
+  // would otherwise drop without a word. An entry whose part is not a directory of the out dir, or whose name is
+  // empty or carries a path separator, is dropped with one warning naming it, so the list the run writes names
+  // only parts that are there. With no list to start from, after a failed full build say, the run falls back to
+  // every part directory of the out dir and says so. An out dir that is not there at all, on a fresh clone or a
+  // new WIDGET_BUNDLES_OUT say, holds no previous parts and no dist/widgets.json either: the run starts from an
+  // empty list without the listing line, since there is no part directory to list, and builds the bundles it was
+  // given.
+  const previousParts = () => {
+    if (full) return [];
+    if (!existsSync(outDir)) return [];
+    if (!existsSync(widgetsPath)) {
+      console.log('no dist/widgets.json: listing every part directory in dist/; run the full build to drop parts no bundle builds');
+      return readdirSync(outDir).filter((name) => existsSync(path.join(outDir, name, 'widget.gts.json')));
+    }
+    let addresses;
+    try {
+      addresses = JSON.parse(readFileSync(widgetsPath, 'utf-8'));
+    } catch {
+      addresses = null;
+    }
+    if (!Array.isArray(addresses) || !addresses.every((address) => typeof address === 'string')) {
+      failWith('dist/widgets.json is not a list of addresses, remove it or run the full build');
+    }
+    const stray = addresses.find((address) => !address.startsWith(base));
+    if (stray !== undefined) failWith(`${stray} does not start with the base ${base} of this run: built with another WIDGET_BUNDLE_BASE? set it, or run the full build`);
+    const kept = [];
+    const dropped = [];
+    for (const address of addresses) {
+      const name = address.endsWith('/widget.gts.json') ? address.slice(base.length, -'/widget.gts.json'.length) : '';
+      if (name && !name.includes('/') && !name.includes('..') && existsSync(path.join(outDir, name, 'widget.gts.json'))) kept.push(name);
+      else dropped.push(address);
+    }
+    if (dropped.length) console.log(`dropping from dist/widgets.json, not parts of this dist: ${dropped.join(', ')}`);
+    return kept;
+  };
+  const previous = previousParts();
+
   const finish = () => {
     if (failed.length) {
       console.log(`failed: ${failed.join(', ')}`);
       process.exitCode = 1;
       return;
     }
-    // Sorted, so the list is the same on every file system: readdirSync order is the directory's own.
-    const listed = readdirSync(outDir).filter((name) => existsSync(path.join(outDir, name, 'widget.gts.json'))).sort();
+    // Sorted, so the list is the same on every file system: readdirSync order is the directory's own. A full build
+    // lists the bundles of this run, which all built here, and nothing else; a run that names bundles starts from
+    // the entries read and checked before the first child spawned, and adds the bundles it built.
+    const listed = [...new Set([...previous, ...types])].sort();
     writeFileSync(path.join(outDir, 'widgets.json'), `${JSON.stringify(listed.map((type) => `${base}${type}/widget.gts.json`), null, 2)}\n`);
   };
 

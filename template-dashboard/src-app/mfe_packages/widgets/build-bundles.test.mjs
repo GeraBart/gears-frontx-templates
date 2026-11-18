@@ -9,7 +9,7 @@
  * so this file runs slower than the rest of the suite.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -56,21 +56,24 @@ afterAll(() => {
 const outPath = (...names) => path.join(scratch, 'out', ...names);
 
 // One parent run over the scratch bundles. Every run starts from an empty out
-// dir; seedWidgetsJson puts an old list in it first, and seedParts puts part
+// dir; seedWidgetsJson puts a list in it first, the given string when one is
+// given and an old one-name list otherwise, and seedParts puts part
 // directories of a previous build in it first, so a run that names bundles
 // rewrites the list over them. onFirstChild runs once, when the first build
-// child shows up in the process table. The runner's test
+// child shows up in the
+// process table. The runner's test
 // env goes out: the federation plugin of the bundle build loads no plugins
 // when it sees NODE_ENV=test or VITEST set, and a real shell does not set
 // either.
-const runBuild = ({ args = [], env = {}, seedWidgetsJson = false, seedParts = [], onFirstChild } = {}) => {
+const runBuild = ({ args = [], env = {}, seedWidgetsJson = false, seedParts = [], onFirstChild, outDirMissing = false } = {}) => {
   rmSync(outPath(), { recursive: true, force: true });
   mkdirSync(outPath(), { recursive: true });
-  if (seedWidgetsJson) writeFileSync(outPath('widgets.json'), '["/widgets/stale_type/widget.gts.json"]\n');
+  if (seedWidgetsJson) writeFileSync(outPath('widgets.json'), typeof seedWidgetsJson === 'string' ? seedWidgetsJson : '["/widgets/stale_type/widget.gts.json"]\n');
   for (const type of seedParts) {
     mkdirSync(outPath(type), { recursive: true });
     writeFileSync(outPath(type, 'widget.gts.json'), '{}\n');
   }
+  if (outDirMissing) rmSync(outPath(), { recursive: true, force: true });
   const childEnv = { ...process.env, WIDGET_BUNDLES_DIR: path.join(scratch, 'bundles'), WIDGET_BUNDLES_OUT: outPath(), ...env };
   for (const key of ['NODE_ENV', 'VITEST', 'JEST_WORKER_ID']) delete childEnv[key];
   return new Promise((resolve) => {
@@ -187,7 +190,9 @@ describe('build-bundles.mjs', () => {
       // Parts a previous build left behind, eleven of them seeded in a scattered order: the rewritten list names
       // every part in the out dir, sorted, and readdirSync order is the directory's own. APFS returns the names
       // sorted anyway, so on a developer Mac the assertion holds either way; the guard bites on a file system with
-      // another order (ext4 on CI), where twelve names sorted by chance have odds of 1/12!.
+      // another order (ext4 on CI), where twelve names sorted by chance have odds of 1/12!. No list is seeded, so
+      // the run also covers the fallback of a build that names bundles: with no widgets.json to start from, it
+      // names the part directories of the out dir.
       const run = await runBuild({ args: [OK], seedParts: ['zeta_widget', 'mu_widget', 'beta_widget', 'alpha_widget', 'kappa_widget', 'sigma_widget', 'delta_widget', 'omicron_widget', 'iota_widget', 'rho_widget', 'eta_widget'] });
       expect(run.code, run.stderr).toBe(0);
       const part = JSON.parse(readFileSync(outPath(OK, 'widget.gts.json'), 'utf-8'));
@@ -210,5 +215,91 @@ describe('build-bundles.mjs', () => {
     } finally {
       rmSync(served, { force: true });
     }
+  }, 120_000);
+
+  it('a full build lists only the bundles it built: a stale part directory stays on disk but off the list', async () => {
+    // One input bundle only: the broken bundle's mfe.json sits out of its dir for the run, so the full build
+    // succeeds and writes the list. A part directory an earlier build left in the out dir, and a list that still
+    // names it, are seeded first. The list the build writes names only the bundle it built, and the stale
+    // directory itself stays on disk, since the build removes nothing.
+    const broken = path.join(scratch, 'bundles', BROKEN, 'mfe.json');
+    const aside = `${broken}.away`;
+    renameSync(broken, aside);
+    try {
+      const run = await runBuild({
+        seedWidgetsJson: '["/widgets/stale_widget/widget.gts.json"]\n',
+        seedParts: ['stale_widget'],
+      });
+      expect(run.code, run.stderr).toBe(0);
+      expect(JSON.parse(readFileSync(outPath('widgets.json'), 'utf-8'))).toEqual(['/widgets/ok_widget/widget.gts.json']);
+      expect(existsSync(outPath('stale_widget'))).toBe(true);
+    } finally {
+      renameSync(aside, broken);
+    }
+  }, 120_000);
+
+  it('a run that names bundles keeps the entries of the list it starts from and leaves a stale part directory off it', async () => {
+    // The list of an earlier full build names a part of another bundles dir that is still on disk, and a stale
+    // part directory the list no longer names sits in the out dir: a run that names one bundle starts from that
+    // list, keeps other_part on it and adds the bundle it built, and leaves the stale directory on disk but off
+    // the list, so nothing loads it.
+    const run = await runBuild({ args: [OK], seedWidgetsJson: '["/widgets/other_part/widget.gts.json"]\n', seedParts: ['other_part', 'stale_widget'] });
+    expect(run.code, run.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(outPath('widgets.json'), 'utf-8'))).toEqual([
+      '/widgets/ok_widget/widget.gts.json',
+      '/widgets/other_part/widget.gts.json',
+    ]);
+    expect(existsSync(outPath('stale_widget'))).toBe(true);
+  }, 120_000);
+
+  it('a named run over a malformed list stops with its message and leaves the list as it was', async () => {
+    // Not JSON and JSON that is not an array: the run stops before the first child spawns, says how to get out, and
+    // does not write the list, so the file comes back byte for byte.
+    for (const content of ['not json', '{}']) {
+      const run = await runBuild({ args: [OK], seedWidgetsJson: content });
+      expect(run.code, run.stderr).toBe(1);
+      expect(run.stderr, content).toContain('dist/widgets.json is not a list of addresses, remove it or run the full build');
+      expect(run.maxChildren, content).toBe(0);
+      expect(readFileSync(outPath('widgets.json'), 'utf-8'), content).toBe(content);
+    }
+  }, 120_000);
+
+  it('a named run over a list under another base stops before anything builds, naming the address and the base', async () => {
+    // A list a build with another WIDGET_BUNDLE_BASE wrote: no entry of it starts with the base of this run, and the
+    // run says so with the first such address instead of dropping the entries without a word.
+    const run = await runBuild({ args: [OK], seedWidgetsJson: '["https://cdn.example.com/w/pie_chart/widget.gts.json"]\n' });
+    expect(run.code, run.stderr).toBe(1);
+    expect(run.stderr).toContain('https://cdn.example.com/w/pie_chart/widget.gts.json does not start with the base /widgets/');
+    expect(run.stderr).toContain('built with another WIDGET_BUNDLE_BASE? set it, or run the full build');
+    expect(run.maxChildren).toBe(0);
+  }, 60_000);
+
+  it('a named run drops the entries with no part on disk and names them in one warning', async () => {
+    // gone_part has no directory in the out dir and the junk entry names no part at all: both come off the list,
+    // one warning names them, and the list the run writes holds only the part that is there and the bundle built.
+    const run = await runBuild({ args: [OK], seedWidgetsJson: '["/widgets/gone_part/widget.gts.json","/widgets/widget.gts.json"]\n' });
+    expect(run.code, run.stderr).toBe(0);
+    expect(run.stdout).toContain('dropping from dist/widgets.json, not parts of this dist: /widgets/gone_part/widget.gts.json, /widgets/widget.gts.json');
+    expect(JSON.parse(readFileSync(outPath('widgets.json'), 'utf-8'))).toEqual(['/widgets/ok_widget/widget.gts.json']);
+  }, 120_000);
+
+  it('a named run with no list to start from says it is listing every part directory', async () => {
+    const run = await runBuild({ args: [OK], seedParts: ['other_part'] });
+    expect(run.code, run.stderr).toBe(0);
+    expect(run.stdout).toContain('no dist/widgets.json: listing every part directory in dist/; run the full build to drop parts no bundle builds');
+    expect(JSON.parse(readFileSync(outPath('widgets.json'), 'utf-8'))).toEqual([
+      '/widgets/ok_widget/widget.gts.json',
+      '/widgets/other_part/widget.gts.json',
+    ]);
+  }, 120_000);
+
+  it('a named build into an out dir that does not exist yet builds the bundle and lists it', async () => {
+    // A fresh clone or a new WIDGET_BUNDLES_OUT: no out dir, so no dist/widgets.json and no part
+    // directories either. The run starts from no previous parts, without the listing line, since
+    // there is no part directory to list, and the first build by name still goes through.
+    const run = await runBuild({ args: [OK], outDirMissing: true });
+    expect(run.code, run.stderr).toBe(0);
+    expect(run.stdout).not.toContain('no dist/widgets.json');
+    expect(JSON.parse(readFileSync(outPath('widgets.json'), 'utf-8'))).toEqual(['/widgets/ok_widget/widget.gts.json']);
   }, 120_000);
 });
