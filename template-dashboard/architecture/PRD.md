@@ -253,7 +253,7 @@ The system **MUST** ship a widget catalog of ready-to-use widget types, grouped 
 
 - Cards: summary card, metric card, ranked list card, progress list card, radial progress, markdown card.
 - Data: grid.
-- Charts: cartesian chart, pie chart, heatmap.
+- Charts: cartesian chart, pie chart, radar chart, treemap chart, waterfall chart, funnel chart, heatmap.
 
 Each type **MUST** be usable on its own in any dashboard, with no widget code from the product. A widget type **MUST NOT** fix the meaning of its presentation settings, so a dashboard author can use it with data from any subject area. The final parameters and data shapes per type are defined in the widget catalog.
 
