@@ -1267,6 +1267,38 @@ describe('treemap_chart', () => {
     expect(Math.max(...ratios)).toBeLessThan(25);
   });
 
+  it('lays the same tiles out whatever order the items are delivered in, and keeps the delivered order for colours and views', async () => {
+    const user = userEvent.setup();
+    sized(600, 400);
+    const items: TreemapData['items'] = [
+      { label: 'p', value: 3, group: null },
+      { label: 'q', value: 6, group: null },
+      { label: 'r', value: 1, group: null },
+      { label: 's', value: 4, group: null },
+      { label: 't', value: 2, group: null },
+    ];
+    // Squarified assumes the values descending: the same items delivered unsorted lay out the same tile for each
+    // of them as the same items delivered largest first.
+    const boxesOf = (entries: TreemapData['items']) => {
+      const { container, unmount } = draw(entries);
+      const boxes = new Map(tiles(container).map((tile) => [tile.getAttribute('aria-label')!.split(':')[0]!, boxOf(tile)]));
+      unmount();
+      cleanup();
+      return boxes;
+    };
+    const unsorted = boxesOf(items);
+    const sorted = boxesOf([...items].sort((one, other) => (other.value ?? 0) - (one.value ?? 0)));
+    expect([...unsorted.keys()]).toEqual(['p', 'q', 'r', 's', 't']);
+    for (const [name, box] of unsorted) for (const [side, value] of box.entries()) expect(value).toBeCloseTo(sorted.get(name)![side], 6);
+    // The delivered order stays for the colours, the text alternative and the data view, whatever the sizes are.
+    const { container } = draw(items, { drill_down: true });
+    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)', 'var(--chart-1)', 'var(--chart-3)']);
+    expect(rowsOf().slice(1).map((row) => row[0])).toEqual(['p', 'q', 'r', 's', 't']);
+    await user.click(screen.getByRole('button', { name: 'Show data' }));
+    const region = await screen.findByRole('region', { name: 'Data of Commits' });
+    expect(within(region).getAllByRole('row', { hidden: true }).slice(1).map((row) => row.children[0]?.textContent)).toEqual(['p', 'q', 'r', 's', 't']);
+  });
+
   it('draws one tile per positive item, as large as its value over the total, in the delivered order and palette colour', () => {
     sized(200, 100);
     const { container } = draw([

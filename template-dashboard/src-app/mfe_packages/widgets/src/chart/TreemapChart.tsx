@@ -54,21 +54,27 @@ export function checkTreemap(data: TreemapData): string | null {
 }
 
 /**
- * The squarified layout of Bruls, Huizing and van Wijk: the values in the delivered order, each a rectangle of the
+ * The squarified layout of Bruls, Huizing and van Wijk: the values laid out largest first, each a rectangle of the
  * box's area its value has over their total, a row of rectangles across the shorter side of the room that is left
- * filled greedily while the worst aspect ratio of the row improves. The values are scaled over their largest first,
- * so a total beyond the largest number (two 1.5e308 items) divides by finite numbers only. A box without room, or
- * no value, lays every tile out at 0 by 0 at the box's corner, and so does a value whose area scales to 0 (a
- * positive value too small beside the largest, 5e-324 beside 1e308), never a NaN one, and so does a value left with
- * no room by the rows before it.
+ * filled greedily while the worst aspect ratio of the row improves. The rows are laid out over a copy of the values
+ * sorted by size, largest first, equal values keeping their delivered order, and each box is handed back to the
+ * position of the value it was laid out for, so the delivered order of the tiles does not move. The values are
+ * scaled over their largest first, so a total beyond the largest number (two 1.5e308 items) divides by finite
+ * numbers only. A box without room, or no value, lays every tile out at 0 by 0 at the box's corner, and so does a
+ * value whose area scales to 0 (a positive value too small beside the largest, 5e-324 beside 1e308), never a NaN
+ * one, and so does a value left with no room by the rows before it.
  */
 function squarified(values: number[], box: TileBox): TileBox[] {
-  if (values.length === 0 || !(box.width > 0) || !(box.height > 0)) return values.map(() => ({ x: box.x, y: box.y, width: 0, height: 0 }));
-  const most = Math.max(...values);
-  if (!(most > 0)) return values.map(() => ({ x: box.x, y: box.y, width: 0, height: 0 }));
-  const unitTotal = values.reduce((sum, value) => sum + value / most, 0);
-  const scaled = values.map((value) => ((value / most) / unitTotal) * box.width * box.height);
-  const tiles: TileBox[] = values.map(() => ({ x: box.x, y: box.y, width: 0, height: 0 }));
+  const empty = () => ({ x: box.x, y: box.y, width: 0, height: 0 });
+  if (values.length === 0 || !(box.width > 0) || !(box.height > 0)) return values.map(empty);
+  // The layout assumes the values descending: the copy sorted so is what is laid out, and the boxes go back to the
+  // positions of the values they were laid out for.
+  const order = values.map((value, at) => ({ value, at })).sort((one, other) => other.value - one.value);
+  const most = order[0].value;
+  if (!(most > 0)) return values.map(empty);
+  const unitTotal = order.reduce((sum, { value }) => sum + value / most, 0);
+  const scaled = order.map(({ value }) => ((value / most) / unitTotal) * box.width * box.height);
+  const tiles: TileBox[] = values.map(empty);
   // Only the areas above 0 are laid out: a 0 would make a row's worst aspect ratio infinite and its tile NaN wide.
   const laid = scaled.flatMap((area, at) => (area > 0 ? [at] : []));
   const rest = { ...box };
@@ -100,7 +106,7 @@ function squarified(values: number[], box: TileBox): TileBox[] {
     let offset = horizontal ? rest.x : rest.y;
     for (const area of row) {
       const extent = area / thickness;
-      tiles[laid[index]] = horizontal ? { x: offset, y: rest.y, width: extent, height: thickness } : { x: rest.x, y: offset, width: thickness, height: extent };
+      tiles[order[laid[index]].at] = horizontal ? { x: offset, y: rest.y, width: extent, height: thickness } : { x: rest.x, y: offset, width: thickness, height: extent };
       offset += extent;
       index += 1;
     }
