@@ -536,8 +536,9 @@ describe('the served file in parts', () => {
   const bundlePart = (widget: string): ServedFile => ({ types: bundleTypes(widget), instances: IN_BUNDLE_PARTS.instances.filter((instance) => String(instance.id).endsWith(`.${widget}.v1`)) });
   const others = IN_BUNDLE_PARTS.instances.filter((instance) => !String(instance.id).endsWith('.pie_chart.v1'));
   // The part of the bundles beside the subject part, as one answer item: every bundle's types but the pie bundle's
-  // own (each bundle's types travel in its own part, so a rejected subject part takes them down with it), and the
-  // other bundles' instances. A test that needs the metric bundle's instances out of it too passes `rest`.
+  // own, and the other bundles' instances. otherTypes drops only the pie bundle's types, so a test that passes
+  // `rest` has the metric bundle's types register from this part before its own part. A test that needs the metric
+  // bundle's instances out of it too passes `rest`.
   const otherTypes = IN_BUNDLE_PARTS.types.filter((type) => !bundleTypes('pie_chart').includes(type));
   const otherPart = (instances: ServedFile['instances'] = others): ServedFile => ({ types: otherTypes, instances });
   const demoDashboard = () => DEMO_WITHOUT_BUNDLES.instances.find((instance) => instance.id === DEMO_DASHBOARD_ID) as unknown as Dashboard;
