@@ -19,6 +19,8 @@ The one skill for everything visual in a FrontX app. This file is the map; the d
 - Claim only what was observed: a width, theme or state not seen rendered is unverified.
 - A missing file of this skill stops the task as `contract unavailable`; a missing app, kit doc or browser as `environment unavailable`.
 
+Extra steps: a project that needs steps the kit's scales do not carry (a bigger type role, a wider spacing step, a taller control) or tokens of its own page surface declares them in its theme file under `src-app/app/themes/`, as one more step of a kit scale family (`--space-12`, `--text-display-xl-size`, `--control-height-xl`). A literal step declared anywhere else is a SYS-002 finding: the static check reads a local custom property definition (`--x: ...`, a CSS Modules `@value`, a `style` custom property) like a declaration, and never checks `src-app/app/themes/` itself for literal steps (its native-element gate still reads sources there).
+
 ## Tasks
 
 | Task | Load, in order |

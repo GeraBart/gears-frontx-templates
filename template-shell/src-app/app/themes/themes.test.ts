@@ -50,6 +50,44 @@ const isShellToken = (name: string): boolean =>
   /^--(left-menu|spacing|shadow|transition)(-|$)/.test(name);
 
 /**
+ * The suffixes the kit's type family repeats across roles, read from the
+ * names the kit declares (--text-display-size, --text-heading-1-line-height,
+ * ...): size, line-height (read whole - a last-segment match would turn every
+ * `--text-<role>-line-height` into a bare `height` suffix and let any
+ * `--text-<anything>-height` through), weight, tracking. A theme may add a
+ * step that reuses one, never an unknown suffix.
+ */
+const typeSuffixPattern = /^--text-[\w-]+?-(line-height|[a-z]+)$/;
+const kitTypeSuffixes = new Set(
+  [...kitTokens].flatMap((token) => {
+    const match = typeSuffixPattern.exec(token);
+    return match ? [match[1]] : [];
+  }),
+);
+
+/** Whether the kit numbers spacing steps, read once - it never changes mid-run. */
+const kitHasSpaceSteps = [...kitTokens].some((token) => /^--space-\d+$/.test(token));
+
+/** Whether the kit sizes control heights, read once for the same reason. */
+const kitHasControlHeights = [...kitTokens].some((token) => /^--control-height-[a-z]+$/.test(token));
+
+/**
+ * Whether a name adds a step to a kit scale family, derived from the names
+ * the installed kit declares, never hard-coded: the spacing steps the kit
+ * numbers (--space-<n>), the control heights it sizes (--control-height-<size>)
+ * and the type roles it repeats (--text-<role>-<suffix>). A project needing a
+ * bigger type role, a wider spacing step or a taller control declares it in
+ * its theme file as one more step of the kit's own scale; every other unknown
+ * name stays rejected.
+ */
+const isKitScaleStep = (name: string): boolean => {
+  if (kitHasSpaceSteps && /^--space-\d+$/.test(name)) return true;
+  if (kitHasControlHeights && /^--control-height-[a-z]+$/.test(name)) return true;
+  const type = typeSuffixPattern.exec(name);
+  return kitTypeSuffixes.size > 0 && type !== null && kitTypeSuffixes.has(type[1]);
+};
+
+/**
  * The left menu family a kit-palette theme declares, selected label token
  * included. The set is pinned so a member dropped or added by hand is caught.
  */
@@ -93,6 +131,14 @@ const byId = (id: string): ThemeConfig => {
 const names = (theme: ThemeConfig): string[] => Object.keys(theme.variables);
 
 /**
+ * The names of a theme that neither the kit, nor the shell, nor a kit scale
+ * step shapes: the real check's predicate, defined once so the assertions
+ * below cannot drift from it (or from each other).
+ */
+const unknownNames = (theme: ThemeConfig): string[] =>
+  names(theme).filter((name) => !kitTokens.has(name) && !isShellToken(name) && !isKitScaleStep(name));
+
+/**
  * A theme with a palette of its own repaints the page surface. Overriding
  * --background is the mark of one; a theme on the kit's palette leaves it to
  * the kit and may still override a few tokens on purpose.
@@ -115,10 +161,45 @@ describe('shell themes over the ui-kit palette', () => {
     }
   });
 
-  it('lets every theme override only tokens the kit or the shell declares', () => {
+  it('lets every theme override only tokens the kit or the shell declares, or add a kit scale step', () => {
     for (const theme of frontxThemes) {
-      expect(names(theme).filter((name) => !kitTokens.has(name) && !isShellToken(name)), theme.id).toEqual([]);
+      expect(unknownNames(theme), theme.id).toEqual([]);
     }
+  });
+
+  it('lets a theme add steps to the kit scale families, and nothing else', () => {
+    // The one place for a step the kit lacks is the theme file: a bigger type
+    // role, a wider spacing step, a taller control, declared as one more step
+    // of the kit's own scale.
+    const extraSteps: ThemeConfig = {
+      id: 'extra-steps',
+      name: 'Extra steps',
+      appearance: 'light',
+      variables: {
+        '--space-12': '6rem',
+        '--text-display-xl-size': '2.5rem',
+        '--text-display-xl-line-height': '3rem',
+        '--text-display-xl-weight': '600',
+        '--control-height-xl': '2.75rem',
+      },
+    };
+    expect(unknownNames(extraSteps)).toEqual([]);
+
+    // A name no kit family shapes stays rejected, wherever it appears - a
+    // `--text-` name included, unless its suffix is one the kit's type roles
+    // repeat (`height` alone is not: a bare last-segment match would accept
+    // any --text-<anything>-height as a type step).
+    const madeUp: ThemeConfig = {
+      id: 'made-up',
+      name: 'Made up',
+      appearance: 'light',
+      variables: {
+        '--made-up-token': '1rem',
+        '--text-row-height': '2rem',
+        '--text-icon-height': '1rem',
+      },
+    };
+    expect(unknownNames(madeUp)).toEqual(['--made-up-token', '--text-row-height', '--text-icon-height']);
   });
 
   it('makes a theme with its own palette map every colour token of its appearance', () => {
