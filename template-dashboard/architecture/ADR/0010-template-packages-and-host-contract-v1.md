@@ -35,7 +35,7 @@ description: "Decision record on how template-dashboard splits into packages, wh
 
 ## Context and Problem Statement
 
-The dashboard runs inside a host application. The template is a blueprint: the product copies it into its project and modifies it. The template's code has parts with different roles: the dashboard root, which owns the `widgets` domain and renders dashboards; and a library of widgets, each widget type with one FrontX MFE entry ([ADR-0007](0007-extension-domain-taxonomy-v1.md), [ADR-0008](0008-widget-type-and-mfe-realization-v1.md)). The template has no backend access of its own; the product's API answers the requests a binding makes ([ADR-0011](0011-widget-data-binding-v1.md)). A product may change which entry a template widget type points to by editing the type's `entry` trait in that bundle's `mfe.json` in its copy of the template, or, with no template change, by serving a bundle of its own for the type.
+The dashboard runs inside a host application. The template is a blueprint: the product copies it into its project and modifies it. The template's code has parts with different roles: the dashboard root, which owns the `widgets` domain and renders dashboards; and a library of widgets, each widget type with one FrontX MFE entry ([ADR-0007](0007-extension-domain-taxonomy-v1.md), [ADR-0008](0008-widget-type-and-mfe-realization-v1.md)). The template has no backend access of its own; the product's API answers the requests a binding makes ([ADR-0011](0011-widget-data-binding-v1.md)). A product may change which entry a template widget type points to by editing the type's `entry` trait in that bundle's `mfe.json` in its copy of the template, or, with no template change, by serving a bundle of its own for the type with the template's bundle for the type off its widget list.
 
 The GTS types and instances (widget types, data types, entries) are read at runtime, never baked in at build time. In v1 they come from a JSON file the template serves as if from a backend; a product may serve its own. The dashboard root registers the bundle schemas at start, before it fetches the file.
 
@@ -49,7 +49,7 @@ How does the template split into packages, what does it depend on, where does th
 * Sign-in is out of scope; each request a binding makes is authenticated by the product, in the host it passes.
 * No dashboard content and no backend configuration are packaged: dashboards and widget data come from the served file and the product's API.
 * The template's schemas must be registered before any dashboard loads, in either hosting form.
-* A product changes which entry a widget type points to by editing the type's `entry` trait in that bundle's `mfe.json` in its copy of the template, or, with no template change, by serving a bundle of its own for the type.
+* A product changes which entry a widget type points to by editing the type's `entry` trait in that bundle's `mfe.json` in its copy of the template, or, with no template change, by serving a bundle of its own for the type with the template's bundle for the type off its widget list.
 * Per-instance isolation: no package relies on state shared between instances, and the download size, with each shared dependency fetched once, stays within the budget (`cpt-frontx-dashboard-nfr-bundle-budget`).
 
 ## Considered Options
