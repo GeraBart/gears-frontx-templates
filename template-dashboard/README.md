@@ -10,8 +10,8 @@ npm test
 
 ## Node, registry and rough timings
 
-- Node: the repository root declares `"node": ">=24.14.0"` and `"npm": ">=10.0.0"` in its `engines` field, with `engine-strict=true` in its `.npmrc`. This folder has no `engines` field and no `.nvmrc` of its own. The commands in this README were run with Node 25.1.0 and npm 11.6.2.
-- Registry: the lockfile resolves every package (367 of them) from the public npm registry. A user-level npmrc that points a scope such as `@gears-frontx` at a registry that is not running makes the requests for that scope wait on it (an `npm view` of a `@gears-frontx` package had not answered after 30 s). Install with a clean user config instead:
+- Node: the repository root asks for Node `>=24.14.0` and npm `>=10.0.0` in its `engines` field, with `engine-strict=true` in its `.npmrc`. The commands here were run with Node 25.1.0 and npm 11.6.2.
+- Registry: the lockfile resolves all 367 packages from the public npm registry. A user-level npmrc that points a scope such as `@gears-frontx` at a registry that is not running makes installs wait on it. Install with a clean user config instead:
 
 ```bash
 export NPM_CONFIG_USERCONFIG="$(mktemp)"
@@ -19,7 +19,7 @@ printf 'registry=https://registry.npmjs.org/\n' > "$NPM_CONFIG_USERCONFIG"
 npm ci
 ```
 
-- Timings: measured on one development machine that was busy with other work at the time, so take them as rough: `npm ci` took about 2 minutes (113 s), `npm run build:widgets` on the 15 bundles: two runs each on an 18-core machine under load, one at a time took about 72 s, 4 at a time (the default) about 31 s and peaked at about 3 GB of memory for the whole build, all 15 at once about 17 s and about 10 GB, and `npm run dev:host` reported Vite ready in under a second and answered the first page request about 5 s after the command started.
+- Timings: rough numbers. `npm ci` takes about 2 minutes (113 s). `npm run build:widgets` on the 15 bundles takes about 72 s one at a time and about 31 s at 4 at a time (the `--jobs` default), with a peak of about 3 GB of memory; all 15 at once takes about 17 s and about 10 GB. `npm run dev:host` reports Vite ready in under a second and answers the first page request about 5 s after the command starts.
 
 ## Dev preview
 
