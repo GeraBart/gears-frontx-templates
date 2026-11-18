@@ -14,7 +14,11 @@
  * new bundle once one child failed: the build then exits 1 and its last line
  * names every failed bundle. dist/widgets.json is written once, at the end,
  * only when every bundle built: the served widget list, the address of every
- * part built so far. Each bundle gets its served-file part next to it,
+ * part built so far. A full build (no bundle named on the command line)
+ * removes the previous dist/widgets.json before the first bundle builds, so a
+ * failed build leaves no stale list behind; a run that names bundles leaves
+ * the list as it is until it rewrites it at the end. Each bundle gets its
+ * served-file part next to it,
  * dist/<widget_type>/widget.gts.json: the manifest and the entry the FrontX
  * manifest pipeline completed from the build, with the types and instances of
  * the bundle's own served.gts.json when it has one (a widget type the template
@@ -26,7 +30,7 @@
  * environment.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -101,6 +105,13 @@ if (only !== undefined) {
   // A type named twice still builds once: two children would write one dist/<type>.
   const types = [...new Set(named.length ? named : readdirSync(bundlesDir).filter((name) => existsSync(path.join(bundlesDir, name, 'mfe.json'))))];
   const count = cap ?? Math.min(DEFAULT_JOBS, os.availableParallelism(), types.length);
+  // A full build drops the previous widgets.json before the first bundle
+  // builds: the list is then written only when every bundle built, so a failed
+  // build leaves no stale list for the dev host to serve over a mix of old and
+  // new bundles. A run that names bundles keeps the list until the end, as
+  // before.
+  const widgetsPath = path.join(outDir, 'widgets.json');
+  if (named.length === 0 && existsSync(widgetsPath)) unlinkSync(widgetsPath);
   let next = 0;
   let running = 0;
   const failed = [];
