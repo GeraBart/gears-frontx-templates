@@ -157,7 +157,11 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
 
   return (
     <div className={styles.container} data-mfe-screen-container>
-      {retryFailed ? <LoadFailed onRetry={retryFailed} /> : null}
+      {retryFailed ? (
+        <div className={styles.errorState}>
+          <LoadFailed onRetry={retryFailed} />
+        </div>
+      ) : null}
       {bootstrapped && app.mfeRegistry ? (
         <ExtensionDomainSlot
           registry={app.mfeRegistry}

@@ -270,6 +270,29 @@ injecting the stylesheet. The screen root then carries `data-theme="light"` or
 `"dark"`, mapped from the host's current theme, which selects the kit's own
 light or dark token set.
 
+The shell insets every screen by `var(--space-4)` on both sides of its slot.
+The padding is declared by the shell on the screen's host element, outside the
+shadow root, so the screen's own module does not declare it and cannot remove
+it by accident. A screen that must draw a band from edge to edge of its slot
+opts out by declaring the custom property the shell's rule reads on the host:
+
+```css
+:host {
+  --frontx-screen-inline-padding: 0;
+}
+```
+
+Any length works, so a screen may also set it wider than the shell's default
+gutter. The host element is the one element this declaration can reach from
+inside the shadow root, which is why the contract lives there.
+
+The opt-out covers the shell's gutter only. The screen root's own padding is
+separate: this scaffold's `.screen` adds `var(--space-8)` inline padding on
+desktop (`min-width: 40rem`) and keeps it block-only below that width. With the
+opt-out above, the real inline inset on this scaffold is still the scaffold's
+own padding; remove or override that padding too for a band that reaches the
+edges of the slot.
+
 ## Development
 
 ### Run Locally

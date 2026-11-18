@@ -222,6 +222,27 @@ shell or vice versa. Shared dependencies are isolated per runtime by rewriting
 their imports to per-load blob URLs — no shared mutable module state between
 host and MFEs.
 
+### Screen inline padding
+
+The shell insets every mounted screen by `var(--space-4)` on both sides: the
+padding is declared on the screen's host element (the div
+`ScreenContainerHooks.create()` builds, selected by its `data-extension-id`
+attribute in `MfeScreenContainer.module.css`), not on the scroll container, so
+the scroller's scrollbar stays at the window's edge. A screen that must draw a
+band from edge to edge of its slot opts out from inside its own shadow root,
+because the host element is the one element a screen's CSS reaches from there:
+
+```css
+:host {
+  --frontx-screen-inline-padding: 0;
+}
+```
+
+`--frontx-screen-inline-padding` is the contract: the shell's rule reads it on
+the host with the gutter as its fallback, so a screen may also set it to any
+other length to widen the gutter. Nothing in the shell needs to change for
+either.
+
 ## Boundaries
 
 - What a directory under `src-app/mfe_packages/` must look like to enter this

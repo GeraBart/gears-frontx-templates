@@ -271,6 +271,12 @@ describe('MfeScreenContainer', () => {
       act(() => screenLoadFailure.report('ext.orders', 'push'));
 
       expect(screen.getByRole('button', { name: 'custom error state' })).not.toBeNull();
+      // The wrapper is what carries the load-failure gutter (the errorState
+      // rule in MfeScreenContainer.module.css): the custom content has to sit
+      // directly inside it, or the state loses its padding with this suite
+      // still green (jsdom runs no cascade, so only the structure pins it).
+      const errorButton = screen.getByRole('button', { name: 'custom error state' });
+      expect(errorButton.parentElement?.className).toBe(styles.errorState);
       expect(screen.queryByRole('alert')).toBeNull();
     });
   });

@@ -1,9 +1,31 @@
-/* The side padding sits inside the scroller, so its scrollbar is at the
-   window's edge instead of inset by the padding. */
+/* The side padding sits inside the scroller (on the screen's host element,
+   below), so its scrollbar is at the window's edge instead of inset by the
+   padding. */
 .container {
   flex: 1 1 0%;
   overflow: auto;
-  padding: 0 var(--space-4);
+}
+
+/* The screen's host element carries the side padding, so a screen can reach
+   the edges of its slot without a shell edit: setting the custom property on
+   its own `:host` from inside the shadow root overrides the fallback here.
+   The rule lives in the outer document, which beats the shadow root's
+   `:host { all: initial }` isolation block before specificity is compared, so
+   the padding lands; the host's `width: auto` keeps its content box at the
+   slot's width minus this padding. Pinned in screenThemeHost.test.tsx: the
+   host's parent must stay the slot root, since this selector uses the child
+   combinator. */
+.slot > [data-extension-id] {
+  padding-inline: var(--frontx-screen-inline-padding, var(--space-4));
+}
+
+/* The load-failure state is shell chrome, not a screen: it renders straight
+   into the scroller instead of a screen host, so it carries the same gutter
+   the screens get - the same custom property, so a project that overrides
+   the gutter project-wide moves both. A screen's own `:host` opt-out cannot
+   leak in here: the error state is a sibling of the slot, not inside it. */
+.errorState {
+  padding: 0 var(--frontx-screen-inline-padding, var(--space-4));
 }
 
 .slot {
