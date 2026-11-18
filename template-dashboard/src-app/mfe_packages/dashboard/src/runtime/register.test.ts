@@ -655,27 +655,42 @@ describe('the served file in parts', () => {
     expect(result).toMatchObject({ ok: true, failed: new Map() });
   });
 
-  it('fails the cells of a type the base file copies with another entry with the line of the part that left its render and data types out', () => {
-    // The old way of re-pointing, a copy of the pie widget type with the product's entry in the base file: the
-    // catalog pie part is left out for its type alone, its render and data type ids name it, and the product entry
-    // the cells resolve to names nothing.
-    const pieType = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE}`)!;
-    const catalogManifest = IN_BUNDLE_PARTS.instances.find((instance) => instance.id === PIE_MANIFEST)!;
-    const catalogEntry = IN_BUNDLE_PARTS.instances.find((instance) => instance.id === PIE_ENTRY)!;
-    const PRODUCT_MANIFEST = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.product.widgets.pie_chart.v1';
-    const PRODUCT_ENTRY = 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.product.mfe.pie_chart.v1';
+  const MARKDOWN_TYPE = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.markdown_card.v1~';
+  it.each([
+    ['render type missing', 'markdown_card', MARKDOWN_TYPE, [] as ServedFile['types']],
+    ['data type missing', 'pie_chart', PIE, [IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE_RENDER}`)!]],
+  ])('fails the cells of a type the base file copies with another entry with the part line: %s', (_missing, widget, widgetType, moreBaseTypes) => {
+    // The old way of re-pointing, a copy of a catalog widget type with the product's entry in the base file: the
+    // catalog part is left out for its type alone, the copy misses one type of its own, and the product entry the
+    // cells resolve to names nothing. The markdown_card copy has no data type, so its cells can fail only by the
+    // render type; the pie copy sits beside its render type in the base file, so its cell fails by the data type.
+    const catalogType = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${widgetType}`)!;
+    const MANIFEST = `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.${widget}.v1`;
+    const PRODUCT_MANIFEST = `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.product.widgets.${widget}.v1`;
+    const PRODUCT_ENTRY = `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.product.mfe.${widget}.v1`;
+    const catalogManifest = IN_BUNDLE_PARTS.instances.find((instance) => instance.id === MANIFEST)!;
+    const catalogEntry = IN_BUNDLE_PARTS.instances.find((instance) => instance.id === `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.${widget}.v1`)!;
     const base = {
       ...DEMO_WITHOUT_BUNDLES,
-      types: [...DEMO_WITHOUT_BUNDLES.types, { ...pieType, 'x-gts-traits': { entry: PRODUCT_ENTRY, data_type: PIE_DATA } }],
+      types: [
+        ...DEMO_WITHOUT_BUNDLES.types,
+        ...moreBaseTypes,
+        { ...catalogType, 'x-gts-traits': { ...((catalogType as { 'x-gts-traits'?: Record<string, unknown> })['x-gts-traits'] ?? {}), entry: PRODUCT_ENTRY } },
+      ],
       instances: [...DEMO_WITHOUT_BUNDLES.instances, { ...catalogManifest, id: PRODUCT_MANIFEST }, { ...catalogEntry, id: PRODUCT_ENTRY, manifest: PRODUCT_MANIFEST }],
     };
-    const { types, outcome, lines } = loadedParts([base, otherPart(), bundlePart('pie_chart')]);
+    // The part beside the subject part drops the subject bundle's types and instances too, so only the base file's
+    // copy stands between the catalog part and its registration.
+    const restTypes = IN_BUNDLE_PARTS.types.filter((type) => !bundleTypes(widget).includes(type));
+    const restInstances = IN_BUNDLE_PARTS.instances.filter((instance) => !String(instance.id).endsWith(`.${widget}.v1`));
+    const { types, outcome, lines } = loadedParts([base, { types: restTypes, instances: restInstances }, bundlePart(widget)]);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(new RegExp(`the widget part "${PIE_MANIFEST.replace(/[.~]/g, '\\$&')}" is left out: its type .*pie_chart\\.v1~ is already defined otherwise$`));
+    expect(lines[0]).toMatch(new RegExp(`the widget part "${MANIFEST.replace(/[.~]/g, '\\$&')}" is left out: its type .*${widget}\\.v1~ is already defined otherwise$`));
     const result = registerDashboard(types, demoDashboard(), outcome.ok ? outcome.rejected : undefined);
-    expect(pieSlots().length).toBeGreaterThan(0);
-    expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
-    expect(result.ok && result.failed.get(pieSlots()[0])).toMatch(/^the widget part ".*pie_chart.*" is left out: its type .* is already defined otherwise$/);
+    const slots = slotsOf(widget);
+    expect(slots.length).toBeGreaterThan(0);
+    expect(result.ok && [...result.failed.keys()]).toEqual(slots);
+    expect(result.ok && result.failed.get(slots[0])).toMatch(new RegExp(`^the widget part ".*${widget}.*" is left out: its type .* is already defined otherwise$`));
   });
 
   it('fails no cell of the healthy parts when a left-out part declares a type the registry refuses for its id', () => {
