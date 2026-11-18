@@ -1,0 +1,14 @@
+{
+  "waivers": [
+    {
+      "gate": "SYS-001",
+      "screen": { "source": "src-app/app/layout/Header.tsx" },
+      "reason": "The header's plain language select is the no-UI-kit control App.no-uikit.tsx asks for; the kit's NativeSelect renders wherever the kit is in."
+    },
+    {
+      "gate": "SYS-001",
+      "screen": { "source": "src-app/app/layout/Layout.tsx" },
+      "reason": "The narrow-menu backdrop button is an invisible click-catcher, not a labelled action."
+    }
+  ]
+}

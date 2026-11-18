@@ -22,3 +22,7 @@ public/generated-mfe-manifests.json
 # Log from the documented background verify:preflight run; the script itself
 # writes only under the OS temp dir.
 .frontx/verify-preflight.log
+
+# Report directory the design-verify static check writes without --out
+# (verify:static)
+design-verify-report/

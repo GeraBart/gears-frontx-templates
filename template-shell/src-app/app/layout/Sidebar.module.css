@@ -2,7 +2,10 @@
   width: 20rem;
   border-left: 1px solid var(--border);
   background-color: var(--background);
-  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* The fallbacks keep the collapse animation in the --uikit none build,
+     which loads neither the kit's stylesheet nor the shell themes that
+     declare these tokens. */
+  transition: all var(--transition-base, 200ms) var(--transition-easing, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
 .collapsed {

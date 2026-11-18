@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { checkContext, checkScript, collectFiles, main } from '../runner/static.mjs';
 import { designMdParser, readSkillJson } from '../runner/skill.mjs';
@@ -639,6 +640,57 @@ describe('exit codes and the baseline', () => {
     });
     expect(code).toBe(0);
     expect(fs.existsSync(path.join(root, 'design-verify-report/static-findings.json'))).toBe(true);
+  });
+});
+
+describe('the shipped shell layout', () => {
+  // The real layout the shell template ships, not a fixture: the template
+  // must pass the static check it delivers. The shell sits beside this
+  // package in this repository and around it when the package is composed
+  // into a project (src-app/verify_packages/design-verify), so the shell root
+  // is found by walking up from this file. The check runs exactly as a
+  // `verify:static` run in the shell does: the shell root as the project
+  // root, so its own design-waivers.json applies, and the report goes to a
+  // temp dir, never to the default design-verify-report/ in the tree.
+  const shellRoot = (() => {
+    for (let dir = path.dirname(fileURLToPath(import.meta.url)); ; dir = path.dirname(dir)) {
+      for (const candidate of [path.join(dir, 'template-shell'), dir]) {
+        if (fs.existsSync(path.join(candidate, 'src-app', 'app', 'layout', 'Layout.tsx'))) return candidate;
+      }
+      if (path.dirname(dir) === dir) throw new Error('template-shell not found above the design-verify package');
+    }
+  })();
+  // The DESIGN.md the check suggests tokens from: the project's own at its
+  // root when the shell runs composed, else the guardrails template's own
+  // beside the shell in this repository.
+  const designMd = [path.join(shellRoot, 'DESIGN.md'), path.join(shellRoot, '..', 'template-design-guardrails', 'DESIGN.md')].find(
+    (file) => fs.existsSync(file),
+  );
+
+  it('passes the static check: no unwaived findings, its native elements waived', async () => {
+    expect(designMd, `no DESIGN.md found for the shell at ${shellRoot}`).toBeTruthy();
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-shell-layout-'));
+    dirs.push(out);
+    const lines: string[] = [];
+    const code = await main(['--src', 'src-app/app/layout', '--design', designMd as string, '--out', out], {
+      env: { INIT_CWD: shellRoot },
+      log: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+    const report = JSON.parse(fs.readFileSync(path.join(out, 'static-findings.json'), 'utf8'));
+    expect(lines.join('\n')).toContain('0 finding(s), 2 waived, 0 parse error(s)');
+    expect(report.findings).toEqual([]);
+    // The plain language select (the no-UI-kit control) and the narrow-menu
+    // backdrop button are the layout's two waived native elements: the only
+    // two waivers, the ones SYS-001 can carry. Every value the layout paints
+    // is a kit token or derived from one, so SYS-002 has nothing to waive
+    // (and never yields one): the waiver file at the shell root is their one
+    // record.
+    expect(report.waived.map((f: Finding) => `${f.gate} ${f.file}`)).toEqual([
+      'SYS-001 src-app/app/layout/Header.tsx',
+      'SYS-001 src-app/app/layout/Layout.tsx',
+    ]);
+    expect(code).toBe(0);
   });
 });
 

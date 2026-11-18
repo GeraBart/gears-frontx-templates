@@ -8,12 +8,13 @@
 }
 
 .hintCode {
-  border-radius: 0.25rem;
+  /* 0.125rem 0.375rem: half of and 1.5 times the --space-1 step. */
+  border-radius: var(--radius-xs);
   background-color: var(--muted);
-  padding: 0.125rem 0.375rem;
+  padding: calc(var(--space-1) / 2) calc(var(--space-1) * 1.5);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  line-height: 1rem;
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line-height);
 }
 
 .icon {
