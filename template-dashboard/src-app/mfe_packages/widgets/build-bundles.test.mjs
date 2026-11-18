@@ -178,19 +178,37 @@ describe('build-bundles.mjs', () => {
   }, 120_000);
 
   it('the part of a built bundle carries its mfe.json schemas and then its served.gts.json types, and the list it writes is sorted', async () => {
-    // One extra type in the bundle's own served.gts.json: the part lists the schemas first, then it.
+    // One extra type in the bundle's own served.gts.json: the part lists the schemas first, then it. The scratch OK
+    // bundle is shared by every test in the file, so the file comes back out when the run is done, however it ends.
     const extra = { $id: 'gts://gts.frontx.test.widget.extra.v1~', $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' };
-    writeFileSync(path.join(scratch, 'bundles', OK, 'served.gts.json'), `${JSON.stringify({ types: [extra], instances: [] }, null, 2)}\n`);
-    // Parts a previous build left behind: the rewritten list names every part in the out dir, sorted.
-    const run = await runBuild({ args: [OK], seedParts: ['zeta_widget', 'alpha_widget'] });
-    expect(run.code, run.stderr).toBe(0);
-    const part = JSON.parse(readFileSync(outPath(OK, 'widget.gts.json'), 'utf-8'));
-    const mfe = JSON.parse(readFileSync(path.join(scratch, 'bundles', OK, 'mfe.json'), 'utf-8'));
-    expect(part.types).toEqual([...mfe.schemas, extra]);
-    expect(JSON.parse(readFileSync(outPath('widgets.json'), 'utf-8'))).toEqual([
-      '/widgets/alpha_widget/widget.gts.json',
-      '/widgets/ok_widget/widget.gts.json',
-      '/widgets/zeta_widget/widget.gts.json',
-    ]);
+    const served = path.join(scratch, 'bundles', OK, 'served.gts.json');
+    writeFileSync(served, `${JSON.stringify({ types: [extra], instances: [] }, null, 2)}\n`);
+    try {
+      // Parts a previous build left behind, eleven of them seeded in a scattered order: the rewritten list names
+      // every part in the out dir, sorted, and readdirSync order is the directory's own. APFS returns the names
+      // sorted anyway, so on a developer Mac the assertion holds either way; the guard bites on a file system with
+      // another order (ext4 on CI), where twelve names sorted by chance have odds of 1/12!.
+      const run = await runBuild({ args: [OK], seedParts: ['zeta_widget', 'mu_widget', 'beta_widget', 'alpha_widget', 'kappa_widget', 'sigma_widget', 'delta_widget', 'omicron_widget', 'iota_widget', 'rho_widget', 'eta_widget'] });
+      expect(run.code, run.stderr).toBe(0);
+      const part = JSON.parse(readFileSync(outPath(OK, 'widget.gts.json'), 'utf-8'));
+      const mfe = JSON.parse(readFileSync(path.join(scratch, 'bundles', OK, 'mfe.json'), 'utf-8'));
+      expect(part.types).toEqual([...mfe.schemas, extra]);
+      expect(JSON.parse(readFileSync(outPath('widgets.json'), 'utf-8'))).toEqual([
+        '/widgets/alpha_widget/widget.gts.json',
+        '/widgets/beta_widget/widget.gts.json',
+        '/widgets/delta_widget/widget.gts.json',
+        '/widgets/eta_widget/widget.gts.json',
+        '/widgets/iota_widget/widget.gts.json',
+        '/widgets/kappa_widget/widget.gts.json',
+        '/widgets/mu_widget/widget.gts.json',
+        '/widgets/ok_widget/widget.gts.json',
+        '/widgets/omicron_widget/widget.gts.json',
+        '/widgets/rho_widget/widget.gts.json',
+        '/widgets/sigma_widget/widget.gts.json',
+        '/widgets/zeta_widget/widget.gts.json',
+      ]);
+    } finally {
+      rmSync(served, { force: true });
+    }
   }, 120_000);
 });
