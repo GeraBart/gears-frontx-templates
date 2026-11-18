@@ -162,6 +162,6 @@
 }
 
 .headerDivider {
-  margin: 0 var(--space-4);
+  margin: 0;
   border-bottom: 1px solid var(--left-menu-border);
 }
