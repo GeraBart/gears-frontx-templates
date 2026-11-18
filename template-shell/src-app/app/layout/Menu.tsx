@@ -24,7 +24,15 @@ import {
   SidebarHeader,
 } from '@/app/components/ui/sidebar';
 import { useShellWord } from '@/app/i18n/useShellWord';
-import { Icon } from '@iconify/react';
+// The offline build: icons render from data registered at run time
+// (`menuIcons.ts`, generated into `public/generated-menu-icons.json`), with no
+// icon API module, so no external host is ever contacted for an icon.
+import { Icon } from '@iconify/react/offline';
+import {
+  hasMenuIcon,
+  menuIconsStore,
+  warnMenuIconMissing,
+} from './menuIcons';
 import { bootstrapSettled } from '@/app/mfe/bootstrapOnce';
 import { screenState } from '@/app/mfe/screenState';
 import { menuLabels } from '@/app/mfe/menuLabels';
@@ -75,6 +83,11 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
     () => i18nRegistry?.getLanguage() ?? 'en',
   );
   const [translated, setTranslated] = useState<{ language: string; labels: Map<string, string> }>();
+
+  // The menu icon bundle may land after the first paint (it is fetched in
+  // parallel with the manifest aggregate during bootstrap), so the menu
+  // subscribes to the registrations and re-renders when they arrive.
+  const menuIconsSnapshot = useSyncExternalStore(menuIconsStore.subscribe, menuIconsStore.getSnapshot);
 
   // The words of the menu's own chrome, in the current language. The sidebar
   // primitive takes its labels as props and translates nothing itself, so the
@@ -140,6 +153,20 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
   // No registry means no microfrontends plugin: nothing is ever coming.
   const screens = mfeRegistry ? extensions : [];
   const labels = translated?.language === language ? translated.labels : menuLabels.peek(language);
+
+  // An icon the registered collections do not carry (an MFE deployed apart
+  // from this build) renders no icon. Only reported once the bundle has
+  // settled and only in dev, one warning per icon name: before that, the
+  // bundle may simply still be in flight. Read over `extensions`, the state
+  // the effect can depend on stably, not over the `screens` conditional.
+  useEffect(() => {
+    if (menuIconsSnapshot.startsWith('ready')) {
+      for (const ext of extensions ?? []) {
+        const icon = ext.presentation?.icon;
+        if (icon && !hasMenuIcon(icon)) warnMenuIconMissing(icon);
+      }
+    }
+  }, [extensions, menuIconsSnapshot]);
 
   const handleToggleCollapse = () => {
     eventBus.emit('layout/menu/collapsed', { collapsed: !collapsed });
@@ -210,7 +237,7 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
                     onClick={() => handleMenuItemClick(ext.id)}
                     tooltip={collapsed ? label : undefined}
                   >
-                    {pres.icon && (
+                    {pres.icon && hasMenuIcon(pres.icon) && (
                       <SidebarMenuIcon>
                         <Icon icon={pres.icon} className={styles.icon} />
                       </SidebarMenuIcon>

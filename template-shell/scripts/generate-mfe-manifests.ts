@@ -59,6 +59,7 @@ import {
   templateExamplesIncluded,
   templateExamplesSkippedNotice,
 } from './lib/mfe-tools.js';
+import { MenuIconsGenerator, MENU_ICONS_OUTPUT_RELATIVE } from './generate-menu-icons.js';
 
 const screenExtensionRef = screenLabelsSchema.properties.labels.items.properties.extension['x-gts-instance-ref'];
 if (!screenExtensionRef.endsWith('~*')) {
@@ -791,6 +792,15 @@ if (isProcessEntryPoint) {
     new ManifestGenerator(mfePackagesDir, outputFile, MFE_MANIFEST_PATH, baseUrl).run();
   } catch (err) {
     console.error('Error generating MFE manifests:', err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+  // The icons step carries its own label: when it fails, the manifest
+  // aggregate is already written and stays on disk, so a shared catch would
+  // point the operator at the wrong step.
+  try {
+    new MenuIconsGenerator(mfePackagesDir, join(process.cwd(), MENU_ICONS_OUTPUT_RELATIVE)).run();
+  } catch (err) {
+    console.error('Error generating menu icons:', err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
 }

@@ -163,7 +163,7 @@ my-app/
 | `npm run build` | Production build: the shell and every screen in `dist/`, deployable as one folder (see [Deploying the build](#deploying-the-build)) |
 | `npm run build:packages` | Build the solution workspace packages |
 | `npm run build:mfes` | Build all microfrontend packages |
-| `npm run generate:mfe-manifests` | Regenerate the host's MFE manifest index |
+| `npm run generate:mfe-manifests` | Regenerate the host's MFE manifest index; the same run rewrites the bundled menu icons (`public/generated-menu-icons.json`) |
 | `npm run layout:dist` | Copy the built screens into `dist/mfe/` and address them relative to `dist/` (the last step of `build`) |
 | `npm run preview` | Preview a production build |
 | `npm run type-check` | Type-check the host app, packages, and MFEs |

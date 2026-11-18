@@ -32,6 +32,7 @@ import type {
   MfeRegistry,
 } from '@gears-frontx/react';
 import { menuLabels, type LabelDictionaryManifest } from './menuLabels';
+import { startMenuIconsFetch } from '../layout/menuIcons';
 
 const MFE_MANIFESTS_FILE = 'generated-mfe-manifests.json';
 
@@ -222,6 +223,11 @@ export async function bootstrapMFE(app: FrontXApp, domains: readonly DomainRegis
   const derivedLanguage = app.i18nRegistry.getLanguage();
   registry.updateSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, derivedLanguage ?? 'en');
 
+  // The menu icons bundle starts here, in parallel with the aggregate fetch
+  // below: neither waits for the other, and a slow or missing icons file never
+  // delays the manifests. The menu renders its items without icons until the
+  // bundle lands (`menuIcons.ts` owns the failure handling).
+  startMenuIconsFetch(import.meta.env.BASE_URL, import.meta.url);
   const aggregateUrl = manifestsUrl(import.meta.env.BASE_URL, import.meta.url);
   console.info(`[MFE Bootstrap] Fetching MFE manifests from ${aggregateUrl}`);
   const response = await fetch(aggregateUrl);

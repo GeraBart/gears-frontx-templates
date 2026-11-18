@@ -104,6 +104,16 @@ async function loadBootstrap(): Promise<{ bootstrapMFE: (app: never) => Promise<
 describe('bootstrapMFE (host-app)', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
+  /**
+   * Serves a fresh Response per fetch call, the way a real server does:
+   * bootstrap now starts a menu icons fetch beside the manifest aggregate
+   * fetch, and `mockResolvedValue(new Response(...))` would hand both calls
+   * one Response object whose body the first reader consumes.
+   */
+  function serve(body: string, init?: ResponseInit): void {
+    fetchSpy.mockImplementation(async () => new Response(body, init));
+  }
+
   beforeEach(() => {
     vi.resetModules();
     registerDomain.mockReset();
@@ -131,7 +141,7 @@ describe('bootstrapMFE (host-app)', () => {
   });
 
   it('registers the screen domain and the screen extension type before fetching manifests', async () => {
-    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+    serve('[]', { status: 200 });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
@@ -148,6 +158,28 @@ describe('bootstrapMFE (host-app)', () => {
     expect(warnSpy).toHaveBeenCalled();
   });
 
+  it('starts the menu icons fetch beside the manifests fetch and never waits for it', async () => {
+    const requestedUrls: string[] = [];
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.includes('generated-menu-icons.json')) {
+        // The icons file never arrives; the manifests path must not care.
+        return new Promise<Response>(() => {});
+      }
+      return new Response('[]', { status: 200 });
+    });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(mockApp as never)).resolves.toBeUndefined();
+
+    // Both requests went out, and the icons one is not queued behind the
+    // manifests: it is the first fetch of the bootstrap.
+    expect(requestedUrls.some((url) => url.includes('generated-menu-icons.json'))).toBe(true);
+    expect(requestedUrls[0].includes('generated-menu-icons.json')).toBe(true);
+  });
+
   it('configures menu labels on the registry type system', async () => {
     const aggregate = [{
       manifest: { id: 'manifest.demo', metaData: { publicPath: '/mfe/demo/' } },
@@ -155,7 +187,7 @@ describe('bootstrapMFE (host-app)', () => {
       extensions: [{ id: 'ext.demo', domain: 'foreign-domain' }],
       labelDictionaries: [{ language: 'fr', file: 'labels/fr.json' }],
     }];
-    fetchSpy.mockResolvedValue(new Response(JSON.stringify(aggregate), { status: 200 }));
+    serve(JSON.stringify(aggregate), { status: 200 });
     const { bootstrapMFE } = await loadBootstrap();
     const { menuLabels } = await import('./menuLabels');
     const configure = vi.spyOn(menuLabels, 'configure');
@@ -170,7 +202,7 @@ describe('bootstrapMFE (host-app)', () => {
   });
 
   it('registers no domain and no screen type when the host implements none', async () => {
-    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+    serve('[]', { status: 200 });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await import('./bootstrap');
@@ -181,7 +213,7 @@ describe('bootstrapMFE (host-app)', () => {
   });
 
   it('opts the screen domain into the host chrome actions', async () => {
-    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+    serve('[]', { status: 200 });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
@@ -216,7 +248,7 @@ describe('bootstrapMFE (host-app)', () => {
   });
 
   it("the screen mount handler only calls the strategy's own mount — URL reflection is the runtime's `reflect` commands to the injected router (ADR 0036), not this handler's concern", async () => {
-    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+    serve('[]', { status: 200 });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
@@ -245,7 +277,7 @@ describe('bootstrapMFE (host-app)', () => {
     mount: (subject: string) => Promise<unknown>;
     screenState: { getSnapshot(): string | undefined };
   }> {
-    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+    serve('[]', { status: 200 });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
@@ -329,7 +361,7 @@ describe('bootstrapMFE (host-app)', () => {
   });
 
   it('the screen domain registers no unmount_ext handler: an Exclusive domain declares none (ADR 0009)', async () => {
-    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+    serve('[]', { status: 200 });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
@@ -351,7 +383,7 @@ describe('bootstrapMFE (host-app)', () => {
   });
 
   it('throws when the manifest fetch fails', async () => {
-    fetchSpy.mockResolvedValue(new Response('not found', { status: 404, statusText: 'Not Found' }));
+    serve('not found', { status: 404, statusText: 'Not Found' });
 
     const { bootstrapMFE } = await loadBootstrap();
     await expect(bootstrapMFE(mockApp as never)).rejects.toThrow(/Failed to load MFE manifests/);
@@ -368,8 +400,7 @@ describe('bootstrapMFE (host-app)', () => {
     const schemaActionB = { $id: 'gts://act.b' };
     const schemaUnrelated = { $id: 'gts://other' };
 
-    fetchSpy.mockResolvedValue(
-      new Response(
+    serve(
         JSON.stringify([
           {
             manifest: manifestEntity,
@@ -379,7 +410,6 @@ describe('bootstrapMFE (host-app)', () => {
           },
         ]),
         { status: 200 },
-      ),
     );
 
     const { bootstrapMFE } = await loadBootstrap();
@@ -398,13 +428,11 @@ describe('bootstrapMFE (host-app)', () => {
     const extA = { id: 'ext.a', domain: 'screen-domain' };
     const extB = { id: 'ext.b', domain: 'screen-domain' };
     getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
-    fetchSpy.mockResolvedValue(
-      new Response(
+    serve(
         JSON.stringify([
           { manifest: { $id: 'manifest.demo', id: 'manifest.demo' }, entries: [], extensions: [extA, extB] },
         ]),
         { status: 200 },
-      ),
     );
 
     const { bootstrapMFE } = await loadBootstrap();
@@ -427,14 +455,12 @@ describe('bootstrapMFE (host-app)', () => {
     // back until their own package's turn would register it after entry.widget.
     const hostEntry = { id: 'entry.host', actions: ['act.ping'], domainActions: [] };
     const pingSchema = { $id: 'gts://act.ping' };
-    fetchSpy.mockResolvedValue(
-      new Response(
+    serve(
         JSON.stringify([
           { manifest: { id: 'manifest.widget' }, entries: [widgetEntry], extensions: [widget] },
           { manifest: { id: 'manifest.host' }, domains: [widgetsDomain], entries: [hostEntry], schemas: [pingSchema] },
         ]),
         { status: 200 },
-      ),
     );
 
     const { bootstrapMFE } = await loadBootstrap();
@@ -454,8 +480,7 @@ describe('bootstrapMFE (host-app)', () => {
 
   it('skips extension registration when host does not own the target domain', async () => {
     getDomain.mockReturnValue(undefined);
-    fetchSpy.mockResolvedValue(
-      new Response(
+    serve(
         JSON.stringify([
           {
             manifest: { $id: 'manifest.foreign', id: 'manifest.foreign' },
@@ -464,7 +489,6 @@ describe('bootstrapMFE (host-app)', () => {
           },
         ]),
         { status: 200 },
-      ),
     );
 
     const { bootstrapMFE } = await loadBootstrap();
@@ -483,7 +507,7 @@ describe('bootstrapMFE (host-app)', () => {
     async function chromeHandlersFor(
       actions: Record<string, unknown>,
     ): Promise<Map<string, ActionHandler>> {
-      fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+      serve('[]', { status: 200 });
 
       const { bootstrapMFE } = await loadBootstrap();
       await bootstrapMFE({ ...mockApp, actions } as never);
@@ -777,7 +801,7 @@ describe('bootstrapMFE (host-app)', () => {
     const MOUNT_EXT = 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~';
 
     async function screenMountHandler(): Promise<ActionHandler> {
-      fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+      serve('[]', { status: 200 });
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { bootstrapMFE } = await loadBootstrap();
       await bootstrapMFE(mockApp as never);

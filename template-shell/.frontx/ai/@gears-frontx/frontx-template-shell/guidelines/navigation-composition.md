@@ -12,6 +12,9 @@ match.
 Authoritative files:
 
 - `src-app/app/layout/Menu.tsx` — menu rendering and mount dispatch
+- `src-app/app/layout/menuIcons.ts` - the bundled menu icons: fetch of
+  `public/generated-menu-icons.json`, registration with
+  `@iconify/react/offline`, the unknown-icon dev warning
 - `src-app/app/mfe/bootstrap.ts` - manifest ingestion, after the domains the
   host implements are registered
 - `src-app/app/mfe/menuLabels.ts` - loads each MFE's label dictionary for the
@@ -23,8 +26,8 @@ Authoritative files:
 - `src/gts/schemas/extension_screen.v1.json` — the derived screen extension type
 - `packages/framework/src/plugins/microfrontends/gts/frontx.screensets/instances/domains/screen.v1.json` -
   the screen domain instance
-- `scripts/generate-mfe-manifests.ts`, `src/build/mf-gts.ts` — the build-time
-  pipeline
+- `scripts/generate-mfe-manifests.ts`, `scripts/generate-menu-icons.ts`,
+  `src/build/mf-gts.ts` - the build-time pipeline
 
 ## The menu is registry-driven
 
@@ -99,6 +102,17 @@ src-app/mfe_packages/<pkg>/mfe.json        # hand-written; source of truth
   → GTS registration (see order below)
   → Menu.tsx reads the registry
 ```
+
+Menu icons ride the same command: `npm run generate:mfe-manifests` also writes
+`public/generated-menu-icons.json`, one Iconify collection per prefix holding
+the `presentation.icon` names the packages declare (plus the parents an alias
+chains through, so the alias still resolves offline), read from the
+installed `@iconify-json/<prefix>` packages (a new prefix needs that package as
+a shell devDependency). At run time bootstrap starts the icons fetch beside the
+aggregate fetch, and `Menu.tsx` renders icons from those registered
+collections through `@iconify/react/offline`: an icon the build did not see
+renders no icon and one dev console warning, and no icon is ever fetched from
+an external host.
 
 No service and no database sit anywhere in this chain — between build and
 browser the declarations live in one static JSON file served as a public

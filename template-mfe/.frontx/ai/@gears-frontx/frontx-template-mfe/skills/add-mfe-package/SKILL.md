@@ -95,6 +95,16 @@ authority on each step.
    `labels[].extension` is the screen extension's own `id`
    (`gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~...`),
    not the domain ID.
+   `presentation.icon` is an Iconify name (`lucide:home`); its data is bundled
+   at build time from the installed `@iconify-json/<prefix>` packages, so a new
+   prefix needs that package added as a devDependency of the shell. A prefix
+   package that is not installed, or a set that does not carry the name, fails
+   the shell's build step (`generate:mfe-manifests`, and so `dev` and `build`)
+   with an error naming the icon and the package to install - the generator
+   validates every declared icon and removes the half-written bundle. An icon
+   missing only from a stale bundled file (the shell's
+   `generated-menu-icons.json` older than the package) renders no icon and one
+   dev console warning; nothing is fetched from the network for icons.
 5. **Implement the lifecycle** — `src/lifecycle.tsx` extends `ThemeAwareReactLifecycle`
    from `@gears-frontx/react`; the MFE's own `init.ts` builds its app instance with
    `createFrontX().use(effects()).use(queryCacheShared()).use(mock()).build()` so it
@@ -168,11 +178,13 @@ authority on each step.
      unmount, duplicate mount, second container, missing theme, non-string
      theme, plain element container).
 7. **Regenerate manifests** — run `npm run generate:mfe-manifests` so the host's
-   `public/generated-mfe-manifests.json` picks up the new package; this step is
-   mandatory before the new MFE is discoverable at runtime. It is also the
-   command that picks up a package rebuilt by hand (`npm run build` in that
-   package) while `dev:all` runs: the manifest gains the new hashed asset paths
-   and the next page load finds them, with no restart of `dev:all`.
+   `public/generated-mfe-manifests.json` picks up the new package (the same
+   command rewrites the bundled menu icons from the installed `@iconify-json`
+   sets); this step is mandatory before the new MFE is discoverable at runtime.
+   It is also the command that picks up a package rebuilt by hand (`npm run
+   build` in that package) while `dev:all` runs: the manifest gains the new
+   hashed asset paths and the next page load finds them, with no restart of
+   `dev:all`.
 8. **Verify** — while iterating on the MFE, scope checks to its workspace:
    `npm run type-check --workspace=<package-name>` and
    `npm run test:unit --workspace=<package-name>` (a full `type-check` or
