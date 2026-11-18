@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { checkContext, checkScript, collectFiles, main } from '../runner/static.mjs';
 import { designMdParser, readSkillJson } from '../runner/skill.mjs';
 
@@ -652,9 +652,17 @@ describe('rules/static-check.json', () => {
   ].flat() as string[];
 
   // Real names only: a kit upgrade that drops or renames one fails here.
-  it('names only components the installed kit exports', async () => {
-    const kit = await import('@gears-frontx/ui-kit');
+  // The kit is imported once in beforeAll with its own explicit timeout: the
+  // import itself is what can take tens of seconds on a cold cache, and the
+  // per-test limit must bound the assertion, not the module load.
+  let kit: Record<string, unknown>;
+
+  beforeAll(async () => {
+    kit = (await import('@gears-frontx/ui-kit')) as Record<string, unknown>;
+  }, 120000);
+
+  it('names only components the installed kit exports', () => {
     expect(named.length).toBeGreaterThan(20);
-    expect(named.filter((name) => typeof (kit as Record<string, unknown>)[name] === 'undefined')).toEqual([]);
+    expect(named.filter((name) => typeof kit[name] === 'undefined')).toEqual([]);
   });
 });
