@@ -21,9 +21,9 @@
  * the list as it is until it rewrites it at the end. Each bundle gets its
  * served-file part next to it,
  * dist/<widget_type>/widget.gts.json: the manifest and the entry the FrontX
- * manifest pipeline completed from the build, with the types and instances of
- * the bundle's own served.gts.json when it has one (a widget type the template
- * does not define).
+ * manifest pipeline completed from the build, the types the bundle's mfe.json
+ * declares in schemas, and the types and instances of the bundle's own
+ * served.gts.json when it has one.
  *
  * WIDGET_BUNDLE_BASE is the address the bundles are served under, '/widgets/'
  * by default: a bundle's chunks load from <base><widget_type>/. It,
@@ -72,13 +72,14 @@ if (only !== undefined) {
   const { build } = await import('vite');
   process.env.WIDGET_TYPE = only;
   await build({ configFile: path.join(here, 'vite.bundle.config.ts'), logLevel: 'warn' });
-  const { manifest, entries } = JSON.parse(readFileSync(path.join(outDir, only, 'mfe-manifest.json'), 'utf-8'));
+  const { manifest, entries, schemas } = JSON.parse(readFileSync(path.join(outDir, only, 'mfe-manifest.json'), 'utf-8'));
   // The served file names the manifest by id; its own `remoteEntry` field is the authoring input only.
   const { remoteEntry: _authored, ...served } = manifest;
-  // A new widget type brings its own served types (and may bring a dashboard that shows it) in served.gts.json.
+  // The part's types are the ones the bundle's mfe.json declares in schemas (the widget, render and data types of
+  // its widget type, carried through the build), then the types of its own served.gts.json when it has one.
   const extraPath = path.join(bundlesDir, only, 'served.gts.json');
   const extra = existsSync(extraPath) ? JSON.parse(readFileSync(extraPath, 'utf-8')) : { types: [], instances: [] };
-  const part = { types: extra.types ?? [], instances: [served, ...entries, ...(extra.instances ?? [])] };
+  const part = { types: [...(schemas ?? []), ...(extra.types ?? [])], instances: [served, ...entries, ...(extra.instances ?? [])] };
   writeFileSync(path.join(outDir, only, 'widget.gts.json'), `${JSON.stringify(part, null, 2)}\n`);
   console.log(`built ${only}`);
 } else {
