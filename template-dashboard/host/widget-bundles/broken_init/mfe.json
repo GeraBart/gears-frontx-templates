@@ -17,5 +17,108 @@
     }
   ],
   "extensions": [],
-  "schemas": []
+  "schemas": [
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.test.widget_data.broken_init.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "BrokenInitData",
+      "description": "Data of a broken_init widget: a failure fixture, never drawn.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "deploys",
+            "previous"
+          ],
+          "properties": {
+            "deploys": {
+              "type": "number"
+            },
+            "previous": {
+              "type": "number"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.test.widget_data.missing_bundle.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "MissingBundleData",
+      "description": "Data of a missing_bundle widget: a failure fixture, never drawn.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "deploys",
+            "previous"
+          ],
+          "properties": {
+            "deploys": {
+              "type": "number"
+            },
+            "previous": {
+              "type": "number"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.broken_init.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "BrokenInit",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.broken_init.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.test.widget_data.broken_init.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "additionalProperties": false,
+              "properties": {}
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.missing_bundle.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "MissingBundle",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.missing_bundle.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.test.widget_data.missing_bundle.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "additionalProperties": false,
+              "properties": {}
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  ]
 }

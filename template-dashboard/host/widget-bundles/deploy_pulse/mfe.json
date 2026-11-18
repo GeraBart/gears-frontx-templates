@@ -17,5 +17,35 @@
     }
   ],
   "extensions": [],
-  "schemas": []
+  "schemas": [
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.test.widget_data.deploy_pulse.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DeployPulseData",
+      "description": "Data of a deploy_pulse widget: the deploys of this week and of the week before.",
+      "allOf": [
+        { "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~" },
+        {
+          "type": "object",
+          "required": ["deploys", "previous"],
+          "properties": { "deploys": { "type": "number" }, "previous": { "type": "number" } }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.deploy_pulse.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "DeployPulse",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.deploy_pulse.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.test.widget_data.deploy_pulse.v1~"
+      },
+      "allOf": [
+        { "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~" },
+        { "type": "object", "properties": { "render": { "additionalProperties": false, "properties": {} } } }
+      ],
+      "unevaluatedProperties": false
+    }
+  ]
 }
