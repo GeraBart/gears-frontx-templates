@@ -145,8 +145,9 @@ const quoted = (name: string) => escapeControls(JSON.stringify(name));
  * joined file, or the file in parts: the base file (the catalog types and the
  * dashboards), then one part per widget bundle. A rejected base file fails
  * every dashboard; a rejected widget part is left out with one console line,
- * its dashboards never load, and only the cells whose widget type names an
- * entry the part failed to bring fail.
+ * its dashboards never load, and the root records the manifest and entry ids
+ * and the type ids of a left-out part, and fails a cell by its widget type,
+ * its entry, its render type or its data type with that part's line.
  */
 export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundleIds: ReadonlySet<string>): FileOutcome {
   const [base, ...parts] = Array.isArray(file) ? file : [file];
