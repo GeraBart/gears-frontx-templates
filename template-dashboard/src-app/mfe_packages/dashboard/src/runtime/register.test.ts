@@ -975,6 +975,180 @@ describe('the served file in parts', () => {
       expect(lines[0]).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/);
     });
   });
+
+  describe('a product type whose parent a left-out part declared', () => {
+    // A product widget type under the data widget chain, whose parent type comes by `$ref` from another part. The
+    // part line is the one the pre-check writes for the pie part: it is left out before any of its types registers.
+    const MY_TYPE = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.my_widget.v1~';
+    const MID_TYPE = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.mid_widget.v1~';
+    const PRODUCT_DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.test.widget_data.my.v1~';
+    const PRODUCT_MANIFEST = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.product.widgets.my.v1';
+    const PRODUCT_ENTRY = 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.product.mfe.my.v1';
+    const PART_LINE = /the widget part ".*pie_chart.*" is left out: its dashboard .* is already served otherwise$/;
+    const widgetType = (id: string, parent: string) => ({
+      $id: `gts://${id}`,
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      'x-gts-traits': { entry: PRODUCT_ENTRY, data_type: PRODUCT_DATA },
+      allOf: [{ $ref: 'gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~' }, { $ref: `gts://${parent}` }],
+    });
+    const productPart = (...types: Record<string, unknown>[]) => ({
+      types: [
+        ...types,
+        { $id: `gts://${PRODUCT_DATA}`, $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', allOf: [{ $ref: 'gts://gts.frontx.dashboard.widget_data.widget_data.v1~' }] },
+      ],
+      instances: [
+        { ...IN_BUNDLE_PARTS.instances.find((instance) => instance.id === PIE_MANIFEST)!, id: PRODUCT_MANIFEST },
+        { ...IN_BUNDLE_PARTS.instances.find((instance) => instance.id === PIE_ENTRY)!, id: PRODUCT_ENTRY, manifest: PRODUCT_MANIFEST },
+      ],
+    });
+    const myWidget = (uuid: string) => ({ id: `${MY_TYPE}${uuid}`, title: 'Mine', render: {}, data: { params: {}, transform: "{'slices': []}" } });
+    const leftOutPiePart = () => {
+      const pie = bundlePart('pie_chart');
+      return { ...pie, instances: [...pie.instances, { ...demoDashboard(), title: 'Taken over' }] };
+    };
+
+    it('fails the cells of a product type with the line of the part that left out its parent type', () => {
+      const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), productPart(widgetType(MY_TYPE, PIE)), leftOutPiePart()]);
+      expect(outcome.ok).toBe(true);
+      expect(lines).toEqual([expect.stringMatching(PART_LINE)]);
+      const result = registerDashboard(types, dashboardOf([{ size: 'small', widget: myWidget('1a2b3c4d-0000-4000-8000-000000000001') }]), outcome.ok ? outcome.rejected : undefined);
+      expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(0, 'cell')]);
+      expect(result.ok && result.failed.get(slotOf(0, 'cell'))).toMatch(PART_LINE);
+    });
+
+    it('fails the cells of a product type with the line of the part that left out its grandparent type, through its registered parent', () => {
+      const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), productPart(widgetType(MID_TYPE, PIE), widgetType(MY_TYPE, MID_TYPE)), leftOutPiePart()]);
+      expect(outcome.ok).toBe(true);
+      expect(lines).toEqual([expect.stringMatching(PART_LINE)]);
+      const result = registerDashboard(types, dashboardOf([{ size: 'small', widget: myWidget('1a2b3c4d-0000-4000-8000-000000000002') }]), outcome.ok ? outcome.rejected : undefined);
+      expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(0, 'cell')]);
+      expect(result.ok && result.failed.get(slotOf(0, 'cell'))).toMatch(PART_LINE);
+    });
+
+    it('fails no product cell when a later part registers the parent type a left-out part declared first', () => {
+      // The part that registers the parent brings it whole and fails on an unrelated entry of its own, after its
+      // types and entries registered: the parent is in the store, so the record of the part that declared it first
+      // counts no more, and the cell mounts.
+      const pie = bundlePart('pie_chart');
+      const { types, outcome, lines } = loadedParts([
+        DEMO_WITHOUT_BUNDLES,
+        otherPart(),
+        leftOutPiePart(),
+        productPart(widgetType(MY_TYPE, PIE)),
+        { ...pie, instances: [...pie.instances, { id: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.broken.v1', manifest: 7 }] },
+      ]);
+      expect(outcome.ok).toBe(true);
+      expect(lines).toEqual([expect.stringMatching(PART_LINE), expect.stringMatching(/is left out: the registry rejected it: /)]);
+      const result = registerDashboard(types, dashboardOf([{ size: 'small', widget: myWidget('1a2b3c4d-0000-4000-8000-000000000003') }]), outcome.ok ? outcome.rejected : undefined);
+      expect(result).toMatchObject({ ok: true, failed: new Map() });
+    });
+
+    it('names the left-out part behind a cycle in the $ref chain, and leaves an unknown parent its own reason', () => {
+      const LOOP_A = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.loop_a.v1~';
+      const LOOP_B = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.loop_b.v1~';
+      const Z_TYPE = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.z_widget.v1~';
+      const UNKNOWN = 'gts.frontx.test.widget.nowhere.v1~';
+      // The left-out pie part keeps the record non-empty, so leftOut reaches the walk instead of returning at its
+      // first line. One cycle member also extends the left-out pie type, so naming its part takes walking through
+      // the cycle to that `$ref`: this is what the guards of the walk prove. Drop the visited set together with
+      // the hop bound and the walk never ends, its RangeError dies in the catch of the lookup, the line is lost,
+      // and this test fails. Into z_widget's unknown parent, which no part recorded, the walk names no part.
+      const loopA = widgetType(LOOP_A, LOOP_B);
+      loopA.allOf = [...loopA.allOf, { $ref: `gts://${PIE}` }];
+      const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), productPart(loopA, widgetType(LOOP_B, LOOP_A), widgetType(Z_TYPE, UNKNOWN)), leftOutPiePart()]);
+      expect(outcome.ok).toBe(true);
+      expect(lines).toEqual([expect.stringMatching(PART_LINE)]);
+      const widgetOf = (type: string, uuid: string) => ({ ...myWidget(uuid), id: `${type}${uuid}` });
+      const result = registerDashboard(types, dashboardOf([
+        { size: 'small', widget: widgetOf(LOOP_A, '1a2b3c4d-0000-4000-8000-000000000004') },
+        { size: 'small', widget: widgetOf(Z_TYPE, '1a2b3c4d-0000-4000-8000-000000000005') },
+      ]), outcome.ok ? outcome.rejected : undefined);
+      expect(result.ok).toBe(true);
+      expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(0, 'cell'), slotOf(1, 'cell')]);
+      // The loop_a cell fails with the pie part's line: the walk reaches the recorded pie type through the cycle.
+      expect(result.ok && result.failed.get(slotOf(0, 'cell'))).toMatch(PART_LINE);
+      // The unknown parent leaves z_widget's own unresolvable `$ref`, no part line.
+      expect(result.ok && result.failed.get(slotOf(1, 'cell'))).toMatch(/GTS validation failed .*Could not resolve \$ref 'gts\.frontx\.test\.widget\.nowhere\.v1~'/);
+    });
+
+    it('fails the cell of a chain of parents past the hop bound with its own reason, and does not throw out', () => {
+      // More than ANCESTOR_HOPS store-held parents, and the chain's last link held by no store, only recorded by
+      // the left-out pie part: the walk gives up at the hop bound, the cell fails, and registration does not throw.
+      // The chain length 21 must stay above ANCESTOR_HOPS, so the walk really gives up at the bound. Whether the
+      // cell then fails with the part line or its own reason is no contract here: a higher bound walks further and
+      // names the part, which is the better reason for the user, so the assertion below takes either. Kept next to
+      // the cycle test because it covers the other shape the guards face, an acyclic chain deeper than the bound.
+      const link = (n: number) => `gts.frontx.test.widget.chain_${n}.v1~`;
+      const END = 'gts.frontx.test.widget.chain_end.v1~';
+      const chain: Record<string, unknown>[] = [widgetType(MY_TYPE, link(1))];
+      for (let n = 1; n <= 21; n += 1) {
+        chain.push({
+          $id: `gts://${link(n)}`,
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          type: 'object',
+          allOf: [{ $ref: `gts://${n < 21 ? link(n + 1) : END}` }],
+        });
+      }
+      const pie = leftOutPiePart();
+      const { types, outcome, lines } = loadedParts([
+        DEMO_WITHOUT_BUNDLES,
+        otherPart(),
+        productPart(...chain),
+        { ...pie, types: [...pie.types, { $id: `gts://${END}`, $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' }] },
+      ]);
+      expect(outcome.ok).toBe(true);
+      expect(lines).toEqual([expect.stringMatching(PART_LINE)]);
+      const result = registerDashboard(types, dashboardOf([{ size: 'small', widget: myWidget('1a2b3c4d-0000-4000-8000-000000000006') }]), outcome.ok ? outcome.rejected : undefined);
+      expect(result.ok).toBe(true);
+      expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(0, 'cell')]);
+      expect(result.ok && result.failed.get(slotOf(0, 'cell'))).toMatch(/GTS validation failed|is left out/);
+    });
+
+    it('names the left-out part behind two branches that converge on a shared ancestor, in either allOf order', () => {
+      // Two branches of the widget type's allOf meet in one shared ancestor, whose parent holds the left-out pie
+      // type as its own parent. The long branch holds 19 store-held links, so it reaches the shared node at hop
+      // 20, the bound: the node itself is walked, but its parent, the one that holds the pie `$ref`, sits at hop
+      // 21 and is not walked, and the pie type is only read out of the record where the walk meets it. A walk that
+      // never revisits a node keeps the shared node marked from the long branch, the short branch that reaches it
+      // at hop 4 is dropped on it, and the pie part's line is lost, which is what the long-branch-first order
+      // shows before the fix. A node the walk reaches again with fewer hops is walked again, so both orders name
+      // the part, and the bound still ends a cycle: hops only grow along a walk, so no id ever comes back with
+      // fewer hops.
+      const SHARED = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.shared.v1~';
+      const SHARED_PARENT = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.shared_parent.v1~';
+      const LONG_LINKS = 19;
+      const longLink = (n: number) => `gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.long_${n}.v1~`;
+      const shortLink = (n: number) => `gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.short_${n}.v1~`;
+      const SHORT_LINKS = 3;
+      const plainType = (id: string, parent: string) => ({
+        $id: `gts://${id}`,
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        type: 'object',
+        allOf: [{ $ref: `gts://${parent}` }],
+      });
+      const branches: Record<string, unknown>[] = [];
+      for (let n = 1; n <= LONG_LINKS; n += 1) branches.push(plainType(longLink(n), n < LONG_LINKS ? longLink(n + 1) : SHARED));
+      for (let n = 1; n <= SHORT_LINKS; n += 1) branches.push(plainType(shortLink(n), n < SHORT_LINKS ? shortLink(n + 1) : SHARED));
+      branches.push(plainType(SHARED, SHARED_PARENT), plainType(SHARED_PARENT, PIE));
+      const myType = (longFirst: boolean) => ({
+        ...widgetType(MY_TYPE, longFirst ? longLink(1) : shortLink(1)),
+        allOf: [
+          { $ref: 'gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~' },
+          { $ref: `gts://${longFirst ? longLink(1) : shortLink(1)}` },
+          { $ref: `gts://${longFirst ? shortLink(1) : longLink(1)}` },
+        ],
+      });
+      for (const longFirst of [true, false]) {
+        const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), productPart(myType(longFirst), ...branches), leftOutPiePart()]);
+        expect(outcome.ok, longFirst ? 'long branch first' : 'short branch first').toBe(true);
+        expect(lines, longFirst ? 'long branch first' : 'short branch first').toEqual([expect.stringMatching(PART_LINE)]);
+        const result = registerDashboard(types, dashboardOf([{ size: 'small', widget: myWidget('1a2b3c4d-0000-4000-8000-000000000007') }]), outcome.ok ? outcome.rejected : undefined);
+        expect(result.ok, longFirst ? 'long branch first' : 'short branch first').toBe(true);
+        expect(result.ok && [...result.failed.keys()], longFirst ? 'long branch first' : 'short branch first').toEqual([slotOf(0, 'cell')]);
+        expect(result.ok && result.failed.get(slotOf(0, 'cell')), longFirst ? 'long branch first' : 'short branch first').toMatch(PART_LINE);
+      }
+    });
+  });
 });
 
 describe('the render type of a widget type', () => {

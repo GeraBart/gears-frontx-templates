@@ -43,7 +43,9 @@ export function registerBundle(types: TypeSystemPlugin): Set<string> {
  * a part declared that did not register. `leftOut` reads the instance map for the widget's entry and the type map
  * for its widget, render and data type, so an id of the one kind that equals an id of the other cannot fail a cell
  * of the other kind. The cells whose widget type names one of the rejected entries, or whose type is one of the
- * rejected type ids, fail with it. An id the base file or a registered part already brought is never in either map.
+ * rejected type ids, fail with it, and so do the cells of a type that extends by `$ref` a type id the store still
+ * lacks because a left-out part declared it: the walk through the `$ref` chain names the part that left the ancestor
+ * out. An id the base file or a registered part already brought is never in either map.
  */
 export type Rejected = { readonly instances: ReadonlyMap<string, string>; readonly types: ReadonlyMap<string, string> };
 
@@ -201,12 +203,13 @@ function leftOut(types: TypeSystemPlugin, widgetId: string, rejected: Rejected):
   // the type mount. The entry lookup below stays on the record as it is: a part the registry rejects after its
   // entry registered must still fail its cells (DESIGN §3.6 step 4).
   const missingType = (id: string) => (types.getSchema(id) ? undefined : rejected.types.get(id));
-  // The part that declared the widget's type may be the one left out, before the type registered: its line, not the
-  // registry's, is the reason the cell fails.
-  const part = missingType(typeOfWidget(widgetId));
+  // The widget's type id, read once: it cannot throw, and everything below looks the same id up again.
+  const typeId = typeOfWidget(widgetId);
+  // The part that declared the widget's type, or one of the types it extends by `$ref`, may be the one left out,
+  // before the type registered: its line, not the registry's, is the reason the cell fails.
+  const part = missingType(typeId) ?? missingAncestorLine(types, typeId, rejected);
   if (part) return part;
   try {
-    const typeId = typeOfWidget(widgetId);
     const traits = effectiveTraits(types, typeId);
     const entry = typeof traits.entry === 'string' ? rejected.instances.get(traits.entry) : undefined;
     if (entry) return entry;
@@ -217,6 +220,50 @@ function leftOut(types: TypeSystemPlugin, widgetId: string, rejected: Rejected):
     return missingType(renderTypeOf(types, typeId)) ?? (typeof dataType === 'string' ? missingType(dataType) : undefined);
   } catch {
     // A type that does not resolve fails the widget's own registration below.
+    return undefined;
+  }
+}
+
+/** The most `$ref` hops the ancestor walk takes before it gives up: a bound, so a chain of many parents cannot hang the lookup. */
+const ANCESTOR_HOPS = 20;
+
+/**
+ * The line of the part that left out the first ancestor of the widget type that the store still lacks, or nothing.
+ * The ancestors are the `$ref` members of the type's `allOf`, read the way the render type reads its own `allOf`,
+ * and the walk goes on through the ancestors of a parent the store has. A recorded id counts only while the store
+ * lacks the type (the `missingType` rule of `leftOut`). The smallest hop count seen per id and the hop bound keep a
+ * cycle in the `$ref` chain or an unknown parent id from hanging or throwing out of the lookup, and a node the walk
+ * reaches again with fewer hops is walked again, so a shared ancestor a long branch first reached near the bound is
+ * still walked from a shorter branch: an ancestor the store lacks and no part
+ * recorded names no left-out part, and the walk stops there.
+ */
+function missingAncestorLine(types: TypeSystemPlugin, typeId: string, rejected: Rejected): string | undefined {
+  try {
+    // The smallest hop count each id was reached at. A branch that reaches a node again with fewer hops than the
+    // last walk through it walks it again, so a shared ancestor a long branch first reached at the bound is still
+    // walked from a shorter branch and the part its ancestors answer with is named. Hops only grow along a walk,
+    // so an id of a cycle never comes back with fewer hops and the bound still ends it.
+    const best = new Map<string, number>();
+    const walk = (id: string, hops: number): string | undefined => {
+      if (hops > ANCESTOR_HOPS || (best.get(id) ?? Number.POSITIVE_INFINITY) <= hops) return undefined;
+      best.set(id, hops);
+      const schema = types.getSchema(id) as { allOf?: unknown } | undefined;
+      if (!schema) return undefined;
+      const refs = (Array.isArray(schema.allOf) ? (schema.allOf as { $ref?: unknown }[]) : [])
+        .map((member) => member?.$ref)
+        .filter((ref): ref is string => typeof ref === 'string')
+        .map((ref) => ref.replace(/^gts:\/\//, ''));
+      for (const ref of refs) {
+        // An ancestor the store has is walked through; one it lacks fails the cell only when a left-out part
+        // recorded it.
+        const line = types.getSchema(ref) ? walk(ref, hops + 1) : rejected.types.get(ref);
+        if (line) return line;
+      }
+      return undefined;
+    };
+    return walk(typeId, 0);
+  } catch {
+    // A schema the store holds that cannot be read is the registry's reason to give, not this walk's.
     return undefined;
   }
 }
