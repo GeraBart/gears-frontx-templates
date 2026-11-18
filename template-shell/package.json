@@ -68,7 +68,7 @@
     "arch:deps": "npx dependency-cruiser src-app/ packages/ --config .dependency-cruiser.cjs --output-type err-long",
     "arch:plugins": "npm run test:unit --workspace=@gears-frontx/framework -- __tests__/plugin-system.test.ts",
     "test": "npm run test:unit",
-    "test:unit": "vitest --run --passWithNoTests=false && vitest --run --config src-app/vitest.config.ts --passWithNoTests=false && npm run test:unit --workspaces --if-present",
+    "test:unit": "npx tsx scripts/test-unit.ts",
     "test:unit:watch": "vitest --watch"
   },
   "dependencies": {
