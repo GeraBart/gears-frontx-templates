@@ -46,6 +46,23 @@ const DESIGN_MD = path.join(designDir, 'DESIGN.md');
 fs.writeFileSync(DESIGN_MD, FIXTURE_DESIGN_MD);
 afterAll(() => fs.rmSync(designDir, { recursive: true, force: true }));
 
+// The same front matter without one group, so a definition branch gated on
+// that kind's tokens can be told from one gated on the colour kind.
+function designMdWithout(...groups: string[]): string {
+  const front = FIXTURE_DESIGN_MD.replace(/^---\n([\s\S]*?)\n---/, (_m, body: string) => {
+    const kept: string[] = [];
+    let dropping = false;
+    for (const line of body.split('\n')) {
+      if (/^\S/.test(line)) dropping = groups.some((group) => line.startsWith(`${group}:`));
+      if (!dropping) kept.push(line);
+    }
+    return `---\n${kept.join('\n')}\n---`;
+  });
+  const file = path.join(designDir, `DESIGN.${groups.join('-')}.md`);
+  fs.writeFileSync(file, front);
+  return file;
+}
+
 const dirs: string[] = [];
 afterEach(() => {
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
@@ -149,7 +166,9 @@ describe('CSS Modules', () => {
   });
 
   // Vite compiles `color: danger` to the @value's literal, so the definition
-  // is where the literal is.
+  // is where the literal is. A definition is read like a `--name: value`
+  // declaration: its colours, and its lengths by the property its references
+  // read in (`padding: pad`), since a @value name names no kind.
   it('reads a CSS Modules @value definition as a local custom property, and skips the import form', async () => {
     const root = project({
       'src/Values.module.css': [
@@ -158,7 +177,8 @@ describe('CSS Modules', () => {
         "@value muted, gap from './tokens.module.css';",
         '@value  warn  oklch(0.8 0.1 80);',
         '@value pad: 12px;',
-        '.a { color: danger; }',
+        '@value spare: 30px;',
+        '.a { color: danger; padding: pad; }',
       ].join('\n'),
     });
     const { code, findings } = await check(root);
@@ -166,6 +186,7 @@ describe('CSS Modules', () => {
     expect(findings.map((f) => `${f.line}:${f.column} ${f.gate} ${f.kind} ${f.found}`)).toEqual([
       '1:1 SYS-002 color #e11d48 in @value danger',
       '4:1 SYS-002 color oklch(0.8 0.1 80) in @value warn',
+      '5:1 SYS-002 spacing 12px in @value pad',
     ]);
     expect(findings[0].fix).toMatch(/^use a color token from DESIGN.md colors: /);
   });
@@ -262,6 +283,318 @@ describe('CSS Modules', () => {
   });
 });
 
+// A literal moved into a local custom property and used through var() hides
+// from no check: the definition is read as a declaration in its own right,
+// the theme folder as the one place a declared step is not a finding.
+describe('literal steps behind var()', () => {
+  it('reports the same three literals inline and behind local custom properties', async () => {
+    const inline = await check(project({ 'src/A.module.css': '.title { font-size: 4rem; margin-top: 96px; color: #0756f5; }' }));
+    expect(inline.findings.map((f) => `${f.kind} ${f.found}`)).toEqual([
+      'font-size 4rem in font-size',
+      'spacing 96px in margin-top',
+      'color #0756f5 in color',
+    ]);
+
+    const behind = await check(
+      project({
+        'src/B.module.css': [
+          '.parent { --my-size: 4rem; --my-gap: 96px; --my-color: #0756f5; }',
+          '.title { font-size: var(--my-size); margin-top: var(--my-gap); color: var(--my-color); }',
+        ].join('\n'),
+      }),
+    );
+    expect(behind.findings.map((f) => `${f.kind} ${f.found}`)).toEqual([
+      'font-size 4rem in --my-size',
+      'spacing 96px in --my-gap',
+      'color #0756f5 in --my-color',
+    ]);
+    // A definition is a declared step: its fix names the theme folder where a
+    // project declares the steps the kit lacks.
+    for (const finding of behind.findings) expect(finding.fix).toContain('src-app/app/themes/');
+    expect(behind.code).toBe(0);
+  });
+
+  // A definition whose name and use sites are silent declares no kit kind:
+  // its length is a layout value, not a missing spacing step, so it is not a
+  // finding (a finding here could never be waived: SYS-002 has no waiver).
+  it('leaves a definition with a silent name and no kinded use site unreported', async () => {
+    const { findings } = await check(
+      project({
+        'src/Layout.module.css': [
+          '.shell { --sidebar-width: 240px; --border-w: 1px; --bp-md: 768px; --shadow-color: #e11d48; }',
+          '.sidebar { width: var(--sidebar-width); border-width: var(--border-w); }',
+          '.sheet { color: var(--shadow-color); }',
+        ].join('\n'),
+      }),
+    );
+    // The colour the shadow-named definition holds is still a literal colour.
+    expect(found(findings)).toEqual(['color #e11d48 in --shadow-color']);
+  });
+
+  it('reports a duration definition only on a time unit, and a shadow-named colour as a colour', async () => {
+    const { findings } = await check(
+      project({
+        'src/Motion.module.css': [
+          '.a { --hover-duration: 150ms; --delay-offset: 4px; --duration-bar-height: 8px; }',
+          '.b { transition: color var(--hover-duration); }',
+        ].join('\n'),
+      }),
+    );
+    expect(found(findings)).toEqual(['duration 150ms in --hover-duration']);
+  });
+
+  // Each definition branch runs on the kind's own tokens, never on the colour
+  // kind's: a DESIGN.md without colours still reports a spacing definition,
+  // and one without a radius group reports no radius definition.
+  it('gates every definition branch on its own kind having DESIGN.md tokens', async () => {
+    const noColors = designMdWithout('colors');
+    const { findings: spacingReported } = await check(
+      project({ 'src/B.module.css': '.parent { --my-gap: 96px; } .title { margin-top: var(--my-gap); }' }),
+      ['--design', noColors],
+    );
+    expect(found(spacingReported)).toEqual(['spacing 96px in --my-gap']);
+
+    const noRadius = designMdWithout('rounded');
+    const { findings: radiusSilent } = await check(
+      project({ 'src/C.module.css': '.parent { --card-radius: 6px; } .card { border-radius: var(--card-radius); }' }),
+      ['--design', noRadius],
+    );
+    expect(radiusSilent).toEqual([]);
+
+    const { findings: radiusReported } = await check(
+      project({ 'src/C.module.css': '.parent { --card-radius: 6px; } .card { border-radius: var(--card-radius); }' }),
+    );
+    expect(found(radiusReported)).toEqual(['radius 6px in --card-radius']);
+  });
+
+  it('reads a definition kind from its name and reports a bare easing', async () => {
+    const { findings } = await check(
+      project({
+        'src/C.module.css': [
+          '.a { --card-radius: 6px; --title-text-size: 18px; --hover-duration: 150ms; --card-shadow: 0 1px 2px #000; }',
+          '.b {',
+          '  border-radius: var(--card-radius);',
+          '  font-size: var(--title-text-size);',
+          '  transition: color var(--hover-duration) var(--hover-ease);',
+          '  box-shadow: var(--card-shadow);',
+          '}',
+          // `move` and `settle` name no kit kind, so their definitions say
+          // nothing to fix: unreported, however their values read.
+          '.c { --move-time: 200ms; --settle: ease-in-out; }',
+        ].join('\n'),
+        'src/D.tsx': "export const D = () => <div style={{ '--my-gap': '96px' }} />;",
+      }),
+    );
+    expect(findings.map((f) => `${f.kind} ${f.found}`)).toEqual([
+      'radius 6px in --card-radius',
+      'font-size 18px in --title-text-size',
+      'duration 150ms in --hover-duration',
+      'shadow 0 1px 2px #000 in --card-shadow',
+      'easing ease-in-out in --settle',
+      'spacing 96px in --my-gap',
+    ]);
+    expect(findings.every((f) => f.gate === 'SYS-002')).toBe(true);
+  });
+
+  // A bare CSS keyword (`auto` in `margin: 0 auto`) is not a @value use
+  // site: a definition named after one, with an otherwise silent name, gets
+  // no kit kind from an unrelated keyword use and is not reported.
+  it('does not read a value keyword as a @value use site', async () => {
+    const { findings } = await check(
+      project({
+        'src/Keys.module.css': ['@value auto: 96px;', '.a { margin: 0 auto; }'].join('\n'),
+      }),
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('never reads a theme folder file for literals, but still selects it', async () => {
+    const literals = '.parent { --my-size: 4rem; --my-gap: 96px; --my-color: #0756f5; } .title { font-size: var(--my-size); margin-top: var(--my-gap); color: var(--my-color); }';
+    const root = project({
+      'src-app/app/themes/extra.module.css': literals,
+      'src-app/app/themes/custom.ts': `export const theme = { variables: {} };\n`,
+      'src-app/Other.module.css': '.a { color: #fff; }',
+    });
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await main(['--src', 'src-app', '--design', DESIGN_MD], {
+      cwd: root,
+      env: {},
+      log: (line) => out.push(line),
+      error: (line) => err.push(line),
+    });
+    const reportFile = path.join(root, 'design-verify-report', 'static-findings.json');
+    const report = JSON.parse(fs.readFileSync(reportFile, 'utf8'));
+    const findings = (report?.findings ?? []) as Finding[];
+    expect(found(findings)).toEqual(['color #fff in color']);
+    expect(report.files).toEqual(['src-app/Other.module.css', 'src-app/app/themes/custom.ts', 'src-app/app/themes/extra.module.css']);
+    // Readdir order is the filesystem's: compare the skipped list by membership.
+    const reason = 'the project theme folder src-app/app/themes/ declares its own tokens: literals not checked';
+    expect([...report.skipped].sort((a: { path: string }, b: { path: string }) => (a.path < b.path ? -1 : 1))).toEqual([
+      { path: 'src-app/app/themes/custom.ts', reason },
+      { path: 'src-app/app/themes/extra.module.css', reason },
+    ]);
+    expect(code).toBe(0);
+    // The run is expected to be clean: nothing may reach the error sink,
+    // which no other assertion here reads.
+    expect(err.join('\n')).toBe('');
+  });
+
+  // A --src at or inside the theme folder is a clean run that lists the
+  // skipped files, not a usage error: the theme declares the project's own
+  // steps, so an empty selection there is expected, not a gate passed on
+  // nothing.
+  it('treats a --src inside the theme folder as a clean run naming the skipped files', async () => {
+    const root = project({
+      'src-app/app/themes/extra.module.css': '.parent { --my-gap: 96px; } .title { margin-top: var(--my-gap); }',
+      'src-app/app/themes/custom.ts': `export const theme = { variables: {} };\n`,
+    });
+    const out: string[] = [];
+    // Error keeps its own sink: the SKIPPED lines scan `out`, and a stderr
+    // line mixed into it would hide behind assertions that never read it.
+    const err: string[] = [];
+    const code = await main(['--src', 'src-app/app/themes', '--design', DESIGN_MD], {
+      cwd: root,
+      env: {},
+      log: (line) => out.push(line),
+      error: (line) => err.push(line),
+    });
+    expect(code).toBe(0);
+    expect(err.join('\n')).toBe('');
+    expect(out.join('\n')).toContain('SKIPPED src-app/app/themes/custom.ts');
+    expect(out.join('\n')).not.toContain('selects no file');
+  });
+
+  // The theme skip covers the literal checks only: a screen root under the
+  // theme folder still gets the native-element gate, so a raw <button> there
+  // is a finding while its literals are the project's own declarations.
+  it('keeps the native-element gate for a .tsx under the theme folder', async () => {
+    const root = project({
+      'src-app/app/themes/Screen.tsx': "export const S = () => <button style={{ padding: 8 }} />;",
+      'src-app/app/Other.tsx': 'export const O = () => <button />;',
+    });
+    const out: string[] = [];
+    const code = await main(['--src', 'src-app', '--design', DESIGN_MD], {
+      cwd: root,
+      env: {},
+      log: (line) => out.push(line),
+      error: (line) => out.push(line),
+    });
+    const reportFile = path.join(root, 'design-verify-report', 'static-findings.json');
+    const report = JSON.parse(fs.readFileSync(reportFile, 'utf8'));
+    const findings = (report?.findings ?? []) as Finding[];
+    // The theme file's element is found; its padding literal is not reported.
+    expect(code).toBe(0);
+    expect(found(findings)).toEqual(['element <button>', 'element <button>']);
+    expect(findings[0]).toMatchObject({ gate: 'SYS-001', file: 'src-app/app/Other.tsx' });
+    expect(findings[1]).toMatchObject({ gate: 'SYS-001', file: 'src-app/app/themes/Screen.tsx' });
+  });
+
+  // The theme skip covers the literal findings only: a theme stylesheet that
+  // does not parse still reports, like every selected source - a malformed
+  // theme .module.css is an input error (exit 2), not a clean run.
+  it('reports parse errors from a theme stylesheet instead of passing it clean', async () => {
+    const root = project({
+      'src-app/app/themes/broken.module.css': '.a { color red; }',
+      'src-app/app/themes/custom.ts': `export const theme = { variables: {} };\n`,
+    });
+    const out: string[] = [];
+    const code = await main(['--src', 'src-app', '--design', DESIGN_MD], {
+      cwd: root,
+      env: {},
+      log: (line) => out.push(line),
+      error: (line) => out.push(line),
+    });
+    expect(code).toBe(2);
+    expect(out.join('\n')).toContain('PARSE ERROR src-app/app/themes/broken.module.css');
+  });
+
+  // A theme file reaches the theme branch only through the guards every
+  // selected file passes: a non-regular entry under the theme folder (a
+  // device file a symlink puts there) is skipped as such, not handed on to
+  // the literal checks, and a theme file reached through two --src paths is
+  // selected and read once, its element findings not duplicated.
+  it('skips a non-regular theme entry and reads a twice-reached theme file once', async () => {
+    const root = project({
+      'src-app/app/themes/custom.ts': `export const theme = { variables: {} };\n`,
+      'src-app/app/themes/Screen.tsx': 'export const S = () => <button />;',
+      'src-app/Reachable.tsx': 'export const R = () => <button />;',
+    });
+    fs.symlinkSync('/dev/null', path.join(root, 'src-app/app/themes/Null.module.css'));
+    fs.mkdirSync(path.join(root, 'src'));
+    fs.symlinkSync('../src-app/app/themes', path.join(root, 'src/themes-link'));
+
+    const out: string[] = [];
+    const code = await main(['--src', 'src-app', '--src', 'src/themes-link', '--design', DESIGN_MD], {
+      cwd: root,
+      env: {},
+      log: (line) => out.push(line),
+      error: (line) => out.push(line),
+    });
+    const report = JSON.parse(
+      fs.readFileSync(path.join(root, 'design-verify-report', 'static-findings.json'), 'utf8'),
+    );
+    const findings = (report?.findings ?? []) as Finding[];
+
+    expect(code).toBe(0);
+    // The screen root under the theme folder is still element-checked, once,
+    // and so is the one outside the theme folder.
+    expect(found(findings)).toEqual(['element <button>', 'element <button>']);
+    expect(findings).toEqual([
+      expect.objectContaining({ gate: 'SYS-001', file: 'src-app/Reachable.tsx' }),
+      expect.objectContaining({ gate: 'SYS-001', file: 'src-app/app/themes/Screen.tsx' }),
+    ]);
+    expect(report.files).toEqual([
+      'src-app/Reachable.tsx',
+      'src-app/app/themes/Screen.tsx',
+      'src-app/app/themes/custom.ts',
+    ]);
+    const reason = 'the project theme folder src-app/app/themes/ declares its own tokens: literals not checked';
+    expect([...report.skipped].sort((a: { path: string }, b: { path: string }) => (a.path < b.path ? -1 : 1))).toEqual([
+      { path: 'src-app/app/themes/Null.module.css', reason: 'not a regular file or directory' },
+      { path: 'src-app/app/themes/Screen.tsx', reason },
+      { path: 'src-app/app/themes/custom.ts', reason },
+      { path: 'src/themes-link/Null.module.css', reason: 'not a regular file or directory' },
+      { path: 'src/themes-link/Screen.tsx', reason: 'the same file as src-app/app/themes/Screen.tsx, read once' },
+      { path: 'src/themes-link/custom.ts', reason: 'the same file as src-app/app/themes/custom.ts, read once' },
+    ]);
+  });
+
+  // A shadow name wins over the text/font and spacing segments it may also
+  // carry: the whole value is one shadow, not a font-size step whose colour
+  // gets reported on its own, and not a spacing step read off its lengths.
+  it('reads a shadow name whole, before its text and spacing segments', async () => {
+    const { findings } = await check(
+      project({
+        'src/Shadow.module.css': [
+          '.a { --text-shadow: 0 1px 2px #000; --card-shadow-spacing: 4px; }',
+          '.b { text-shadow: var(--text-shadow); }',
+          '.c { box-shadow: var(--card-shadow-spacing); }',
+        ].join('\n'),
+      }),
+    );
+    expect(found(findings)).toEqual(['shadow 0 1px 2px #000 in --text-shadow', 'shadow 4px in --card-shadow-spacing']);
+  });
+
+  // The use-site table reads a definition's kind from the properties its
+  // references are used in, and those properties' real spellings are the
+  // hyphenated gap longhands and the radius corner longhands - a definition
+  // with a silent name used only there is still a declared step.
+  it('reads a definition kind from row-gap and the radius corner longhands', async () => {
+    const { findings } = await check(
+      project({
+        'src/Gaps.module.css': [
+          '.a { --stack-sep: 96px; --corner: 6px; }',
+          '.b { row-gap: var(--stack-sep); }',
+          '.c { border-top-left-radius: var(--corner); }',
+          '.d { border-start-end-radius: var(--corner); }',
+        ].join('\n'),
+      }),
+    );
+    expect(found(findings)).toEqual(['spacing 96px in --stack-sep', 'radius 6px in --corner']);
+  });
+});
+
 describe('TSX and TS', () => {
   it('reports native elements, roles and anchors the kit covers, and inline style literals', async () => {
     const root = project({
@@ -336,6 +669,34 @@ describe('TSX and TS', () => {
       'src/Vendor.module.css:1 duration 200ms in -webkit-transition',
     ]);
     expect(findings.every((f) => f.gate === 'SYS-002')).toBe(true);
+  });
+
+  // A var() reference is CSS, not a token to regex: the runner reads it the
+  // way the CSS path does, with css-tree, so whitespace inside the
+  // parentheses does not hide a use site and leave a definition's kind
+  // unreported.
+  it('reads a var() reference in a style value whatever whitespace the parentheses hold', async () => {
+    const root = project({
+      'src/Space.tsx': "export const S = () => <p style={{ '--x': '13px', padding: 'var( --x)' }} />;",
+    });
+    const { findings } = await check(root);
+    expect(found(findings)).toEqual(['spacing 13px in --x']);
+  });
+
+  // Use sites are read only from the style objects the runner supports (the
+  // JSX style attribute and the style prop of a createElement call): an
+  // unrelated object literal that happens to hold a var() under a kinded
+  // property must not name a definition's kind - the finding it produces
+  // names no literal the style object holds and no waiver covers.
+  it('reads var() use sites only from style objects the runner supports', async () => {
+    const root = project({
+      'src/Data.tsx': [
+        "const data = { padding: 'var(--x)' };",
+        "export const D = () => <p style={{ '--x': '13px', width: 'var(--x)' }} />;",
+      ].join('\n'),
+    });
+    const { findings } = await check(root);
+    expect(findings).toEqual([]);
   });
 
   it("reports React's createElement and leaves document.createElement alone", async () => {
@@ -652,44 +1013,50 @@ describe('the shipped shell layout', () => {
   // `verify:static` run in the shell does: the shell root as the project
   // root, so its own design-waivers.json applies, and the report goes to a
   // temp dir, never to the default design-verify-report/ in the tree.
-  const shellRoot = (() => {
+  //
+  // The shell's layout is the project's to edit, so this test pins only the
+  // invariant the package itself delivers: the run ends with no unwaived
+  // finding, and every waived finding is SYS-001 (the one gate a waiver may
+  // carry, since SYS-002 never yields). Where the shell is, one native
+  // element per layout file that needs it is the waiver file's own record.
+  function findShellRoot(): string | undefined {
     for (let dir = path.dirname(fileURLToPath(import.meta.url)); ; dir = path.dirname(dir)) {
       for (const candidate of [path.join(dir, 'template-shell'), dir]) {
         if (fs.existsSync(path.join(candidate, 'src-app', 'app', 'layout', 'Layout.tsx'))) return candidate;
       }
-      if (path.dirname(dir) === dir) throw new Error('template-shell not found above the design-verify package');
+      if (path.dirname(dir) === dir) return undefined;
     }
-  })();
-  // The DESIGN.md the check suggests tokens from: the project's own at its
-  // root when the shell runs composed, else the guardrails template's own
-  // beside the shell in this repository.
-  const designMd = [path.join(shellRoot, 'DESIGN.md'), path.join(shellRoot, '..', 'template-design-guardrails', 'DESIGN.md')].find(
-    (file) => fs.existsSync(file),
-  );
+  }
 
-  it('passes the static check: no unwaived findings, its native elements waived', async () => {
+  // Only the presence of the shell decides the skip, and nothing throws while
+  // tests are collected: a composed project owns its layout and may move or
+  // rename it, and a missing one must not fail every file in this suite.
+  const shellRoot = findShellRoot();
+
+  it.skipIf(!shellRoot)('passes the static check: no unwaived finding, every waived one is SYS-001', async () => {
+    const designMd = [
+      path.join(shellRoot!, 'DESIGN.md'),
+      path.join(shellRoot!, '..', 'template-design-guardrails', 'DESIGN.md'),
+    ].find((file) => fs.existsSync(file));
     expect(designMd, `no DESIGN.md found for the shell at ${shellRoot}`).toBeTruthy();
     const out = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-shell-layout-'));
     dirs.push(out);
     const lines: string[] = [];
     const code = await main(['--src', 'src-app/app/layout', '--design', designMd as string, '--out', out], {
-      env: { INIT_CWD: shellRoot },
+      env: { INIT_CWD: shellRoot as string },
       log: (line) => lines.push(line),
       error: (line) => lines.push(line),
     });
     const report = JSON.parse(fs.readFileSync(path.join(out, 'static-findings.json'), 'utf8'));
-    expect(lines.join('\n')).toContain('0 finding(s), 2 waived, 0 parse error(s)');
+    // The invariant the package delivers, not the project's own counts: no
+    // unwaived finding, and every waived one is SYS-001, the one gate a
+    // waiver may carry (SYS-002 never yields). The layout files and waiver
+    // entries behind those counts are the project's to edit.
     expect(report.findings).toEqual([]);
-    // The plain language select (the no-UI-kit control) and the narrow-menu
-    // backdrop button are the layout's two waived native elements: the only
-    // two waivers, the ones SYS-001 can carry. Every value the layout paints
-    // is a kit token or derived from one, so SYS-002 has nothing to waive
-    // (and never yields one): the waiver file at the shell root is their one
-    // record.
-    expect(report.waived.map((f: Finding) => `${f.gate} ${f.file}`)).toEqual([
-      'SYS-001 src-app/app/layout/Header.tsx',
-      'SYS-001 src-app/app/layout/Layout.tsx',
-    ]);
+    expect(
+      report.waived.every((f: Finding) => f.gate === 'SYS-001'),
+      `waived findings must all be SYS-001, got ${JSON.stringify(report.waived.map((f: Finding) => f.gate))}`,
+    ).toBe(true);
     expect(code).toBe(0);
   });
 });

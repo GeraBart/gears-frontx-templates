@@ -13,9 +13,33 @@
  * `color-mix()` by each colour it mixes; a relative colour by the rule below),
  * literal lengths in spacing, radius and font-size properties, any literal in
  * a shadow, and literal durations and easings in transitions and animations.
- * A CSS Modules `@value name: value` definition is read as a local custom
- * property definition (colour only); the import form `@value a from '...'`
- * defines nothing.
+ *
+ * A local custom property definition (`--x: ...` in CSS or a `style` object,
+ * or a CSS Modules `@value name: value`) hides its value from every use site,
+ * so it is read as a declaration in its own right, not for colour only: a
+ * colour as before, an easing whenever its value holds one (a value-shape
+ * kind on definitions, like colour: a silent name does not spare it), and a
+ * length or time literal when the definition says which kit kind it steps -
+ * by its own name (`radius`; `text` or `font` for a size; `space`, `spacing`,
+ * `gap`, `gutter`, `padding`, `margin` or `inset` for a spacing step; a whole
+ * shadow value for `shadow`; `duration` or `delay` for a time), else by the
+ * property its `var()` (or `@value`) references read in elsewhere in the same
+ * file (`font-size` for font-size, margin/padding/gap for spacing,
+ * border-radius for radius). A definition whose name and use sites are silent
+ * declares no length or time kind: not reported, the way a length on an
+ * unlisted property is not. Each branch runs only when
+ * DESIGN.md names tokens for that kind, whatever the colour kind carries. The
+ * import form `@value a from '...'` defines nothing. The fix of a finding on
+ * a definition also names the theme folder, `src-app/app/themes/`, where a
+ * project declares the steps the kit lacks.
+ *
+ * Files under `src-app/app/themes/` are the project's own token declarations
+ * (its extra steps and page surface, references/theme.md): their literal
+ * checks never run, whatever `--src` names, so a declared step is not a
+ * finding while the same literal in a screen is. Their files are still
+ * selected (a `--src` at or inside the theme folder is a clean run that lists
+ * them as skipped, not a usage error) and a `.tsx` there still gets the
+ * native-element check.
  *
  * A relative colour is derived from a token when its origin is a `var()`, a
  * relative colour that is itself derived, or an allowed keyword such as
@@ -91,7 +115,10 @@ since what it points to is unknown; a link cycle or a directory it cannot
 list, unless excluded; a file the globs select that is not a regular file;
 and a second path to a file already read. Only an exclude glob ending in /**
 excludes a directory. Directories named node_modules or .git are never
-entered and never listed. Exit 0 ran, 1 findings with --fail-on-findings, 2 usage or input
+entered and never listed. Files under src-app/app/themes/, the project theme,
+are never checked for literal values (they are listed as skipped); a .tsx
+there still gets the native-element check.
+Exit 0 ran, 1 findings with --fail-on-findings, 2 usage or input
 error (a source file that does not parse, or a --src that selects no file,
 included).
 `;
@@ -102,6 +129,14 @@ export class InputError extends Error {}
 const VAR_ONLY = /^var\((--[\w-]+)\)$/;
 /** Directory names the source walk never enters, whatever the globs say. */
 const ALWAYS_EXCLUDED = new Set(['node_modules', '.git']);
+/**
+ * The project theme folder, root-relative: where a project declares the
+ * steps the kit lacks and its page surface (references/theme.md). Files under
+ * it are token declarations, not screen source: never checked, whatever
+ * `--src` names, so a declared step is not a finding while the same literal
+ * in a screen is.
+ */
+const THEME_DIR = 'src-app/app/themes/';
 const SHOWN_TOKENS = 6;
 
 /**
@@ -254,18 +289,95 @@ function isColorLiteral(ctx, node) {
 }
 
 /**
+ * The kit kind a definition's own name names, by whole name segments: a name
+ * segment that matches nothing says nothing, so `--sidebar-width` and
+ * `--border-w` are silent while `--card-radius` is a radius. A `shadow` name
+ * is read as one whole shadow value (`--shadow-color` says a colour, and its
+ * colour branch reports it); a `duration` or `delay` name is a kind only for
+ * a time value, never for a length.
+ *
+ * @param {string} property the custom property's own name, `--x`
+ * @returns {'radius' | 'font-size' | 'spacing' | 'shadow' | 'duration' | undefined}
+ */
+function customNameKind(property) {
+  // Shadow and radius are read before text/font and spacing: a name such as
+  // `--text-shadow` or `--card-shadow-spacing` carries both segments, and the
+  // whole value is one shadow, not a font-size or a spacing step whose colour
+  // gets reported on its own.
+  if (/(^|-)shadow(-|$)/.test(property)) return 'shadow';
+  if (/(^|-)radius(-|$)/.test(property)) return 'radius';
+  if (/(^|-)(text|font)(-|$)/.test(property)) return 'font-size';
+  if (/(^|-)(space|spacing|gap|gutter|padding|margin|inset)(-|$)/.test(property)) return 'spacing';
+  if (/(^|-)(duration|delay)(-|$)/.test(property)) return 'duration';
+  return undefined;
+}
+
+/** The properties a use site's kind reads from. */
+const USE_SITE_KINDS = [
+  [/^(margin|padding)(-(top|bottom|left|right|inline|block|inline-start|inline-end|block-start|block-end))?$/, 'spacing'],
+  [/^(row-|column-)?gap$/, 'spacing'],
+  [/^border(-(top|bottom|start|end)-(left|right|start|end))?-radius$/, 'radius'],
+  [/^font-size$/, 'font-size'],
+];
+
+/**
+ * The kit kind a definition steps by the properties its references read in
+ * (`font-size: var(--x)`, `margin-top: var(--x)`, `border-radius: var(--x)`),
+ * when its own name is silent. A property no kind reads from (`width`) leaves
+ * the definition unreported.
+ *
+ * @param {ReadonlySet<string>} [properties] the properties the references of
+ *   one definition name read in, from the same file
+ * @returns {'radius' | 'font-size' | 'spacing' | undefined}
+ */
+function useSiteKind(properties) {
+  for (const property of properties ?? []) {
+    for (const [pattern, kind] of USE_SITE_KINDS) {
+      if (pattern.test(property)) return kind;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The kind a local custom property definition's length or time literals
+ * step: by its own name, else by its use sites, else nothing - and nothing
+ * too when DESIGN.md names no token for the kind, so a finding never suggests
+ * an empty token list. A `shadow`-named definition is reported as one shadow
+ * value (gated the same way); a colour it holds goes through the colour
+ * branch whatever its name.
+ *
+ * @param {ReturnType<typeof checkContext>} ctx
+ * @param {string} property the definition's own name, `--x`
+ * @param {ReadonlySet<string>} [useSites] the properties its references read in
+ */
+function customLiteralKind(ctx, property, useSites) {
+  const kind = customNameKind(property) ?? useSiteKind(useSites);
+  if (kind === undefined) return undefined;
+  return (ctx.tokens.get(kind)?.tokens.length ?? 0) > 0 ? kind : undefined;
+}
+
+/**
  * Literal values in one declaration value, outside `var()`.
  *
  * @param {ReturnType<typeof checkContext>} ctx
  * @param {string} rawProperty
  * @param {any} value a css-tree Value node
+ * @param {ReadonlySet<string>} [useSites] for a custom property definition:
+ *   the properties its references read in elsewhere in the same file, which
+ *   name its kind when its own name is silent
  * @returns {Array<{kind: string, found: string, loc?: {line: number, column: number}}>}
  */
-export function literalsInValue(ctx, rawProperty, value) {
+export function literalsInValue(ctx, rawProperty, value, useSites) {
   const isCustom = rawProperty.startsWith('--');
   const property = isCustom ? rawProperty : rawProperty.toLowerCase();
   const kinds = applicableKinds(ctx, property, isCustom);
-  if (kinds.size === 0) return [];
+  // A definition is read for its own literals even where no property applies
+  // (on a custom property applicableKinds carries the `*` kinds only): its
+  // kind comes from its name or its use sites, and only when DESIGN.md names
+  // tokens for it, so the check never hangs on the colour kind.
+  const customKind = isCustom ? customLiteralKind(ctx, property, useSites) : undefined;
+  if (kinds.size === 0 && customKind === undefined) return [];
   const out = [];
   const lengthKind = ['spacing', 'radius', 'font-size'].find((k) => kinds.has(k));
 
@@ -290,17 +402,28 @@ export function literalsInValue(ctx, rawProperty, value) {
     return out;
   }
 
-  if (kinds.has('shadow')) {
-    // A shadow is one value: report it once, whatever literal it holds.
-    let literal = false;
-    csstree.walk(value, function enter(node) {
-      if (node.type === 'Function' && node.name.toLowerCase() === 'var') return csstree.walk.skip;
-      if ((node.type === 'Dimension' && !isZero(node)) || isColorLiteral(ctx, node)) literal = true;
-      return undefined;
-    });
-    if (literal) out.push({ kind: 'shadow', found: csstree.generate(value), loc: value.loc?.start });
-    return out;
+  if (kinds.has('shadow') || customKind === 'shadow') {
+    // A shadow is one value: report it once, whatever literal it holds. A
+    // definition named `shadow` that holds only a colour (`--shadow-color`)
+    // names a colour, not a shadow: the walk below reports that colour.
+    const wholeShadow = kinds.has('shadow') || !isColourOnlyValue(ctx, value);
+    if (wholeShadow) {
+      let literal = false;
+      csstree.walk(value, function enter(node) {
+        if (node.type === 'Function' && node.name.toLowerCase() === 'var') return csstree.walk.skip;
+        if ((node.type === 'Dimension' && !isZero(node)) || isColorLiteral(ctx, node)) literal = true;
+        return undefined;
+      });
+      if (literal) out.push({ kind: 'shadow', found: csstree.generate(value), loc: value.loc?.start });
+      return out;
+    }
   }
+
+  // On a custom property definition a length or time is a declared step: the
+  // name, or the use sites, say which kit kind it steps, and the kind only
+  // counts when DESIGN.md names a token for it (customLiteralKind).
+  const customLengthKind = ['spacing', 'radius', 'font-size'].includes(customKind) ? customKind : undefined;
+  const customDuration = customKind === 'duration';
 
   csstree.walk(value, function enter(node) {
     if (node.type === 'Function' && node.name.toLowerCase() === 'var') return csstree.walk.skip;
@@ -309,7 +432,11 @@ export function literalsInValue(ctx, rawProperty, value) {
       out.push({ kind: 'color', found: csstree.generate(node), loc });
       return csstree.walk.skip;
     }
-    if (kinds.has('easing')) {
+    if (kinds.has('easing') || (isCustom && (ctx.tokens.get('easing')?.tokens.length ?? 0) > 0)) {
+      // Easing is a value-shape kind on a custom property definition, the way
+      // colour is: a definition whose name and use sites are silent still
+      // reports the easing literal it holds (its length and time halves stay
+      // silent-name gated, the branches below).
       const easingFn = node.type === 'Function' && ctx.easingFunctions.has(node.name.toLowerCase());
       const easingWord = node.type === 'Identifier' && ctx.easingKeywords.has(node.name.toLowerCase());
       if (easingFn || easingWord) {
@@ -321,20 +448,111 @@ export function literalsInValue(ctx, rawProperty, value) {
       const unit = node.unit.toLowerCase();
       if (lengthKind && ctx.lengthUnits.has(unit)) out.push({ kind: lengthKind, found: csstree.generate(node), loc });
       else if (kinds.has('duration') && ctx.timeUnits.has(unit)) out.push({ kind: 'duration', found: csstree.generate(node), loc });
+      else if (customLengthKind && ctx.lengthUnits.has(unit)) out.push({ kind: customLengthKind, found: csstree.generate(node), loc });
+      else if (customDuration && ctx.timeUnits.has(unit)) out.push({ kind: 'duration', found: csstree.generate(node), loc });
     }
     return undefined;
   });
   return out;
 }
 
+/**
+ * Whether the value's only literals are colours (`#e11d48`, `red`): no
+ * length, no time, no easing. A `shadow`-named definition holding one is a
+ * colour definition, not a whole shadow value.
+ */
+function isColourOnlyValue(ctx, value) {
+  let colour = false;
+  let other = false;
+  csstree.walk(value, function enter(node) {
+    if (node.type === 'Function' && node.name.toLowerCase() === 'var') return csstree.walk.skip;
+    if (isColorLiteral(ctx, node)) {
+      colour = true;
+      return csstree.walk.skip;
+    }
+    if (node.type === 'Dimension' && !isZero(node)) other = true;
+    return undefined;
+  });
+  return colour && !other;
+}
+
 /** @param {ReturnType<typeof checkContext>} ctx @param {string} kind @param {string} found */
 function literalFinding(ctx, kind, found, property) {
+  // A finding on a definition (a local custom property or a @value) is a
+  // declared step: name the theme folder where a project declares the steps
+  // the kit lacks, the one place a literal step is not a finding.
+  const declared = property.startsWith('--') || property.startsWith('@value');
+  const fix =
+    tokenFix(kind, ctx.tokens.get(kind)) +
+    (declared ? `; a step the kit lacks is declared in ${THEME_DIR}, the project theme` : '');
   return {
     gate: ctx.rules.literals.gate,
     kind,
     found: `${found} in ${property}`,
-    fix: tokenFix(kind, ctx.tokens.get(kind)),
+    fix,
   };
+}
+
+/**
+ * Value keywords a bare identifier can be without naming a CSS Modules
+ * `@value`: the CSS-wide keywords, and the common value words (`auto`,
+ * `normal`, `none`, the size-relative pair). Recording them as use sites
+ * would let a definition named after one (`@value auto: ...`) infer a kit
+ * kind from an unrelated keyword use, against the promise that a name
+ * matching nothing says nothing.
+ */
+const VALUE_KEYWORDS = new Set([
+  'inherit',
+  'initial',
+  'unset',
+  'revert',
+  'revert-layer',
+  'auto',
+  'normal',
+  'none',
+  'larger',
+  'smaller',
+]);
+
+/**
+ * Where each local definition's references read in, for the kind a silent
+ * name does not give: `var(--x)` under a declaration's property, and a bare
+ * identifier reference of a CSS Modules `@value`. Only real properties count
+ * as use sites: a reference inside another custom property's own value names
+ * nothing on its own.
+ *
+ * @param {any} ast a parsed css-tree AST
+ * @returns {Map<string, Set<string>>} definition name -> use-site properties
+ */
+function useSiteProperties(ast) {
+  const sites = new Map();
+  const record = (name, property) => {
+    if (property.startsWith('--')) return;
+    const set = sites.get(name) ?? new Set();
+    set.add(property.toLowerCase());
+    sites.set(name, set);
+  };
+  csstree.walk(ast, {
+    visit: 'Declaration',
+    enter(decl) {
+      if (decl.value.type !== 'Value') return;
+      csstree.walk(decl.value, function enter(node) {
+        if (node.type === 'Function' && node.name.toLowerCase() === 'var') {
+          const name = node.children.first?.type === 'Identifier' ? node.children.first.name : undefined;
+          if (name?.startsWith('--')) record(name, decl.property);
+          return csstree.walk.skip;
+        }
+        if (
+          node.type === 'Identifier' &&
+          !VALUE_KEYWORDS.has(node.name.toLowerCase())
+        ) {
+          record(node.name, decl.property);
+        }
+        return undefined;
+      });
+    },
+  });
+  return sites;
 }
 
 /**
@@ -353,11 +571,12 @@ export function checkCss(ctx, text, file) {
     parseAtrulePrelude: false,
     onParseError: (error) => parseErrors.push(`${file}:${error.line}:${error.column}: ${error.message}`),
   });
+  const sites = useSiteProperties(ast);
   csstree.walk(ast, {
     visit: 'Declaration',
     enter(decl) {
       if (decl.value.type !== 'Value') return;
-      for (const hit of literalsInValue(ctx, decl.property, decl.value)) {
+      for (const hit of literalsInValue(ctx, decl.property, decl.value, sites.get(decl.property))) {
         const at = hit.loc ?? decl.loc.start;
         findings.push({
           ...literalFinding(ctx, hit.kind, hit.found, decl.property),
@@ -374,9 +593,12 @@ export function checkCss(ctx, text, file) {
       if (rule.name.toLowerCase() !== 'value' || !rule.prelude) return;
       const def = valueDefinition(rule.prelude.value);
       if (!def) return;
-      // Read as a local custom property definition: colour only.
+      // Read as a local custom property definition: by name and shape, like
+      // `--name: value` in a declaration. Its references are bare
+      // identifiers, so the use sites are read under both spellings.
       const value = csstree.parse(def.value, { context: 'value', positions: true });
-      for (const hit of literalsInValue(ctx, `--${def.name}`, value)) {
+      const useSites = new Set([...(sites.get(`--${def.name}`) ?? []), ...(sites.get(def.name) ?? [])]);
+      for (const hit of literalsInValue(ctx, `--${def.name}`, value, useSites)) {
         findings.push({
           ...literalFinding(ctx, hit.kind, hit.found, `@value ${def.name}`),
           file,
@@ -438,7 +660,54 @@ export function checkScript(ctx, ts, text, file) {
   };
   const literalText = (expr) =>
     expr && (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) ? expr.text : undefined;
+  // Where each local definition's var() reads in, for the kind a silent name
+  // does not give: the style property a string value uses it under. Read
+  // before anything is reported, since a definition can sit after its use.
+  // Only the style objects this check reads literals from (the JSX style
+  // attribute and the style prop of a createElement call, gathered by the
+  // walk below) count: any other object literal in the file is data of an
+  // unknown shape, and a var() under one of its properties names no use site
+  // a style object answers for.
+  const styleObjects = [];
+  const varUseSites = new Map();
+  /** @param {any} object an ObjectLiteralExpression of style properties */
+  const collectVarUseSites = (object) => {
+    for (const prop of object.properties) {
+      if (!ts.isPropertyAssignment(prop)) continue;
+      const key = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : undefined;
+      if (!key) continue;
+      const text = literalText(prop.initializer);
+      if (text === undefined) continue;
+      let value;
+      try {
+        value = csstree.parse(text, { context: 'value' });
+      } catch {
+        continue;
+      }
+      const property = cssProperty(key).toLowerCase();
+      csstree.walk(value, function enter(node) {
+        // A reference is CSS, not a token to regex: parsed with css-tree the
+        // way the CSS path parses one, so whitespace inside the parentheses
+        // (`var( --x)`) hides nothing.
+        if (node.type === 'Function' && node.name.toLowerCase() === 'var') {
+          const name = node.children.first?.type === 'Identifier' ? node.children.first.name : undefined;
+          if (name?.startsWith('--')) {
+            const set = varUseSites.get(name) ?? new Set();
+            set.add(property);
+            varUseSites.set(name, set);
+          }
+          return csstree.walk.skip;
+        }
+        return undefined;
+      });
+    }
+  };
   const { elements } = ctx.rules;
+
+  /** @param {any} object an ObjectLiteralExpression of style properties */
+  const queueStyle = (object) => {
+    styleObjects.push(object);
+  };
 
   /** @param {any} object an ObjectLiteralExpression of style properties */
   const checkStyle = (object) => {
@@ -456,7 +725,7 @@ export function checkScript(ctx, ts, text, file) {
         } catch {
           continue;
         }
-        for (const hit of literalsInValue(ctx, property, value)) {
+        for (const hit of literalsInValue(ctx, property, value, varUseSites.get(property.toLowerCase()))) {
           findings.push({ ...literalFinding(ctx, hit.kind, hit.found, property), ...at(init) });
         }
         continue;
@@ -533,7 +802,7 @@ export function checkScript(ctx, ts, text, file) {
         const text = literalText(init.expression);
         attrs.set(name, text === undefined ? { dynamic: true } : { value: text, dynamic: false });
         if (name === 'style' && init.expression && ts.isObjectLiteralExpression(init.expression)) {
-          checkStyle(init.expression);
+          queueStyle(init.expression);
         }
       }
     }
@@ -556,7 +825,7 @@ export function checkScript(ctx, ts, text, file) {
       const text = ts.isPropertyAssignment(prop) ? literalText(prop.initializer) : undefined;
       attrs.set(name, text === undefined ? { dynamic: true } : { value: text, dynamic: false });
       if (name === 'style' && ts.isPropertyAssignment(prop) && ts.isObjectLiteralExpression(prop.initializer)) {
-        checkStyle(prop.initializer);
+        queueStyle(prop.initializer);
       }
     }
     return { attrs, spread };
@@ -603,6 +872,11 @@ export function checkScript(ctx, ts, text, file) {
     ts.forEachChild(node, visit);
   };
   visit(source);
+  // The use sites are read before any style is reported, since a definition
+  // can sit after its use; both passes run over the style objects the walk
+  // above found, in source order.
+  for (const object of styleObjects) collectVarUseSites(object);
+  for (const object of styleObjects) checkStyle(object);
   return { findings, parseErrors };
 }
 
@@ -691,13 +965,22 @@ export function collectFiles(root, sources, globs) {
     }
     selected += 1;
     const first = reached.get(real);
-    if (first === undefined) {
-      reached.set(real, file);
-      files.set(file, type);
-    } else if (first !== file) {
+    if (first !== undefined) {
       // The same path twice (two --src that overlap) is one file, not a skip.
-      skipped.push({ path: file, reason: `the same file as ${first}, read once` });
+      if (first !== file) skipped.push({ path: file, reason: `the same file as ${first}, read once` });
+      return;
     }
+    reached.set(real, file);
+    if (file.startsWith(THEME_DIR)) {
+      // The theme folder declares the project's own token steps: selected
+      // (a --src at or inside it is a clean run, not a usage error) and
+      // listed as skipped from the literal checks, but still read, so the
+      // native-element gate keeps applying to a screen root that lives there.
+      // Read only once, after the regular-file and already-reached guards a
+      // theme file shares with every other selected file.
+      skipped.push({ path: file, reason: `the project theme folder ${THEME_DIR} declares its own tokens: literals not checked` });
+    }
+    files.set(file, type);
   };
   for (const source of sources) {
     const before = selected;
@@ -906,13 +1189,28 @@ async function run(argv, io) {
   const findings = [];
   const parseErrors = [];
   for (const [file, type] of files) {
+    const inTheme = file.startsWith(THEME_DIR);
     let text;
     try {
       text = fs.readFileSync(path.join(root, file), 'utf8');
     } catch (error) {
       throw new InputError(`${file} could not be read: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const result = type === 'css' ? checkCss(ctx, text, file) : checkScript(ctx, ts, text, file);
+    let result;
+    if (type === 'css') {
+      const css = checkCss(ctx, text, file);
+      // A theme CSS file declares the project's own token steps: its literals
+      // are never findings (see collectFiles), but a file that does not parse
+      // still reports, like every selected source.
+      result = inTheme ? { findings: [], parseErrors: css.parseErrors } : css;
+    } else {
+      result = checkScript(ctx, ts, text, file);
+      if (inTheme) {
+        // The theme skip covers the literal checks only: a screen root under
+        // the theme folder still gets the native-element gate.
+        result = { findings: result.findings.filter((finding) => finding.kind === 'element'), parseErrors: result.parseErrors };
+      }
+    }
     findings.push(...result.findings);
     parseErrors.push(...result.parseErrors);
   }
