@@ -23,6 +23,7 @@
     "vitest-axe": "1.0.0-pre.5"
   },
   "devDependencies": {
+    "eslint": "9.27.0",
     "typescript": "5.9.3",
     "vitest": "4.1.4"
   }
