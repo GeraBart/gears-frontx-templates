@@ -1173,6 +1173,43 @@ describe('activity_feed', () => {
     expect(error).toHaveBeenCalledWith('[widget] activity_feed: data.items[1] needs an ISO 8601 date-time or a YYYY-MM-DD date as its time');
   });
 
+  it('reads a date-time whose offset is written as +hhmm or +hh, with the minus forms, as that instant', () => {
+    // Hong Kong stands 8 hours east of UTC: 10:00+0200 and 10:00+02 are 08:00 UTC, 4 PM there; 10:00-0530 is 15:30 UTC.
+    vi.stubEnv('TZ', 'Asia/Hong_Kong');
+    try {
+      render(
+        <ActivityFeed
+          payload={{
+            render: { time_style: 'absolute' },
+            data: {
+              items: [
+                item('with minutes', '2026-11-04T10:00:00+0200'),
+                item('hours alone', '2026-11-04T10:00:00+02'),
+                item('minus with minutes', '2026-11-04T10:00:00-0530'),
+                item('the colon form', '2026-11-04T10:00:00+02:00'),
+              ],
+            },
+          }}
+        />,
+      );
+      expect([...document.querySelectorAll('time')].map((time) => time.textContent)).toEqual([
+        'Nov 4, 2026, 4:00 PM',
+        'Nov 4, 2026, 4:00 PM',
+        'Nov 4, 2026, 11:30 PM',
+        'Nov 4, 2026, 4:00 PM',
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each(['2026-11-04T10:00:00+2', '2026-11-04T10:00:00+020'])('fails its cell naming the item whose offset %s is none of the forms it takes', (time) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<ActivityFeed payload={{ render: {}, data: { items: [item('first', time)] } }} />);
+    expect(screen.getByText('This widget cannot be shown')).toBeTruthy();
+    expect(error).toHaveBeenCalledWith('[widget] activity_feed: data.items[0] needs an ISO 8601 date-time or a YYYY-MM-DD date as its time');
+  });
+
   it('draws with a locale that is not a BCP-47 tag, without throwing', () => {
     render(<ActivityFeed payload={{ render: {}, data: { items: [item('a', '2026-11-01T12:00:00Z')] } }} locale="pt_BR" />);
     expect(screen.getByText('a')).toBeTruthy();

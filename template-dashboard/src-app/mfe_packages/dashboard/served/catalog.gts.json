@@ -656,7 +656,7 @@
                 "properties": {
                   "time": {
                     "type": "string",
-                    "description": "When the item happened: an ISO 8601 date-time, or a bare YYYY-MM-DD date (its UTC midnight, the one date rule of the widgets). The widget cross-checks that a date reads as one, and a time that does not fails the cell naming the item's position."
+                    "description": "When the item happened: an ISO 8601 date-time, its zone as Z or an offset written +hh:mm, +hhmm or +hh (each with its minus form), a date-time without a zone reading in the viewer's zone, or a bare YYYY-MM-DD date (its UTC midnight, the one date rule of the widgets). The widget cross-checks that a date reads as one, and a time that does not fails the cell naming the item's position."
                   },
                   "title": {
                     "type": "string",

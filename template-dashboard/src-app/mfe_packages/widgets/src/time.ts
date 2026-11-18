@@ -17,10 +17,11 @@ export function dayOf(x: unknown): number | null {
 
 /**
  * An ISO 8601 date-time: a calendar date, a T, a time of day (hour 00 to 23, minute 00 to 59), an optional second
- * (00 to 59) with its fraction and an optional zone. Hour 24 is no time of day here: Date.parse reads T24:00 as the
- * next midnight, which would move the item to another day.
+ * (00 to 59) with its fraction and an optional zone. The zone is Z or an offset of two hour digits with optional
+ * two minute digits, written +hh:mm, +hhmm or +hh, each with its minus form. Hour 24 is no time of day here:
+ * Date.parse reads T24:00 as the next midnight, which would move the item to another day.
  */
-export const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/;
+export const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)?$/;
 
 /**
  * The one time reader of the widgets: a time string as epoch milliseconds. An ISO 8601 date-time reads as it is,
@@ -29,12 +30,14 @@ export const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d(:[0-5]\
  * rule. Null for anything else, including a day the calendar does not have, alone or before a time of day.
  */
 export function timeOf(time: string): number | null {
-  if (ISO_DATE_TIME.test(time)) {
-    if (dayOf(time.slice(0, 10)) === null) return null;
-    const parsed = Date.parse(time);
-    return Number.isNaN(parsed) ? null : parsed;
-  }
-  return dayOf(time);
+  const dateTime = ISO_DATE_TIME.exec(time);
+  if (!dateTime) return dayOf(time);
+  if (dayOf(time.slice(0, 10)) === null) return null;
+  // The engine reads Z, an offset with minutes (+hh:mm, +hhmm) and no zone itself; a bare +hh or -hh it does not,
+  // so that form is written with its minutes, which are 00, before reading.
+  const zone = dateTime[4] ?? '';
+  const parsed = Date.parse(/^\d{2}$/.test(zone.slice(1)) ? `${time}:00` : time);
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 /**
