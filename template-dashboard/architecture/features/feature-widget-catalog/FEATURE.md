@@ -89,7 +89,7 @@ A dashboard author picks from the catalog. The catalog is bounded by presentatio
 - Compliance/privacy: widgets store nothing and send nothing; they show only what the product's API returns. Library licences are in [Catalog libraries and licences](#catalog-libraries-and-licences).
 - Reliability: widgets are passive. A widget shows its own cannot-be-shown state; the root owns failure scope and recovery.
 - Progress and confirmation flows: grid sort, page and page size are immediate, client-side and change no data.
-- Ops/rollout: no deployed service; a widget ships as an MFE build plus its types, entry and manifest in the served GTS file.
+- Ops/rollout: no deployed service; a widget ships as an MFE build plus its types, entry and manifest in its part of the served GTS file, the types declared in its `mfe.json`.
 
 ### 1.3 Actors
 

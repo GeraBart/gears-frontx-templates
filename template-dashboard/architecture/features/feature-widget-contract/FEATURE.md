@@ -101,8 +101,8 @@ A widget author derives a widget type from `data_widget` (or the widget base for
 - A widget instance is rejected at its own registration against the type its `id` names, an effective trait is unset, or its `entry` or `data_type` does not exist: only that cell fails, or only that larger view for a `larger_view` instance.
 
 **Steps**:
-1. [ ] - `p1` - The widget author deploys the MFE build of the widget. - `inst-wc-pub-deploy`
-2. [ ] - `p1` - The widget author adds the widget type, its data type, the entry and the manifest to the served GTS file. For a fix, the widget author keeps the widget type and replaces its entry or MFE build. - `inst-wc-pub-add`
+1. [ ] - `p1` - The widget author declares the widget type, its data type and its render type in the `schemas` of the bundle's `mfe.json`, with the entry and the manifest, and builds the bundle. - `inst-wc-pub-deploy`
+2. [ ] - `p1` - The widget author deploys the build with its part of the served GTS file, which carries those types, the entry and the manifest. For a fix, the widget author keeps the widget type and replaces its entry or MFE build. - `inst-wc-pub-add`
 3. [ ] - `p1` - **IF** the change is incompatible with the widget type's `render` or data schema - `inst-wc-pub-incompatible`
    1. [ ] - `p1` - The widget author ships it as a new widget type version instead of a fix. - `inst-wc-pub-incompatible-version`
 4. [ ] - `p1` - **IF** the product developer points a template widget type to a different entry - `inst-wc-pub-repoint`
@@ -691,7 +691,7 @@ The template's choices for the entry fields:
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-dod-widget-contract-manifest`
 
-The system **MUST** ship one manifest per widget type, `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.<widget_type>.v1`, the manifest of that type's widget bundle: one Module Federation remote that exposes the type's one entry. Each of the 15 widget entries points to the manifest of its own bundle, so one type is built, published, fixed and rolled back without the others. The bundle's `widgets/bundles/<widget_type>/mfe.json` is the authoring input for its manifest and entry; the FrontX manifest pipeline completes it when the bundle is built, and the build writes the completed pair as the bundle's part of the served file (`widget.gts.json`). The served GTS file carries the completed manifests and entries, and the root registers them from it. An `mfe.json` carries no template GTS instance and no dashboard content.
+The system **MUST** ship one manifest per widget type, `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.<widget_type>.v1`, the manifest of that type's widget bundle: one Module Federation remote that exposes the type's one entry. Each of the 15 widget entries points to the manifest of its own bundle, so one type is built, published, fixed and rolled back without the others. The bundle's `widgets/bundles/<widget_type>/mfe.json` is the authoring input for its manifest, its entry and the types its `schemas` declare; the FrontX manifest pipeline completes it when the bundle is built, and the build writes the completed pair, with those types, as the bundle's part of the served file (`widget.gts.json`). The served GTS file carries the completed manifests and entries, and the types of every bundle, and the root registers them from it. An `mfe.json` carries no template GTS instance and no dashboard content.
 
 | Field | Source | Content |
 |-------|--------|---------|
@@ -757,9 +757,9 @@ A schema missing along the type chain is a failure, never a partial result.
 
 - [ ] `p2` - **ID**: `cpt-frontx-dashboard-dod-widget-contract-publish`
 
-A widget author **MUST** publish a widget in this order: deploy the MFE build, then add the widget type, its data type, the entry and the manifest to the served GTS file. A new widget type is usable by existing dashboards at once. A fix released under the same widget type shows on the next page load. Neither needs a product redeploy. A fix keeps the widget type's `render` and data schemas compatible; an incompatible change ships as a new widget type version.
+A widget author **MUST** publish a widget in this order: declare the widget type, its data type and its render type in the `schemas` of the bundle's `mfe.json`, with the entry and the manifest, then build and deploy the bundle, whose part of the served GTS file carries them. A new widget type is usable by existing dashboards at once. A fix released under the same widget type shows on the next page load. Neither needs a product redeploy. A fix keeps the widget type's `render` and data schemas compatible; an incompatible change ships as a new widget type version.
 
-Rollback of a widget release: restore the previous widget type, data type, entry and manifest in the served file, or redeploy the previous MFE build. Rollback of the product: ship its previous build.
+Rollback of a widget release: restore the previous widget type, data type and render type in the bundle's `mfe.json` with the entry and the manifest, and rebuild its part, or redeploy the previous MFE build with its part. Rollback of the product: ship its previous build.
 
 **Implements**: `cpt-frontx-dashboard-flow-widget-contract-publish`, `cpt-frontx-dashboard-fr-add-fix-widget`.
 
@@ -796,7 +796,7 @@ A walkthrough with someone who did not build the template verifies the guide. A 
 - [ ] `value_format` fails: `duration` with no `unit`; a `unit` outside the enum; `unit` with `number`, `percent` or `currency`; `currency` with no `currency` code; a `currency` code with another value type or one that is not three capital letters; `decimals` outside 0 to 6; `unit_label` with `percent`, `duration` or `currency`; an extra field.
 - [ ] A concrete widget type sets `entry` and `data_type`; a product that sets a different `entry` in its copy of the served file mounts that entry, with no template change.
 - [ ] A new widget type added to the served file is usable by existing dashboards at once; a fix released under the same widget type shows on the next page load; neither needs a product redeploy.
-- [ ] Restoring the previous widget type, data type, entry and manifest in the served file, or redeploying the previous MFE build, restores the previous widget on the next page load.
+- [ ] Restoring the previous widget type, data type and render type in the bundle's `mfe.json` with the entry and the manifest, and rebuilding its part, or redeploying the previous MFE build with its part, restores the previous widget on the next page load.
 - [ ] The root resolves effective traits as the RFC 7396 merge along the `$id` chain, with defaults filled; a schema missing along the type chain is a failure, never a partial result.
 - [ ] The `render_widget` action carries a single `target` (a `widget_ext` extension) and a closed payload of `{render, value_format?, data?}`: the stamped render instance (of the render base, its `id` naming a registered render instance) and, for a data widget, its `value_format` (of the value_format type) and the stamped data instance. It carries no widget id, title or binding.
 - [ ] The `widgets` extension type narrows `domain` to the `widgets` domain id and adds no field; a generated extension's `entry` is the entry named by the widget type's `entry` trait.

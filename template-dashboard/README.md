@@ -1,6 +1,6 @@
 # template-dashboard: development harness
 
-This folder holds the dashboard template's architecture documents (`architecture/`) and its two packages under `src-app/mfe_packages/`: `dashboard` (the contract, the bundle schemas, the dashboard root with its runtime and cell frame, the served catalog file and a mock host) and `widgets` (the catalog widgets, their MFE lifecycles, and one Module Federation widget bundle per type under `bundles/`, built by `build-bundles.mjs`). A product team embeds a dashboard as described in [docs/embedding.md](docs/embedding.md). The `package.json` here is a development harness, not part of the template: it installs both packages as workspaces and runs their type check and tests in one place.
+This folder holds the dashboard template's architecture documents (`architecture/`) and its two packages under `src-app/mfe_packages/`: `dashboard` (the contract, the bundle schemas, the dashboard root with its runtime and cell frame, the base served file and a mock host) and `widgets` (the catalog widgets, their MFE lifecycles, and one Module Federation widget bundle per type under `bundles/`, built by `build-bundles.mjs`). A product team embeds a dashboard as described in [docs/embedding.md](docs/embedding.md). The `package.json` here is a development harness, not part of the template: it installs both packages as workspaces and runs their type check and tests in one place.
 
 ```bash
 npm ci
