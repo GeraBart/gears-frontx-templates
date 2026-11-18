@@ -184,11 +184,10 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
     const line = `the widget part ${name} is left out: ${escapeControls(reason)}`;
     console.error(`[dashboard] ${line}`);
     // A rejected part held nothing, so `held` still names what registered before it: those ids stay healthy. An
-    // instance id is recorded only when nothing held it; a type id that equals a held instance id is recorded by
-    // neither and fails no cell of the other kind.
+    // instance id is recorded only when nothing held it.
     for (const id of ids) if (!held.instances.has(id)) rejected.instances.set(id, line);
     // A type the store already has stays healthy, so only the types the part declared and did not register are recorded.
-    for (const id of typeIds) if (!types.getSchema(id) && !held.instances.has(id)) rejected.types.set(id, line);
+    for (const id of typeIds) if (!types.getSchema(id)) rejected.types.set(id, line);
   });
   return { ok: true, dashboards: held.dashboards, rejected };
 }
