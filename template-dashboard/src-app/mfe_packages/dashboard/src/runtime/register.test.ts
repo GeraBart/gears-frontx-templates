@@ -815,6 +815,18 @@ describe('the served file in parts', () => {
       expect(failedSlots(loadedFile)).toEqual([]);
     });
 
+    it('fails no cell of a later healthy part through the type ids a part left out before its types registered', () => {
+      // The first pie part is left out by the pre-check (its extra dashboard is served already), before any of its
+      // types registers: the type ids it declared are recorded, and the same part healthy clears them again.
+      const pie = bundlePart('pie_chart');
+      const takeover = { ...demoDashboard(), title: 'Taken over' };
+      const leftOutEarly = { ...pie, instances: [...pie.instances, takeover] };
+      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), leftOutEarly, pie]);
+      expect(loadedFile.lines).toHaveLength(1);
+      expect(loadedFile.outcome.ok && recordedIds(loadedFile)).toEqual([]);
+      expect(failedSlots(loadedFile)).toEqual([]);
+    });
+
     it.each([
       ['the stand-in manifest', STAND_IN.instances[0], { name: 'taken_over' }],
       ['the stand-in entry', STAND_IN.instances[1], { exposedModule: './taken_over' }],
