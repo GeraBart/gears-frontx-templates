@@ -38,11 +38,16 @@ export function registerBundle(types: TypeSystemPlugin): Set<string> {
 }
 
 /**
- * `rejected` maps each manifest and entry id that a left-out widget part failed to bring, and each type id it
- * declared that did not register, to the reason: the cells whose widget type names one of those entries, or whose
- * type is one of those ids, fail with it. An id the base file or a registered part already brought is never in it.
+ * What the left-out widget parts failed to bring, with the reason each id is left out under, in two maps so the two
+ * kinds of id stay apart: `instances` maps each manifest and entry id a part failed to bring, `types` each type id
+ * a part declared that did not register. `leftOut` reads the instance map for the widget's entry and the type map
+ * for its widget, render and data type, so an id of the one kind that equals an id of the other cannot fail a cell
+ * of the other kind. The cells whose widget type names one of the rejected entries, or whose type is one of the
+ * rejected type ids, fail with it. An id the base file or a registered part already brought is never in either map.
  */
-export type FileOutcome = { ok: true; dashboards: Map<string, Dashboard>; rejected: ReadonlyMap<string, string> } | { ok: false; problem: string };
+export type Rejected = { readonly instances: ReadonlyMap<string, string>; readonly types: ReadonlyMap<string, string> };
+
+export type FileOutcome = { ok: true; dashboards: Map<string, Dashboard>; rejected: Rejected } | { ok: false; problem: string };
 
 const MANIFEST_TYPE_PREFIX = 'gts.frontx.mfes.mfe.mf_manifest.v1~';
 
@@ -150,7 +155,7 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
   const held: Held = { instances: new Map(before.map((instance) => [idOfInstance(instance), canonical(instance)])), dashboards: new Map() };
   const problem = guarded(() => registerPart(types, base, bundleIds, held, true));
   if (problem) return { ok: false, problem: `the served file: ${problem}` };
-  const rejected = new Map<string, string>();
+  const rejected = { instances: new Map<string, string>(), types: new Map<string, string>() };
   parts.forEach((part, index) => {
     let ids: string[] = [];
     let typeIds: string[] = [];
@@ -168,8 +173,8 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
     });
     if (!reason) {
       // A healthy part's own registration replaces what an earlier rejected part left under the same id.
-      for (const id of ids) rejected.delete(id);
-      for (const id of typeIds) rejected.delete(id);
+      for (const id of ids) rejected.instances.delete(id);
+      for (const id of typeIds) rejected.types.delete(id);
       return;
     }
     const listed = ids.filter((id) => id.startsWith(MANIFEST_TYPE_PREFIX)).join(', ');
@@ -178,23 +183,25 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
     // The reason quotes ids from the part as well (a registry message, an id held otherwise), so it is escaped the same way.
     const line = `the widget part ${name} is left out: ${escapeControls(reason)}`;
     console.error(`[dashboard] ${line}`);
-    // A rejected part held nothing, so `held` still names what registered before it: those ids stay healthy.
-    for (const id of ids) if (!held.instances.has(id)) rejected.set(id, line);
+    // A rejected part held nothing, so `held` still names what registered before it: those ids stay healthy. Each
+    // recording is guarded against both stores, so an instance id that equals a registered type id, or a type id
+    // that equals a held instance id, is recorded by neither and fails no cell of the other kind.
+    for (const id of ids) if (!held.instances.has(id) && !types.getSchema(id)) rejected.instances.set(id, line);
     // A type the store already has stays healthy, so only the types the part declared and did not register are recorded.
-    for (const id of typeIds) if (!types.getSchema(id)) rejected.set(id, line);
+    for (const id of typeIds) if (!types.getSchema(id) && !held.instances.has(id)) rejected.types.set(id, line);
   });
   return { ok: true, dashboards: held.dashboards, rejected };
 }
 
 /** The reason the widget's type or its entry was left out with its part, or nothing. */
-function leftOut(types: TypeSystemPlugin, widgetId: string, rejected: ReadonlyMap<string, string>): string | undefined {
-  if (rejected.size === 0) return undefined;
+function leftOut(types: TypeSystemPlugin, widgetId: string, rejected: Rejected): string | undefined {
+  if (rejected.types.size === 0 && rejected.instances.size === 0) return undefined;
   // The part that declared the widget's type may be the one left out, before the type registered: its line, not the
   // registry's, is the reason the cell fails.
-  const part = rejected.get(typeOfWidget(widgetId));
+  const part = rejected.types.get(typeOfWidget(widgetId));
   if (part) return part;
   try {
-    return rejected.get(String(effectiveTraits(types, typeOfWidget(widgetId)).entry));
+    return rejected.instances.get(String(effectiveTraits(types, typeOfWidget(widgetId)).entry));
   } catch {
     // A type that does not resolve fails the widget's own registration below.
     return undefined;
@@ -222,7 +229,7 @@ const standInIdOf = (widgetId: string, role: Role) => `${STAND_IN_TYPE_ID}${uuid
  * may throw from a getter, and every later step (registration, stand-in, the dashboard's registration, the cell run)
  * reads only the copy. A widget that cannot be read fails its slot, which gets a minimal stand-in.
  */
-export function registerDashboard(types: TypeSystemPlugin, dashboard: Dashboard, rejected: ReadonlyMap<string, string> = new Map()): DashboardOutcome {
+export function registerDashboard(types: TypeSystemPlugin, dashboard: Dashboard, rejected: Rejected = { instances: new Map(), types: new Map() }): DashboardOutcome {
   const failed = new Map<string, string>();
   // A slot fails once: a slot that failed its read is never registered again, so no second reason comes.
   const fail = (slot: string, reason: string) => failed.set(slot, reason);

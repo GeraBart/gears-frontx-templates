@@ -558,6 +558,10 @@ describe('the served file in parts', () => {
     return { types, outcome, lines };
   }
 
+  /** Every id the left-out parts left recorded, instance and type ids alike. */
+  const recordedIds = (parts: ReturnType<typeof loadedParts>) =>
+    parts.outcome.ok ? [...parts.outcome.rejected.instances.keys(), ...parts.outcome.rejected.types.keys()] : [];
+
   it('leaves out a part whose manifest the registry rejects, with one console line, and fails only the cells it serves', () => {
     const pie = bundlePart('pie_chart');
     const broken = { ...pie, instances: pie.instances.map((instance) => (instance.id === PIE_MANIFEST ? { ...instance, name: 7 } : instance)) };
@@ -599,7 +603,7 @@ describe('the served file in parts', () => {
     const reordered = Object.fromEntries(Object.entries(dataType).reverse());
     const alike = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(rest), { ...metric, types: [...metric.types, dataType] }, { ...pie, types: [...pie.types, reordered] }]);
     expect(alike.lines).toEqual([]);
-    expect(alike.outcome.ok && alike.outcome.rejected.size).toBe(0);
+    expect(alike.outcome.ok && recordedIds(alike)).toEqual([]);
     const differing = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(rest), { ...metric, types: [...metric.types, dataType] }, { ...pie, types: [...pie.types, changed] }]);
     expect(differing.lines).toHaveLength(1);
     expect(differing.lines[0]).toMatch(/pie_chart.* is left out: .*frontx\.test\.widget_data\.shared\.v1~ .*already/);
@@ -728,7 +732,16 @@ describe('the served file in parts', () => {
       const entry = pie.instances.find((instance) => instance.id === PIE_ENTRY)!;
       const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), pie, { types: [{ ...pieType(), description: 'otherwise' }], instances: [{ ...entry }] }]);
       expect(loadedFile.lines).toHaveLength(1);
-      expect(loadedFile.outcome.ok && [...loadedFile.outcome.rejected.keys()]).toEqual([]);
+      expect(loadedFile.outcome.ok && recordedIds(loadedFile)).toEqual([]);
+      expect(failedSlots(loadedFile)).toEqual([]);
+    });
+
+    it('records nothing for the pie type when a rejected part names it as an instance id, and fails no cell', () => {
+      // The instance id of a rejected part can equal a registered widget type id; the instance and type ids stay in
+      // two maps, and each recording is guarded against both stores, so the healthy pie cells keep registering.
+      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), bundlePart('pie_chart'), { types: [], instances: [{ id: PIE }, 7] }]);
+      expect(loadedFile.lines).toHaveLength(1);
+      expect(loadedFile.outcome.ok && recordedIds(loadedFile)).toEqual([]);
       expect(failedSlots(loadedFile)).toEqual([]);
     });
 
@@ -738,7 +751,7 @@ describe('the served file in parts', () => {
       const copied = { ...entry, manifest: 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.metric_card.v1' };
       const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), pie, { types: [], instances: [copied] }]);
       expect(loadedFile.lines).toEqual([expect.stringMatching(/part number 4 of the answer \(the served file is number 1\) is left out: its instance .*pie_chart\.v1 is already registered otherwise$/)]);
-      expect(loadedFile.outcome.ok && loadedFile.outcome.rejected.size).toBe(0);
+      expect(loadedFile.outcome.ok && recordedIds(loadedFile)).toEqual([]);
       expect(failedSlots(loadedFile)).toEqual([]);
     });
 
@@ -775,7 +788,7 @@ describe('the served file in parts', () => {
       const broken = { ...pie, instances: pie.instances.map((instance) => (instance.id === PIE_ENTRY ? { ...instance, manifest: 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.test.mfe.none.v1' } : instance)) };
       const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), broken, pie]);
       expect(loadedFile.lines).toHaveLength(1);
-      expect(loadedFile.outcome.ok && loadedFile.outcome.rejected.size).toBe(0);
+      expect(loadedFile.outcome.ok && recordedIds(loadedFile)).toEqual([]);
       expect(failedSlots(loadedFile)).toEqual([]);
     });
 
