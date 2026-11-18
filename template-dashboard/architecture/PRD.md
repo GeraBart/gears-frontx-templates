@@ -656,7 +656,7 @@ The template publishes one public surface, its dashboard and widget contract. It
 5. Where the product needs its own widget, the product developer points a template widget type to it by setting the type's `entry` trait to the product's entry in a bundle's `mfe.json` `schemas`: in that template bundle's own `mfe.json` in the product's copy of the template, with its part rebuilt, or in a bundle of the product whose `schemas` declare the type, with the template bundle off the widget list.
 
 **Postconditions**:
-- The product shows dashboards from its runtime-loaded JSON, with no data code and no change to the template.
+- The product shows dashboards from its runtime-loaded JSON, with no data code; a re-point in a template bundle is a change in the product's copy of the template.
 
 **Alternative Flows**:
 - **The runtime-loaded JSON cannot be fetched or read**: every dashboard shows the cannot-be-shown state until the product serves a readable file.

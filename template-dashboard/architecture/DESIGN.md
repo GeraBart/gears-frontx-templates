@@ -313,7 +313,7 @@ The bundle also carries the render base, the value_format type, the request type
 - **Coexistence.** The served file may hold several versions of a widget type or data type at once. Each widget instance names its version in its own id, so dashboards that use `v1` and `v2` render side by side.
 - **Unknown version.** A widget instance whose type is not registered fails its own registration, so only its cell or larger view fails. A dashboard whose dashboard type is not registered fails at dashboard level.
 - **The root's own types.** Each root release supports the versions of the bundle types it ships: the bases, the binding, the render base, the value_format type, the request type, `render_widget`, the `widgets` domain and its extension type. An entry that declares another version of `render_widget` is not admitted, so its cell fails.
-- **Migration.** Existing dashboards keep their `v1` ids until their author changes them. A product takes a new template release by merging it into its copy (ADR-0010). It then adds the new types to its copy of the served file, keeping the old ones while any dashboard uses them. The release notes list every new version.
+- **Migration.** Existing dashboards keep their `v1` ids until their author changes them. A product takes a new template release by merging it into its copy (ADR-0010). The new types come with the bundles' `mfe.json` and their parts; the product keeps the old bundles' parts on its list while a dashboard uses the old types. The release notes list every new version.
 
 ### 3.2 Component Model
 
