@@ -35,6 +35,7 @@ const isRunning = (pid) => (spawnSync('ps', ['-o', 'stat=', '-p', String(pid)], 
 let scratch;
 
 beforeAll(() => {
+  mkdirSync(cacheRoot, { recursive: true });
   scratch = mkdtempSync(path.join(cacheRoot, 'run-'));
   mkdirSync(path.join(scratch, 'bundles'), { recursive: true });
   for (const type of [OK, BROKEN]) {
