@@ -3,8 +3,9 @@
  * Builds every widget bundle under bundles/ (or the ones named on the command
  * line) as its own Module Federation remote, into dist/<widget_type>/. The
  * bundles build in parallel: the parent spawns this same script as child
- * processes, one bundle per child (--only <type> marks a child), as many at a
- * time as WIDGET_BUILD_JOBS or --jobs N sets (N >= 1, --jobs wins), by default
+ * processes, one bundle per child (WIDGET_BUILD_CHILD=<type> marks a child),
+ * as many at a time as WIDGET_BUILD_JOBS or --jobs N sets (N >= 1, --jobs
+ * wins), by default
  * min(DEFAULT_JOBS, os.availableParallelism(), the bundles to build): 4 at a
  * time, fewer on a machine with fewer cores or fewer bundles to build. A child
  * runs one bundle and nothing else: the vite build, then the bundle's
@@ -26,8 +27,8 @@
  *
  * WIDGET_BUNDLE_BASE is the address the bundles are served under, '/widgets/'
  * by default: a bundle's chunks load from <base><widget_type>/. It,
- * WIDGET_BUNDLES_DIR and WIDGET_BUNDLES_OUT pass to the children through the
- * environment.
+ * WIDGET_BUNDLES_DIR, WIDGET_BUNDLES_OUT and the child mark
+ * WIDGET_BUILD_CHILD pass to the children through the environment.
  */
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
@@ -61,12 +62,10 @@ const parseJobs = (value, origin) => {
 // Measured on 15 bundles: 4 at a time is about 2.4 times faster than one at a time, at about a third of the memory of all at once.
 const DEFAULT_JOBS = 4;
 
-const onlyAt = argv.indexOf('--only');
-if (onlyAt !== -1 && onlyAt === argv.length - 1) failWith('--only needs the type of the bundle to build');
-const only = onlyAt === -1 ? undefined : argv[onlyAt + 1];
-// A value that starts with "-" is an option, not a type: fail fast here
-// instead of letting the vite build fail on a bundle root it cannot find.
-if (only !== undefined && only.startsWith('-')) failWith(`--only needs the type of the bundle to build, got "${only}"`);
+// A child builds the bundle named in the environment: the parent sets
+// WIDGET_BUILD_CHILD when it spawns a child, so the command line carries no
+// child option.
+const only = process.env.WIDGET_BUILD_CHILD || undefined;
 
 if (only !== undefined) {
   // A child: the per-bundle body, nothing else.
@@ -153,7 +152,7 @@ if (only !== undefined) {
       running += 1;
       let child;
       try {
-        child = spawn(process.execPath, [script, '--only', type], { stdio: ['ignore', 'pipe', 'pipe'] });
+        child = spawn(process.execPath, [script], { env: { ...process.env, WIDGET_BUILD_CHILD: type }, stdio: ['ignore', 'pipe', 'pipe'] });
       } catch (error) {
         // Some errno values make spawn() throw instead of emitting 'error'
         // (ENOMEM among them): report it, count the bundle failed, and do not
