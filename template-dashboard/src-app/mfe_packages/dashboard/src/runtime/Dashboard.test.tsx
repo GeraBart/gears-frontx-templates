@@ -99,7 +99,7 @@ describe('Dashboard on the real registry', () => {
     // The served widget list names one part per catalog bundle, each with the types its bundle declares; the pie
     // chart's manifest is one the registry rejects.
     const parts = TYPES.map((type) => ({
-      types: IN_BUNDLE_PARTS.types.filter((schema) => String(schema.$id).includes(`.${type}`)),
+      types: IN_BUNDLE_PARTS.types.filter((schema) => [`.${type}.v1~`, `.${type}_render.v1~`].some((suffix) => String(schema.$id).endsWith(suffix))),
       instances: IN_BUNDLE_PARTS.instances
         .filter((instance) => String(instance.id).endsWith(`.${type}.v1`))
         .map((instance) => (type === 'pie_chart' && String(instance.id).includes('mf_manifest') ? { ...instance, name: 7 } : instance)),

@@ -851,7 +851,9 @@ describe('the render type of a widget type', () => {
   // and an extra render field failing each of them).
   it('is, for every catalog widget type, its own render type, one to one with the catalog render types', () => {
     const types = loaded().types;
-    const ids = IN_BUNDLE_PARTS.types.filter((type) => !(type as { 'x-gts-abstract'?: boolean })['x-gts-abstract']).map((type) => String(type.$id).replace(/^gts:\/\//, ''));
+    // No bundle type is abstract: the abstract bases are the dashboard root's own schemas, so the bundles carry none.
+    expect(IN_BUNDLE_PARTS.types.some((type) => (type as { 'x-gts-abstract'?: boolean })['x-gts-abstract'])).toBe(false);
+    const ids = IN_BUNDLE_PARTS.types.map((type) => String(type.$id).replace(/^gts:\/\//, ''));
     const named = ids.filter((id) => id.startsWith('gts.frontx.dashboard.widget.widget.v1~')).map((id) => [id, renderTypeOf(types, id)] as const);
     const derived = ids.filter((id) => id.startsWith(base) && id !== base);
     for (const [id, renderType] of named) expect(renderType, `${id} names a render type of its own`).not.toBe(base);

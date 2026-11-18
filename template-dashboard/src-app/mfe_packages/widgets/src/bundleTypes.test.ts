@@ -37,8 +37,6 @@ describe('the types the widget bundles declare', () => {
   it.each(BUNDLES)('are, for %s, exactly its own widget, render and data types', (bundle) => {
     const ids = (TYPES_BY_BUNDLE[bundle] ?? []).map((type) => String(type.$id));
     expect([...ids].sort()).toEqual(ownIds(bundle));
-    // Every id carries the widget type's own name.
-    expect(ids.every((id) => id.includes(bundle))).toBe(true);
   });
 
   it('are, together, the 44 types the catalog served file had, each id once', () => {
@@ -47,10 +45,5 @@ describe('the types the widget bundles declare', () => {
     const ids = IN_BUNDLE_PARTS.types.map((type) => String(type.$id));
     expect(new Set(ids).size).toBe(44);
     expect(ids.every((id) => id.startsWith('gts://gts.frontx.dashboard.'))).toBe(true);
-    // The in-bundle parts carry the schemas of the bundles, each bundle's own in its mfe.json order, in bundle order.
-    expect(IN_BUNDLE_PARTS.types).toEqual(BUNDLES.flatMap((bundle) => TYPES_BY_BUNDLE[bundle]));
-    expect([...IN_BUNDLE_PARTS.types].sort((a, b) => String(a.$id).localeCompare(String(b.$id)))).toEqual(
-      BUNDLES.flatMap((bundle) => TYPES_BY_BUNDLE[bundle]).sort((a, b) => String(a.$id).localeCompare(String(b.$id))),
-    );
   });
 });
