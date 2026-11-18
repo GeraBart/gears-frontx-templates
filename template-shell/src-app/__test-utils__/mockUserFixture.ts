@@ -5,7 +5,6 @@ type MockUserFixture<TRole extends string> = {
   lastName: string;
   role: TRole;
   language: string;
-  avatarUrl: string;
   createdAt: string;
   updatedAt: string;
   extra: {
@@ -22,7 +21,6 @@ export const createMockUserFixture = <TRole extends string>(
   lastName: 'Rivera',
   role: adminRole,
   language: 'en',
-  avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=AlexRivera',
   createdAt: new Date('2024-01-01T00:00:00Z').toISOString(),
   updatedAt: new Date('2024-12-01T00:00:00Z').toISOString(),
   extra: {
