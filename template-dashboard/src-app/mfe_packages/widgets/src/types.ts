@@ -275,7 +275,7 @@ export interface RadarRender {
   /** The series draw their area at a low opacity in their tone. Without it, true. */
   fill?: boolean;
   legend_position?: LegendPosition;
-  /** Points open the data view with the picked row expanded, and a button opens the whole data view. */
+  /** Spokes open the data view with the picked row expanded, and a button opens the whole data view. */
   drill_down?: boolean;
 }
 
@@ -296,7 +296,7 @@ export interface TreemapRender {
    * Without it, auto.
    */
   value_labels?: 'auto' | 'always' | 'never';
-  /** The value as a share of the total beside itself in the tile and in the tooltip. Without it, false. */
+  /** The value as a share of the total beside its value in the tile, in its tooltip, the text alternative and the data view. Without it, false. */
   show_share?: boolean;
   /** Tiles open the data view with the picked row expanded, and a button opens the whole data view. */
   drill_down?: boolean;
@@ -327,7 +327,8 @@ export interface WaterfallRender {
 
 export interface WaterfallData {
   /**
-   * Two to 24 steps in the delivered order, of the running sum the chart starts at 0. A delta moves the running sum
+   * Two to 24 steps in the delivered order, of the running sum the chart starts at 0, unless the first step is
+   * a total: that total is the start of the sum, the value it begins at. A delta moves the running sum
    * by its value (a negative one down); a null delta draws nothing and leaves the sum unchanged. A total draws the
    * running sum from 0, its own value staying null or the running sum itself (the widget cross-checks the two).
    * A running sum that leaves the finite range fails the cell, naming the step that moved it.
