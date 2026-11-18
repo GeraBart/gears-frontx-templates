@@ -196,9 +196,14 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
 /** The reason the widget's type, its entry, or its render or data type was left out with its part, or nothing. */
 function leftOut(types: TypeSystemPlugin, widgetId: string, rejected: Rejected): string | undefined {
   if (rejected.types.size === 0 && rejected.instances.size === 0) return undefined;
+  // A recorded type id counts only while the store still lacks the type: a part left out after the one that
+  // declared the type may have registered it before failing on something else of its own, and then the cells of
+  // the type mount. The entry lookup below stays on the record as it is: a part the registry rejects after its
+  // entry registered must still fail its cells (DESIGN §3.6 step 4).
+  const missingType = (id: string) => (types.getSchema(id) ? undefined : rejected.types.get(id));
   // The part that declared the widget's type may be the one left out, before the type registered: its line, not the
   // registry's, is the reason the cell fails.
-  const part = rejected.types.get(typeOfWidget(widgetId));
+  const part = missingType(typeOfWidget(widgetId));
   if (part) return part;
   try {
     const typeId = typeOfWidget(widgetId);
@@ -209,7 +214,7 @@ function leftOut(types: TypeSystemPlugin, widgetId: string, rejected: Rejected):
     // part's render and data type ids do: the cells of the type fail with the part's line all the same. A trait
     // that is no id, as a data_type a type has none of, names no part and is looked up by nothing.
     const dataType = traits.data_type;
-    return rejected.types.get(renderTypeOf(types, typeId)) ?? (typeof dataType === 'string' ? rejected.types.get(dataType) : undefined);
+    return missingType(renderTypeOf(types, typeId)) ?? (typeof dataType === 'string' ? missingType(dataType) : undefined);
   } catch {
     // A type that does not resolve fails the widget's own registration below.
     return undefined;

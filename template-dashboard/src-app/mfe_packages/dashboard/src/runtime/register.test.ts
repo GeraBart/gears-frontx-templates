@@ -872,6 +872,43 @@ describe('the served file in parts', () => {
       expect(failedSlots(loadedFile)).toEqual([]);
     });
 
+    it('fails no cell when a later part registers the data type an earlier left-out part declared', () => {
+      // The first part declares the pie data type and is left out by the pre-check before its types register, so
+      // the id is recorded with its line; the next part registers the type and then fails on an unrelated entry, so
+      // only a wholly healthy part clears the record. The type is in the store now, so the pie cells mount.
+      const pieData = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE_DATA}`)!;
+      const takeover = { ...demoDashboard(), title: 'Taken over' };
+      const declares = { types: [pieData], instances: [takeover] };
+      const registers = { types: [pieData], instances: [{ id: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.broken.v1', manifest: 7 }] };
+      const pie = bundlePart('pie_chart');
+      const withoutData = { ...pie, types: pie.types.filter((type) => String(type.$id) !== `gts://${PIE_DATA}`) };
+      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), declares, registers, withoutData]);
+      expect(loadedFile.lines).toEqual([
+        expect.stringMatching(/the widget part number 3 of the answer \(the served file is number 1\) is left out: its dashboard .* is already served otherwise$/),
+        expect.stringMatching(/the widget part number 4 of the answer \(the served file is number 1\) is left out: the registry rejected it: /),
+      ]);
+      // The record stays, with the line of the part that declared the type and registered nothing of it.
+      expect(loadedFile.outcome.ok && loadedFile.outcome.rejected.types.get(PIE_DATA)).toMatch(/already served otherwise$/);
+      // The type is in the store all the same, and the healthy part's cells mount with no failed cell.
+      expect(loadedFile.types.getSchema(PIE_DATA)).toEqual(pieData);
+      expect(failedSlots(loadedFile)).toEqual([]);
+    });
+
+    it('fails the pie cells with the left-out part\'s line when no part registers the data type it declared', () => {
+      // The reverse: the data type is in no part that registers, so the record stands, and the cells of the type
+      // fail with the line of the part that declared it, not with the registry's.
+      const pieData = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE_DATA}`)!;
+      const declares = { types: [pieData], instances: [{ ...demoDashboard(), title: 'Taken over' }] };
+      const pie = bundlePart('pie_chart');
+      const withoutData = { ...pie, types: pie.types.filter((type) => String(type.$id) !== `gts://${PIE_DATA}`) };
+      const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), declares, withoutData]);
+      expect(loadedFile.lines).toEqual([expect.stringMatching(/the widget part number 3 of the answer \(the served file is number 1\) is left out: its dashboard .* is already served otherwise$/)]);
+      const result = registerDashboard(loadedFile.types, demoDashboard(), loadedFile.outcome.ok ? loadedFile.outcome.rejected : undefined);
+      expect(pieSlots().length).toBeGreaterThan(0);
+      expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
+      expect(result.ok && result.failed.get(pieSlots()[0])).toMatch(/the widget part number 3 of the answer .* is left out: its dashboard .* is already served otherwise$/);
+    });
+
     it.each([
       ['the stand-in manifest', STAND_IN.instances[0], { name: 'taken_over' }],
       ['the stand-in entry', STAND_IN.instances[1], { exposedModule: './taken_over' }],
