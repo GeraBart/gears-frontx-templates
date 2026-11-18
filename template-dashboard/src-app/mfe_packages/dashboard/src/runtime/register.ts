@@ -154,11 +154,17 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
   parts.forEach((part, index) => {
     let ids: string[] = [];
     let typeIds: string[] = [];
+    // The instance ids are read first, and the type ids in a guard of their own: a type whose `$id` cannot be read
+    // is left out with the part, but must not take the part's name and its instance ids down with it, which the
+    // cells of the type fail by.
     const reason = guarded(() => {
-      if (isObject(part) && Array.isArray(part.types)) typeIds = part.types.filter(isObject).map(idOf).filter(Boolean);
       const instances = isObject(part) && Array.isArray(part.instances) ? part.instances.filter(isObject) : [];
       ids = instances.map(idOfInstance).filter((id) => id && !id.startsWith(DASHBOARD_TYPE_ID));
       return registerPart(types, part, bundleIds, held, false);
+    });
+    guarded(() => {
+      if (isObject(part) && Array.isArray(part.types)) typeIds = part.types.filter(isObject).map(idOf).filter(Boolean);
+      return undefined;
     });
     if (!reason) {
       // A healthy part's own registration replaces what an earlier rejected part left under the same id.

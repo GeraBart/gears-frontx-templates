@@ -805,6 +805,22 @@ describe('the served file in parts', () => {
       expect(failedSlots(loadedFile)).toEqual(pieSlots());
     });
 
+    it('names a part whose type id cannot be read by its manifest, and fails the cells of the type the base file holds with its line', () => {
+      // The pie widget type registers from the base file, so the pie cells can name the entry the part failed to
+      // bring; nothing of the part itself registers, and its unread type id must not take the instance ids down.
+      const pie = bundlePart('pie_chart');
+      const unreadable = { ...pieType() };
+      Object.defineProperty(unreadable, '$id', { enumerable: true, get: () => { throw new Error('unreadable'); } });
+      const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, pieType()] };
+      const broken = { ...pie, types: pie.types.map((schema) => (String(schema.$id) === `gts://${PIE}` ? unreadable : schema)) };
+      const { types, outcome, lines } = loadedParts([base, otherPart(), broken]);
+      expect(outcome.ok).toBe(true);
+      expect(lines).toEqual([expect.stringMatching(new RegExp(`the widget part "${PIE_MANIFEST.replace(/[.~]/g, '\\$&')}" is left out: it cannot be read: unreadable$`))]);
+      const result = registerDashboard(types, demoDashboard(), outcome.ok ? outcome.rejected : undefined);
+      expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
+      expect(result.ok && result.failed.get(pieSlots()[0])).toMatch(/^the widget part ".*pie_chart.*" is left out: it cannot be read: unreadable$/);
+    });
+
     it('fails every dashboard, not the caller, when the base file throws on read', () => {
       const unreadable = Object.defineProperty({}, 'id', { enumerable: true, get: () => { throw new Error('unreadable'); } });
       const { outcome } = loadedParts([{ ...DEMO_WITHOUT_BUNDLES, instances: [...DEMO_WITHOUT_BUNDLES.instances, unreadable] }, IN_BUNDLE_PARTS]);
