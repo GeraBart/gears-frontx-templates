@@ -1074,6 +1074,21 @@ describe('activity_feed', () => {
     expect(rows.map((row) => row.querySelector('svg') !== null)).toEqual([true, true, true, true, false]);
   });
 
+  it('draws an item of the neutral tone with no mark, like an item without a tone', () => {
+    const { container } = render(
+      <ActivityFeed
+        payload={{
+          render: {},
+          data: { items: [item('open', '2026-11-01', { tone: 'info' }), item('queued', '2026-11-01', { tone: 'neutral' }), item('plain', '2026-11-01')] } }}
+        />,
+    );
+    // The neutral tone carries no mark: its row draws its title and its time, and no mark beside the title.
+    const rows = [...container.querySelectorAll('ul > li')];
+    expect(rows.map((row) => row.querySelector('svg') !== null)).toEqual([true, false, false]);
+    expect(rows[1].textContent).toContain('queued');
+    expect(rows[1].querySelector('time')).not.toBeNull();
+  });
+
   it('draws no tone mark when the render turns the tones off', () => {
     const { container } = render(
       <ActivityFeed payload={{ render: { show_tone: false }, data: { items: [item('open', '2026-11-01', { tone: 'info' }), item('plain', '2026-11-01')] } }} />,

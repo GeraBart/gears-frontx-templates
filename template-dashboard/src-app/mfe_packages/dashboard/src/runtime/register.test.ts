@@ -261,6 +261,18 @@ describe('registration order under reference lookup', () => {
     expect(result.ok && result.failed.get(slotOf(2, 'cell'))).toMatch(/\/render\/time_style/);
   });
 
+  it('accepts the activity_feed page_size bounds the catalog names, and refuses one outside them', () => {
+    const type = shipped.find((id) => id.endsWith('.activity_feed.v1~'))!;
+    const feed = demoWidgets.find((widget) => widget.id.startsWith(type))!;
+    const { types } = loaded();
+    // The catalog pins page_size at 3 to 50: the bounds register, 2 and 51 fail their cells.
+    const values = [3, 50, 2, 51];
+    const result = registerDashboard(types, dashboardOf(values.map((value, index) => withRender(type, feed, 'page_size', `9${index}`, value))));
+    expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(2, 'cell'), slotOf(3, 'cell')]);
+    expect(result.ok && result.failed.get(slotOf(2, 'cell'))).toMatch(/\/render\/page_size/);
+    expect(result.ok && result.failed.get(slotOf(3, 'cell'))).toMatch(/\/render\/page_size/);
+  });
+
   it('accepts ranked status tones from the shared tones type, and fails a tone outside its closed values or an empty status', () => {
     const type = shipped.find((id) => id.endsWith('.ranked_list_card.v1~'))!;
     const ranked = demoWidgets.find((widget) => widget.id.startsWith(type))!;

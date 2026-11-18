@@ -1735,6 +1735,22 @@ describe('waterfall_chart', () => {
     expect(legendOf(container)).toEqual(['Increase', 'Decrease', 'Total']);
   });
 
+  it('draws the first total from zero up to the sum it sets, and the delta after it from that sum', () => {
+    // The steps Start 10 (a total), Up +4, Down -3 and End 11 (a total): the first bar spans zero to 10, the sum the
+    // deltas move from, so the increase starts at its top and the last total stands on the same zero.
+    const { container } = draw([
+      { label: 'Start', value: 10, kind: 'total' },
+      { label: 'Up', value: 4 },
+      { label: 'Down', value: -3 },
+      { label: 'End', value: 11, kind: 'total' },
+    ]);
+    const [start, up, down, end] = edgesOf(container);
+    expect(start!.bottom).toBeCloseTo(end!.bottom, 6);
+    expect(up!.bottom).toBeCloseTo(start!.top, 6);
+    expect(down!.top).toBeCloseTo(up!.top, 6);
+    expect(down!.bottom).toBeCloseTo(end!.top, 6);
+  });
+
   it('names in its legend only the tones its steps take, in the order increase, decrease, total', () => {
     // Four increases and a total: no decrease to name.
     expect(legendOf(draw(STEPS).container)).toEqual(['Increase', 'Total']);
