@@ -24,20 +24,30 @@ export function dayOf(x: unknown): number | null {
 export const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)?$/;
 
 /**
+ * An ISO 8601 date-time with its offset written as +hh:mm, the one form every engine reads and HTML takes: +hhmm takes
+ * its colon and a bare +hh takes the minutes 00, while Z and no zone stay as they are, and a bare `YYYY-MM-DD` date
+ * stays as it is.
+ */
+export function dateTimeOf(time: string): string {
+  const dateTime = ISO_DATE_TIME.exec(time);
+  if (!dateTime) return time;
+  const zone = dateTime[4] ?? '';
+  if (zone === '') return time;
+  const offset = zone.replace(/^([+-])(\d{2})$/, '$1$2:00').replace(/^([+-])(\d{2})(\d{2})$/, '$1$2:$3');
+  return offset === zone ? time : `${time.slice(0, -zone.length)}${offset}`;
+}
+
+/**
  * The one time reader of the widgets: a time string as epoch milliseconds. An ISO 8601 date-time reads as it is,
  * once its date part is a day of the calendar (Date.parse rolls 2026-02-30T10:00:00Z over into March, so the date part
  * goes through the calendar rule of dayOf first), and a bare `YYYY-MM-DD` date reads as its UTC midnight by that
  * rule. Null for anything else, including a day the calendar does not have, alone or before a time of day.
  */
 export function timeOf(time: string): number | null {
-  const dateTime = ISO_DATE_TIME.exec(time);
-  if (!dateTime) return dayOf(time);
+  if (!ISO_DATE_TIME.test(time)) return dayOf(time);
   if (dayOf(time.slice(0, 10)) === null) return null;
-  // The standard defines the offset in one form, +hh:mm, and every engine reads that form: the offset is written in it
-  // before parsing, so +hhmm takes its colon and a bare +hh takes the minutes 00, while Z and no zone stay as they are.
-  const zone = dateTime[4] ?? '';
-  const offset = zone.replace(/^([+-])(\d{2})$/, '$1$2:00').replace(/^([+-])(\d{2})(\d{2})$/, '$1$2:$3');
-  const parsed = Date.parse(offset === zone ? time : `${time.slice(0, -zone.length)}${offset}`);
+  // The offset is written as +hh:mm before parsing, the one form every engine reads.
+  const parsed = Date.parse(dateTimeOf(time));
   return Number.isNaN(parsed) ? null : parsed;
 }
 

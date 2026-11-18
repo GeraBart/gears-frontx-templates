@@ -7,7 +7,7 @@ import { nonFiniteProblemOf } from '../format';
 import { SafeLink } from '../links';
 import { DEFAULT_WIDGET_TEXTS, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
 import type { ActivityFeedData, ActivityFeedRender, Tone } from '../types';
-import { dateFormatOf, ISO_DATE_TIME, timeOf } from '../time';
+import { dateFormatOf, dateTimeOf, ISO_DATE_TIME, timeOf } from '../time';
 import { useDataVersion } from '../grid/useDataVersion';
 import styles from '../widgets.module.css';
 
@@ -175,8 +175,8 @@ export function ActivityFeed({
                     {typeof item.href === 'string' ? <SafeLink text={item.title} href={item.href} texts={texts} /> : item.title}
                   </Text>
                 </span>
-                {/* The delivered string stays the machine-readable datetime; the shown text is by the render. */}
-                <time className={styles.feedTime} dateTime={item.time}>
+                {/* The delivered string stays the machine-readable datetime, its offset written as +hh:mm; the shown text is by the render. */}
+                <time className={styles.feedTime} dateTime={dateTimeOf(item.time)}>
                   <Text typography="meta" tone="muted" render={<span />}>
                     {relative ? relativeOf(time, dateTime, now, formats.relative) : absoluteOf(time, dateTime, formats)}
                   </Text>

@@ -1218,6 +1218,21 @@ describe('activity_feed', () => {
     }
   });
 
+  it('writes the time element datetime with the offset as +hh:mm, from +hh and +hhmm', () => {
+    render(
+      <ActivityFeed
+        payload={{
+          render: { time_style: 'absolute' },
+          data: { items: [item('hours alone', '2026-11-04T10:00:00+02'), item('with minutes', '2026-11-04T10:00:00+0200')] },
+        }}
+      />,
+    );
+    expect([...document.querySelectorAll('time')].map((time) => time.getAttribute('datetime'))).toEqual([
+      '2026-11-04T10:00:00+02:00',
+      '2026-11-04T10:00:00+02:00',
+    ]);
+  });
+
   it.each(['2026-11-04T10:00:00+2', '2026-11-04T10:00:00+020'])('fails its cell naming the item whose offset %s is none of the forms it takes', (time) => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     render(<ActivityFeed payload={{ render: {}, data: { items: [item('first', time)] } }} />);
