@@ -33,10 +33,11 @@ export function timeOf(time: string): number | null {
   const dateTime = ISO_DATE_TIME.exec(time);
   if (!dateTime) return dayOf(time);
   if (dayOf(time.slice(0, 10)) === null) return null;
-  // The engine reads Z, an offset with minutes (+hh:mm, +hhmm) and no zone itself; a bare +hh or -hh it does not,
-  // so that form is written with its minutes, which are 00, before reading.
+  // The standard defines the offset in one form, +hh:mm, and every engine reads that form: the offset is written in it
+  // before parsing, so +hhmm takes its colon and a bare +hh takes the minutes 00, while Z and no zone stay as they are.
   const zone = dateTime[4] ?? '';
-  const parsed = Date.parse(/^\d{2}$/.test(zone.slice(1)) ? `${time}:00` : time);
+  const offset = zone.replace(/^([+-])(\d{2})$/, '$1$2:00').replace(/^([+-])(\d{2})(\d{2})$/, '$1$2:$3');
+  const parsed = Date.parse(offset === zone ? time : `${time.slice(0, -zone.length)}${offset}`);
   return Number.isNaN(parsed) ? null : parsed;
 }
 
