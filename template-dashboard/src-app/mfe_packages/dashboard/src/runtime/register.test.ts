@@ -639,6 +639,29 @@ describe('the served file in parts', () => {
     expect(result).toMatchObject({ ok: true, failed: new Map() });
   });
 
+  it('fails the cells of a type the base file copies with another entry with the line of the part that left its render and data types out', () => {
+    // The old way of re-pointing, a copy of the pie widget type with the product's entry in the base file: the
+    // catalog pie part is left out for its type alone, its render and data type ids name it, and the product entry
+    // the cells resolve to names nothing.
+    const pieType = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE}`)!;
+    const catalogManifest = IN_BUNDLE_PARTS.instances.find((instance) => instance.id === PIE_MANIFEST)!;
+    const catalogEntry = IN_BUNDLE_PARTS.instances.find((instance) => instance.id === PIE_ENTRY)!;
+    const PRODUCT_MANIFEST = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.product.widgets.pie_chart.v1';
+    const PRODUCT_ENTRY = 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.product.mfe.pie_chart.v1';
+    const base = {
+      ...DEMO_WITHOUT_BUNDLES,
+      types: [...DEMO_WITHOUT_BUNDLES.types, { ...pieType, 'x-gts-traits': { entry: PRODUCT_ENTRY, data_type: PIE_DATA } }],
+      instances: [...DEMO_WITHOUT_BUNDLES.instances, { ...catalogManifest, id: PRODUCT_MANIFEST }, { ...catalogEntry, id: PRODUCT_ENTRY, manifest: PRODUCT_MANIFEST }],
+    };
+    const { types, outcome, lines } = loadedParts([base, otherPart(), bundlePart('pie_chart')]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(new RegExp(`the widget part "${PIE_MANIFEST.replace(/[.~]/g, '\\$&')}" is left out: its type .*pie_chart\\.v1~ is already defined otherwise$`));
+    const result = registerDashboard(types, demoDashboard(), outcome.ok ? outcome.rejected : undefined);
+    expect(pieSlots().length).toBeGreaterThan(0);
+    expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
+    expect(result.ok && result.failed.get(pieSlots()[0])).toMatch(/^the widget part ".*pie_chart.*" is left out: its type .* is already defined otherwise$/);
+  });
+
   it('still fails every dashboard when the first part, the base file, is rejected', () => {
     const clash = { $id: 'gts://gts.frontx.dashboard.widget.widget.v1~', $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' };
     expect(loadedParts([{ ...DEMO_WITHOUT_BUNDLES, types: [clash, ...DEMO_WITHOUT_BUNDLES.types] }, IN_BUNDLE_PARTS]).outcome).toMatchObject({

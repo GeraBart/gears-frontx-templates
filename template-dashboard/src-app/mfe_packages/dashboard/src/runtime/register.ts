@@ -193,7 +193,7 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
   return { ok: true, dashboards: held.dashboards, rejected };
 }
 
-/** The reason the widget's type or its entry was left out with its part, or nothing. */
+/** The reason the widget's type, its entry, or its render or data type was left out with its part, or nothing. */
 function leftOut(types: TypeSystemPlugin, widgetId: string, rejected: Rejected): string | undefined {
   if (rejected.types.size === 0 && rejected.instances.size === 0) return undefined;
   // The part that declared the widget's type may be the one left out, before the type registered: its line, not the
@@ -201,7 +201,13 @@ function leftOut(types: TypeSystemPlugin, widgetId: string, rejected: Rejected):
   const part = rejected.types.get(typeOfWidget(widgetId));
   if (part) return part;
   try {
-    return rejected.instances.get(String(effectiveTraits(types, typeOfWidget(widgetId)).entry));
+    const typeId = typeOfWidget(widgetId);
+    const traits = effectiveTraits(types, typeId);
+    const entry = rejected.instances.get(String(traits.entry));
+    if (entry) return entry;
+    // The type can sit in the base file with an entry of its own, so the entry names no left-out part while the
+    // part's render and data type ids do: the cells of the type fail with the part's line all the same.
+    return rejected.types.get(renderTypeOf(types, typeId)) ?? rejected.types.get(String(traits.data_type));
   } catch {
     // A type that does not resolve fails the widget's own registration below.
     return undefined;
