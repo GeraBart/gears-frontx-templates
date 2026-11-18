@@ -30,6 +30,11 @@ export const WIDGET_ENTRIES: Readonly<Record<string, () => MfeEntryLifecycle>> =
   bundles.flatMap(({ source, render }) => source.entries.map((entry) => [entry.id, () => createWidgetLifecycle(render)])),
 );
 
+/** The types of each catalog bundle's part, by the bundle's name: the `schemas` its mfe.json declares, as the build writes them into the part. */
+export const BUNDLE_TYPES: Readonly<Record<string, ServedFile['types']>> = Object.fromEntries(
+  Object.entries(sources).map(([file, source]) => [file.match(/bundles\/([^/]+)\/mfe\.json$/)?.[1] ?? file, source.schemas ?? []]),
+);
+
 /**
  * The served-file parts of the catalog bundles without a build: each bundle's
  * manifest and entry, and the types its mfe.json declares in schemas, in

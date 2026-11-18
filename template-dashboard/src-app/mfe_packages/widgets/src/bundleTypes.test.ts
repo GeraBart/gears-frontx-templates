@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { IN_BUNDLE_PARTS } from './testing';
+import { BUNDLE_TYPES, IN_BUNDLE_PARTS } from './testing';
 
 /*
  * The widget bundles carry their own types in the schemas of their mfe.json,
@@ -8,16 +8,7 @@ import { IN_BUNDLE_PARTS } from './testing';
  * types since then, so the counts below are pinned to what it had.
  */
 
-/** The schemas field of a bundle's mfe.json, as the bundle build reads it. */
-interface BundleSchemas {
-  schemas?: Array<Record<string, unknown>>;
-}
-
-const sources = import.meta.glob<BundleSchemas>('../bundles/*/mfe.json', { eager: true, import: 'default' });
-const TYPES_BY_BUNDLE: Readonly<Record<string, Array<Record<string, unknown>>>> = Object.fromEntries(
-  Object.entries(sources).map(([file, source]) => [file.match(/bundles\/([^/]+)\/mfe\.json$/)?.[1] ?? file, source.schemas ?? []]),
-);
-const BUNDLES = Object.keys(TYPES_BY_BUNDLE).sort();
+const BUNDLES = Object.keys(BUNDLE_TYPES).sort();
 /** markdown_card renders markdown, no data: it has no data type and its widget type derives from the widget base directly. */
 const NO_DATA_TYPE = new Set(['markdown_card']);
 
@@ -35,7 +26,7 @@ const ownIds = (bundle: string) => [idOf.widget(bundle), idOf.render(bundle), ..
 
 describe('the types the widget bundles declare', () => {
   it.each(BUNDLES)('are, for %s, exactly its own widget, render and data types', (bundle) => {
-    const ids = (TYPES_BY_BUNDLE[bundle] ?? []).map((type) => String(type.$id));
+    const ids = (BUNDLE_TYPES[bundle] ?? []).map((type) => String(type.$id));
     expect([...ids].sort()).toEqual(ownIds(bundle));
   });
 

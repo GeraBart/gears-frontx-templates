@@ -2,7 +2,7 @@ import { GtsPlugin, loadLifecycleStages } from '@gears-frontx/gts-plugin';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Dashboard, ServedFile } from '../contract';
-import { IN_BUNDLE_PARTS } from '@gears-frontx/frontx-dashboard-widgets/testing';
+import { BUNDLE_TYPES, IN_BUNDLE_PARTS } from '@gears-frontx/frontx-dashboard-widgets/testing';
 import { STAND_IN, STAND_IN_TYPE_ID } from '../gts';
 import { DEMO_DASHBOARD_ID, DEMO_SERVED_FILE as DEMO_WITHOUT_BUNDLES } from '../mock/mockHost';
 import { composeServedFile } from './served';
@@ -530,9 +530,8 @@ describe('the served file', () => {
 
 describe('the served file in parts', () => {
   const PIE_MANIFEST = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.pie_chart.v1';
-  /** The types one catalog bundle's part carries: its widget and data types by exact id suffix, and its render type. */
-  const bundleTypes = (widget: string) =>
-    IN_BUNDLE_PARTS.types.filter((type) => [`.${widget}.v1~`, `.${widget}_render.v1~`].some((suffix) => String(type.$id).endsWith(suffix)));
+  /** The types one catalog bundle's part carries, as its bundle's mfe.json declares them. */
+  const bundleTypes = (widget: string) => BUNDLE_TYPES[widget] ?? [];
   /** One catalog bundle's part: its own types, then its manifest and entry from the in-bundle parts. */
   const bundlePart = (widget: string): ServedFile => ({ types: bundleTypes(widget), instances: IN_BUNDLE_PARTS.instances.filter((instance) => String(instance.id).endsWith(`.${widget}.v1`)) });
   const others = IN_BUNDLE_PARTS.instances.filter((instance) => !String(instance.id).endsWith('.pie_chart.v1'));

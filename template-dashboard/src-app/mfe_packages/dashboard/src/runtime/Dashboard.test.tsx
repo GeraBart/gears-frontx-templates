@@ -4,7 +4,7 @@ import { ActionHandler, MfeHandlerMF, type ChildMfeBridge, type MfeEntryLifecycl
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { LANGUAGE_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID, type ServedFile } from '../contract';
-import { IN_BUNDLE_PARTS, WIDGET_ENTRIES } from '@gears-frontx/frontx-dashboard-widgets/testing';
+import { BUNDLE_TYPES, IN_BUNDLE_PARTS, WIDGET_ENTRIES } from '@gears-frontx/frontx-dashboard-widgets/testing';
 import { createMockHost, DEMO_DASHBOARD_ID, DEMO_SERVED_FILE as DEMO_WITHOUT_BUNDLES } from '../mock/mockHost';
 import { composeServedFile } from './served';
 
@@ -99,7 +99,7 @@ describe('Dashboard on the real registry', () => {
     // The served widget list names one part per catalog bundle, each with the types its bundle declares; the pie
     // chart's manifest is one the registry rejects.
     const parts = TYPES.map((type) => ({
-      types: IN_BUNDLE_PARTS.types.filter((schema) => [`.${type}.v1~`, `.${type}_render.v1~`].some((suffix) => String(schema.$id).endsWith(suffix))),
+      types: BUNDLE_TYPES[type] ?? [],
       instances: IN_BUNDLE_PARTS.instances
         .filter((instance) => String(instance.id).endsWith(`.${type}.v1`))
         .map((instance) => (type === 'pie_chart' && String(instance.id).includes('mf_manifest') ? { ...instance, name: 7 } : instance)),
