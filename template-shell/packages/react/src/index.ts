@@ -431,6 +431,9 @@ export {
   FRONTX_SHARED_PROPERTY_LANGUAGE,
 } from '@gears-frontx/framework';
 
+// Theme host attribute constant
+export { FRONTX_THEME_HOST_ATTRIBUTE } from '@gears-frontx/framework';
+
 // MFE Types
 export type {
   MfeMountContext,

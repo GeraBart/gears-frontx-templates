@@ -10,6 +10,14 @@
 import type { ThemeRegistry, ThemeConfig } from '../types';
 
 /**
+ * The attribute a screen host carries so the theme's managed rule reaches it:
+ * the screen container marks every element it hands a screen with it (see the
+ * shell's `ScreenContainerHooks`), and the managed rule below names it as its
+ * second selector.
+ */
+export const FRONTX_THEME_HOST_ATTRIBUTE = 'data-frontx-theme-host';
+
+/**
  * Create a new theme registry instance.
  */
 export function createThemeRegistry(): ThemeRegistry {
@@ -59,7 +67,20 @@ export function createThemeRegistry(): ThemeRegistry {
     // design-system [data-theme='...'] token blocks (0,1,0) — with plain :root the
     // outcome is a specificity tie decided by style-tag order, which Vite HMR
     // re-injection can flip at any time.
-    sheet.insertRule(`:root:root { ${parts.join('; ')} }`, 0);
+    // The second selector names FRONTX_THEME_HOST_ATTRIBUTE, doubled to stay at
+    // (0,2,0): inside a screen's shadow tree the kit's sheet is re-anchored to
+    // `:host`, so every kit token is declared on the screen host itself and a
+    // declaration there beats one inherited from the document tree - a shell
+    // theme value never reached the screen. An outer-tree rule beats a `:host`
+    // rule from inside the shadow tree before specificity is compared, so
+    // naming the host element here lets the theme's tokens win on it; at the
+    // same weight as :root:root, a future outer-tree rule of equal weight
+    // targeting the host (a module class on the screen container, say) cannot
+    // bring the style-tag-order tie back either.
+    sheet.insertRule(
+      `:root:root, [${FRONTX_THEME_HOST_ATTRIBUTE}][${FRONTX_THEME_HOST_ATTRIBUTE}] { ${parts.join('; ')} }`,
+      0
+    );
   }
 
   return {

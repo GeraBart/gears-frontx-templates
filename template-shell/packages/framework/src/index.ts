@@ -204,6 +204,7 @@ export { presets, full, minimal, type FullPresetConfig } from './presets';
 
 export {
   createThemeRegistry,
+  FRONTX_THEME_HOST_ATTRIBUTE,
 } from './registries';
 
 // ============================================================================

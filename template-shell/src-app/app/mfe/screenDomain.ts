@@ -16,6 +16,7 @@ import {
   ExclusiveMountStrategy,
   ActionHandler,
   FRONTX_ACTION_MOUNT_EXT,
+  FRONTX_THEME_HOST_ATTRIBUTE,
   screenDomain,
 } from '@gears-frontx/react';
 import type {
@@ -43,6 +44,14 @@ class ScreenContainerHooks implements ContainerHooks {
   create(extensionId: string): Element {
     const el = document.createElement('div');
     el.dataset.extensionId = extensionId;
+    // The theme host attribute: the theme registry's managed rule names it as
+    // its second selector, so a shell theme value declared on the document
+    // root reaches the screen host. Inside the shadow root the kit's sheet is
+    // re-anchored to `:host`, and that declaration would beat one inherited
+    // from the document tree; an outer-tree rule beats a `:host` rule before
+    // specificity is compared, but only a rule that names this element can
+    // apply to it.
+    el.setAttribute(FRONTX_THEME_HOST_ATTRIBUTE, '');
     el.style.height = '100%';
     this.elements.set(extensionId, el);
     screenState.set(extensionId);
