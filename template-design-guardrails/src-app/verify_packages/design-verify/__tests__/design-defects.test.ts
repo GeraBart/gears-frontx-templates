@@ -8,6 +8,7 @@
 // dev mode, where the shell installs the checker when this package is present.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  ACCENT_STANDOUT_MIN,
   CONTROL_HEIGHT_TOLERANCE_PX,
   CONTROL_TEXT_PX,
   FULL_BLEED_TOLERANCE_PX,
@@ -29,6 +30,7 @@ import {
   installDesignDefectCheck,
   isClippedText,
   isControlSurfaceDefect,
+  isFilledAccentControl,
   isFullBleedMedia,
   isSmallControlText,
   isTinyText,
@@ -485,6 +487,18 @@ describe('control-surface-contrast maths', () => {
     expect(isControlSurfaceDefect({ ratio: 1.3, borderRatio: NON_TEXT_CONTRAST_MIN })).toBe(false);
     expect(isControlSurfaceDefect({ ratio: 1.3, borderRatio: 2.9 })).toBe(true);
   });
+
+  it('measures a control only when its surface stands out from the screen surface', () => {
+    // A filled accent (the kit's primary on a light page) clears the gate.
+    expect(isFilledAccentControl(5.3)).toBe(true);
+    expect(isFilledAccentControl(ACCENT_STANDOUT_MIN)).toBe(true);
+    // Neutral chrome sits at the page's own colours: the kit's outline button
+    // surface reads 1.0:1 against the band it paints on, a secondary one just
+    // over, and an unreadable screen surface measures nothing.
+    expect(isFilledAccentControl(1.0)).toBe(false);
+    expect(isFilledAccentControl(1.48)).toBe(false);
+    expect(isFilledAccentControl(null)).toBe(false);
+  });
 });
 
 describe('findTouchingSectionPairs', () => {
@@ -805,40 +819,89 @@ describe('the sweep over composed DOM (jsdom, painted boxes faked)', () => {
     return runDesignDefectCheck();
   }
 
-  it('control-surface-contrast: a filled control on a band of its own colour is reported, a contrasting one and a ghost are not', async () => {
+  // The motivating case: a filled accent control sitting on a band of its
+  // own colour. The accent stands out from the screen's own surface (white),
+  // so the rule measures it, and the band under it is the same colour: 1:1.
+  it('control-surface-contrast: a filled accent on a band of its own colour is reported, a contrasting one and a ghost are not', async () => {
     document.body.innerHTML = `
       <main>
         <div style="background-color: rgb(255, 255, 255); position: static;">
-          <button id="quiet" style="background-color: rgb(224, 224, 224); border: 0;">Save</button>
+          <div id="band" style="background-color: rgb(255, 0, 0);">
+            <button id="accent" style="background-color: rgb(255, 0, 0); border: 0;">Save</button>
+            <button id="ghost" style="background-color: transparent; border: 0;">Help</button>
+          </div>
           <button id="loud" style="background-color: rgb(255, 0, 0); border: 0;">Cancel</button>
-          <button id="ghost" style="background-color: transparent; border: 0;">Help</button>
         </div>
       </main>
     `;
     paintBoxes([
-      ['div', 0, 300],
-      ['#quiet', 10, 36],
-      ['#loud', 60, 36],
-      ['#ghost', 110, 36],
+      ['div', 0, 400],
+      ['#band', 0, 200],
+      ['#accent', 10, 36],
+      ['#ghost', 60, 36],
+      ['#loud', 210, 36],
     ]);
 
     const findings = await sweep();
 
     expect(findings.map((finding) => finding.id)).toEqual(['control-surface-contrast']);
-    expect(findings[0]).toMatchObject({ target: 'button#quiet' });
+    expect(findings[0]).toMatchObject({ target: 'button#accent' });
   });
 
-  it('control-surface-contrast: a border that reaches 3:1 saves a quiet surface', async () => {
+  it('control-surface-contrast: a border that reaches 3:1 saves a quiet accent surface', async () => {
     document.body.innerHTML = `
       <main>
         <div style="background-color: rgb(255, 255, 255);">
-          <button id="outlined" style="background-color: rgb(224, 224, 224); border: 1px solid rgb(0, 0, 0);">Save</button>
+          <div id="band" style="background-color: rgb(255, 0, 0);">
+            <button id="bordered" style="background-color: rgb(255, 0, 0); border: 1px solid rgb(0, 0, 0);">Save</button>
+            <button id="naked" style="background-color: rgb(255, 0, 0); border: 0;">Save</button>
+          </div>
         </div>
       </main>
     `;
     paintBoxes([
-      ['div', 0, 300],
-      ['#outlined', 10, 36],
+      ['div', 0, 400],
+      ['#band', 0, 200],
+      ['#bordered', 10, 36],
+      ['#naked', 60, 36],
+    ]);
+
+    const findings = await sweep();
+
+    expect(findings.map((finding) => finding.id)).toEqual(['control-surface-contrast']);
+    expect(findings[0]).toMatchObject({ target: 'button#naked' });
+  });
+
+  // The narrowing the kit's example screens asked for: the default outline
+  // button paints at the page's own colours, so does the secondary one, and a
+  // field's boundary is a page-wide convention. None of them is a filled
+  // accent, and none is measured here - the form fields not even when one
+  // paints an accent colour on an accent band: the field exclusion, not the
+  // accent gate, is what keeps them out of this check.
+  it('control-surface-contrast: neutral controls and form fields are not measured', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div style="background-color: rgb(255, 255, 255);">
+          <button id="outline" style="background-color: rgb(255, 255, 255); border: 1px solid rgb(148, 163, 184);">Outline</button>
+          <button id="secondary" style="background-color: rgb(248, 250, 252); border: 1px solid rgb(226, 232, 240);">Secondary</button>
+          <div id="band" style="background-color: rgb(255, 0, 0);">
+            <input id="email" style="background-color: rgb(255, 0, 0); border: 1px solid rgb(148, 163, 184);" />
+            <select id="choice" style="background-color: rgb(255, 0, 0); border: 1px solid rgb(148, 163, 184);"><option>one</option></select>
+            <textarea id="bio" style="background-color: rgb(255, 0, 0); border: 1px solid rgb(148, 163, 184);"></textarea>
+            <button id="field-trigger" role="combobox" aria-haspopup="listbox" style="background-color: rgb(255, 0, 0); border: 1px solid rgb(148, 163, 184);">Choose</button>
+          </div>
+        </div>
+      </main>
+    `;
+    paintBoxes([
+      ['div', 0, 500],
+      ['#outline', 10, 36],
+      ['#secondary', 60, 36],
+      ['#band', 110, 240],
+      ['#email', 120, 36],
+      ['#choice', 170, 36],
+      ['#bio', 220, 60],
+      ['#field-trigger', 300, 36],
     ]);
 
     expect(await sweep()).toEqual([]);
@@ -848,19 +911,22 @@ describe('the sweep over composed DOM (jsdom, painted boxes faked)', () => {
     document.body.innerHTML = `
       <main>
         <div style="background-color: rgb(255, 255, 255);">
-          <button id="hidden-region" style="background-color: rgb(224, 224, 224); border: 0;" aria-hidden="true">Save</button>
-          <div aria-hidden="true"><button id="hidden-parent" style="background-color: rgb(224, 224, 224); border: 0;">Save</button></div>
-          <button id="transparent" style="background-color: rgb(224, 224, 224); border: 0; opacity: 0;">Save</button>
-          <input id="offscreen" type="hidden" style="background-color: rgb(224, 224, 224);" />
-          <button id="clipped" style="background-color: rgb(224, 224, 224); border: 0; position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0);">Save</button>
-          <button id="inert" style="background-color: rgb(224, 224, 224); border: 0;" disabled>Save</button>
-          <fieldset disabled><button id="fieldset-inert" style="background-color: rgb(224, 224, 224); border: 0;">Save</button></fieldset>
-          <button id="quiet" style="background-color: rgb(224, 224, 224); border: 0;">Save</button>
+          <div id="band" style="background-color: rgb(255, 0, 0);">
+            <button id="hidden-region" style="background-color: rgb(255, 0, 0); border: 0;" aria-hidden="true">Save</button>
+            <div aria-hidden="true"><button id="hidden-parent" style="background-color: rgb(255, 0, 0); border: 0;">Save</button></div>
+            <button id="transparent" style="background-color: rgb(255, 0, 0); border: 0; opacity: 0;">Save</button>
+            <input id="offscreen" type="hidden" style="background-color: rgb(255, 0, 0);" />
+            <button id="clipped" style="background-color: rgb(255, 0, 0); border: 0; position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0);">Save</button>
+            <button id="inert" style="background-color: rgb(255, 0, 0); border: 0;" disabled>Save</button>
+            <fieldset disabled><button id="fieldset-inert" style="background-color: rgb(255, 0, 0); border: 0;">Save</button></fieldset>
+            <button id="quiet" style="background-color: rgb(255, 0, 0); border: 0;">Save</button>
+          </div>
         </div>
       </main>
     `;
     paintBoxes([
       ['div', 0, 400],
+      ['#band', 0, 400],
       ['#hidden-region', 10, 36],
       ['#hidden-parent', 50, 36],
       ['#transparent', 90, 36],
@@ -874,7 +940,7 @@ describe('the sweep over composed DOM (jsdom, painted boxes faked)', () => {
     const findings = await sweep();
 
     // Every invisible or inactive control drops out; the one visible,
-    // enabled quiet control is still judged on its (failing) surface.
+    // enabled accent control is still judged on its (failing) surface.
     expect(findings.map((finding) => finding.id)).toEqual(['control-surface-contrast']);
     expect(findings[0]).toMatchObject({ target: 'button#quiet' });
   });
@@ -913,6 +979,53 @@ describe('the sweep over composed DOM (jsdom, painted boxes faked)', () => {
     // light-DOM control is still judged.
     expect(findings.map((finding) => finding.id)).toEqual(['control-surface-contrast']);
     expect(findings[0]).toMatchObject({ target: 'button#quiet' });
+  });
+  // A control placed straight in the screen root is not the screen itself.
+  // Starting the screen-surface walk at the control resolved the control's
+  // own background as the screen's surface, read 1:1 and never measured the
+  // control; for that layout the screen's own surface is the landmark's, so
+  // the accent gate judges against it and the grey surface under the 3:1
+  // non-text floor is reported.
+  it('control-surface-contrast: a control that is a direct child of the screen root is measured', async () => {
+    document.body.innerHTML = `
+      <main style="background-color: rgb(255, 255, 255);">
+        <button id="root-accent" style="background-color: rgb(160, 160, 160); border: 0;">Save</button>
+      </main>
+    `;
+    paintBoxes([
+      ['main', 0, 400],
+      ['#root-accent', 10, 36],
+    ]);
+
+    const findings = await sweep();
+
+    expect(findings.map((finding) => finding.id)).toEqual(['control-surface-contrast']);
+    expect(findings[0]).toMatchObject({ target: 'button#root-accent' });
+  });
+
+  // The screen root's own colour cannot be parsed (a color-mix Chromium
+  // reports as oklab()): the screen surface is unknowable, so the control
+  // drops out of the accent gate instead of being judged against what stands
+  // behind the root, the way every other unparsable colour in this sweep is
+  // skipped. The band under the control paints opaquely, so the control's
+  // own backdrop stays readable: the unparsable colour is only the screen's.
+  it('control-surface-contrast: an unparsable screen surface skips the control instead of guessing', async () => {
+    document.body.innerHTML = `
+      <main>
+        <div id="root" style="background-color: oklab(0.5 0.1 0.2);">
+          <div id="band" style="background-color: rgb(255, 0, 0);">
+            <button id="accent" style="background-color: rgb(255, 0, 0); border: 0;">Save</button>
+          </div>
+        </div>
+      </main>
+    `;
+    paintBoxes([
+      ['#root', 0, 400],
+      ['#band', 0, 200],
+      ['#accent', 10, 36],
+    ]);
+
+    expect(await sweep()).toEqual([]);
   });
 
   // A band painting an image over its background colour (an opaque white
@@ -982,6 +1095,31 @@ describe('the sweep over composed DOM (jsdom, painted boxes faked)', () => {
 
     expect(findings.map((finding) => finding.id)).toEqual(['control-surface-contrast']);
     expect(findings[0]).toMatchObject({ target: 'button#clipped' });
+  });
+
+  // An opaque screen surface is what the accent gate judges against whatever
+  // stands behind the screen root: an unparsable colour on an ancestor above
+  // the screen (a color-mix Chromium reports as oklab()) must not blind the
+  // gate to a control the screen's own opaque surface can still measure.
+  it('control-surface-contrast: an opaque screen surface is read before what stands behind it', async () => {
+    document.body.innerHTML = `
+      <main style="background-color: rgb(255, 255, 255);">
+        <button id="root-accent" style="background-color: rgb(160, 160, 160); border: 0;">Save</button>
+      </main>
+    `;
+    document.body.style.backgroundColor = 'oklab(0.5 0.1 0.2)';
+    paintBoxes([
+      ['main', 0, 400],
+      ['#root-accent', 10, 36],
+    ]);
+
+    // Removed before the assertions so a failure cannot leave the page
+    // surface unparsable for the tests after this one.
+    const findings = await sweep();
+    document.body.style.removeProperty('background-color');
+
+    expect(findings.map((finding) => finding.id)).toEqual(['control-surface-contrast']);
+    expect(findings[0]).toMatchObject({ target: 'button#root-accent' });
   });
 
   it('adjacent-sections-no-gap: touching sections with different surfaces are reported, separated or same-colour ones are not', async () => {

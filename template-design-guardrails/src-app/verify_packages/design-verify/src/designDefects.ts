@@ -27,7 +27,7 @@
  *     padding; the one exemption is a card filled by a full-bleed media child);
  *     a negative inset reports as card-content-overflow instead;
  *   - control-surface contrast (WCAG 1.4.11 non-text contrast for the one
- *     case axe's text rule cannot see: a filled control whose painted
+ *     case axe's text rule cannot see: a filled ACCENT control whose painted
  *     surface meets the band under it at less than 3:1 while drawing no
  *     border that reaches 3:1 either. A control counts as a filled accent
  *     only when its own surface stands out from the screen's own surface -
@@ -523,6 +523,27 @@ export function isControlSurfaceDefect(surface: { ratio: number; borderRatio: nu
   return surface.borderRatio === null || surface.borderRatio < NON_TEXT_CONTRAST_MIN;
 }
 
+/**
+ * How far a control's painted surface must stand out from the screen's own
+ * surface before the surface rule measures it at all. Below this the control
+ * reads as neutral chrome on the page - the kit's outline and secondary
+ * buttons paint at the page's own colours, and 1.4.11 says nothing about a
+ * boundary the page does not distinguish - so its text is the cue, which
+ * axe's color-contrast and the review judge. A filled accent (a primary
+ * button, a destructive action) stands out on its own and is what the rule
+ * exists for.
+ */
+export const ACCENT_STANDOUT_MIN = 1.5;
+
+/**
+ * Pure gate for the filled-accent narrowing; exported for unit tests. A null
+ * ratio means the screen's own surface could not be resolved, and an
+ * unresolvable reference measures nothing.
+ */
+export function isFilledAccentControl(ratioToScreenSurface: number | null): boolean {
+  return ratioToScreenSurface !== null && ratioToScreenSurface >= ACCENT_STANDOUT_MIN;
+}
+
 /** How far apart two painted edges may sit and still read as touching. */
 export const SECTION_TOUCH_TOLERANCE_PX = 1;
 
@@ -914,12 +935,34 @@ function collectCardPaddingFindings(card: Element, cardStyle: CSSStyleDeclaratio
 }
 
 /**
- * Filled controls the surface-contrast rule measures. The kit Button
+ * Filled controls the surface-contrast rule may measure. The kit Button
  * renders a native button (base-ui's nativeButton default), so the tag
  * list covers it; `[role="button"]` covers the render-prop forms and
- * home-made clickables. Inputs count when they paint a background.
+ * home-made clickables. The collector casts wide and the rule narrows:
+ * {@link isFormFieldControl} takes the fields and field triggers out, and
+ * the accent gate takes the neutral surfaces out.
  */
 const CONTROL_SURFACE_SELECTOR = 'button, [role="button"], input, select, textarea';
+
+/**
+ * The form fields this rule never measures. The kit's Select and Combobox
+ * render their trigger as a button carrying `role="combobox"` and
+ * `aria-haspopup="listbox"`, so the trigger forms are covered too (a menu
+ * button's `aria-haspopup="menu"` is not a field and stays measurable).
+ * A field's boundary is the convention every field on the page shares, not
+ * an accent surface, and whether its value reads is axe's text rule's and
+ * the review's business - a filled accent on a band is what this rule is for.
+ */
+const FORM_FIELD_SELECTOR = 'input, select, textarea';
+const FIELD_TRIGGER_POPUPS = new Set(['listbox', 'grid', 'tree']);
+
+function isFormFieldControl(el: Element): boolean {
+  if (el.matches(FORM_FIELD_SELECTOR)) return true;
+  return (
+    el.getAttribute('role') === 'combobox' ||
+    FIELD_TRIGGER_POPUPS.has((el.getAttribute('aria-haspopup') ?? '').toLowerCase())
+  );
+}
 
 /**
  * The effective background under `el`: the ancestors' backgrounds from the
@@ -980,6 +1023,51 @@ function effectiveBackgroundUnder(el: Element, cache?: Map<Element, Rgba | null>
 }
 
 /**
+ * The element whose painted surface is the screen's own: the outermost box
+ * the main landmark directly holds, or the top of the tree when no landmark
+ * wraps the control. Walking up stops at the first box the landmark holds,
+ * so a card or a band between the control and the screen never passes for
+ * the screen itself. The walk starts above the control: a control placed
+ * straight in the screen root is not the screen itself, and starting at it
+ * would resolve the control's own background as the screen's, read 1:1 and
+ * never measure the control at all - for that layout the screen's own
+ * surface is the landmark's.
+ */
+function screenSurfaceElement(el: Element): Element | null {
+  let current: Element | null = layoutParent(el);
+  if (current === null) return null;
+  while (current !== null) {
+    if (current.matches('main, [role="main"]')) return current;
+    const parent = layoutParent(current);
+    if (parent === null) return current;
+    if (parent.matches('main, [role="main"]')) return current;
+    current = parent;
+  }
+  return null;
+}
+
+/**
+ * The surface the screen itself paints: its own background resolved over
+ * what stands under it. An own opaque colour is the surface outright - it
+ * covers everything the screen root stands over, so what stands behind it
+ * (however unparsable) is never walked: the walk starts only when the root's
+ * own colour leaves the surface to resolve. A screen root painting nothing
+ * shows the surface behind it, which is then the screen's own surface. An
+ * own colour that cannot be parsed (a color-mix Chromium reports as oklab())
+ * leaves the surface unknowable, like every unparsable colour in this sweep:
+ * null, so the caller skips instead of measuring against what stands behind
+ * the root.
+ */
+function screenSurfaceOf(screenRoot: Element, backdrops?: Map<Element, Rgba | null>): Rgba | null {
+  const own = parseCssColor(getComputedStyle(screenRoot).backgroundColor);
+  if (own !== null && own.a >= 1) return own;
+  const under = effectiveBackgroundUnder(screenRoot, backdrops);
+  if (under === null) return null;
+  if (own === null) return null;
+  return own.a === 0 ? under : compositeOver(own, under);
+}
+
+/**
  * Whether the element's background is clipped inside its border
  * (`background-clip: padding-box` or `content-box`, on every layer, `text`
  * included): the border then paints straight over the backdrop, not over the
@@ -1019,6 +1107,9 @@ function collectControlSurfaceFindings(
 ): DesignDefectFinding[] {
   const findings: DesignDefectFinding[] = [];
   for (const el of controls) {
+    // Form fields and the triggers that open them are out of this check: a
+    // field's boundary is a page-wide convention, not an accent surface.
+    if (isFormFieldControl(el)) continue;
     const style = getComputedStyle(el);
     const surface = parseCssColor(style.backgroundColor);
     // An unparsable painted surface (a color-mix Chromium reports as oklab())
@@ -1033,7 +1124,20 @@ function collectControlSurfaceFindings(
     // What the control stands over cannot be read: skip it, do not measure
     // against a guessed canvas.
     if (backdrop === null) continue;
-    const ratio = contrastRatio(compositeOver(surface, backdrop), backdrop);
+    const painted = compositeOver(surface, backdrop);
+    // The filled-accent gate: only a surface that stands out from the
+    // screen's own surface names an accent control; neutral chrome (the
+    // kit's outline and secondary buttons) drops out here, not by a colour
+    // list that would go stale with the next kit release.
+    const screenRoot = screenSurfaceElement(el);
+    const screenSurface =
+      screenRoot === null ? null : screenSurfaceOf(screenRoot, backdrops);
+    if (
+      !isFilledAccentControl(screenSurface === null ? null : contrastRatio(painted, screenSurface))
+    ) {
+      continue;
+    }
+    const ratio = contrastRatio(painted, backdrop);
     // The strongest border the control draws, against the surface the border
     // itself paints on: where the background extends under the border
     // (background-clip border-box, the default) the border composites over
@@ -1042,7 +1146,7 @@ function collectControlSurfaceFindings(
     // reaches 3:1 on its own saves a quiet surface (the kit's outline
     // buttons).
     let borderRatio: number | null = null;
-    const borderBeneath = backgroundClipsInsideBorder(style) ? backdrop : compositeOver(surface, backdrop);
+    const borderBeneath = backgroundClipsInsideBorder(style) ? backdrop : painted;
     for (const { colour } of visibleBorderColours(style, borderBeneath)) {
       const sideRatio = contrastRatio(colour, backdrop);
       if (borderRatio === null || sideRatio > borderRatio) borderRatio = sideRatio;
@@ -1051,7 +1155,7 @@ function collectControlSurfaceFindings(
     findings.push({
       id: 'control-surface-contrast',
       detail:
-        `filled control meets the surface under it at ${ratio.toFixed(2)}:1 (minimum ${NON_TEXT_CONTRAST_MIN}:1)` +
+        `filled accent control meets the surface under it at ${ratio.toFixed(2)}:1 (minimum ${NON_TEXT_CONTRAST_MIN}:1)` +
         (borderRatio === null ? '' : `; its border reaches only ${borderRatio.toFixed(2)}:1`) +
         ' - a control surface or its border must reach non-text contrast against the band under it',
       target: describeElement(el),

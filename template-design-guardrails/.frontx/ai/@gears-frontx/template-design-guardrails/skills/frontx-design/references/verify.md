@@ -225,13 +225,19 @@ Two objective checks measure what axe's text rule cannot see; both report
 under the `[design-defects]` prefix with the gates `rules/render-check.json`
 gives them:
 
-- `control-surface-contrast` (COL-001): a filled control (a button, a
-  `[role=button]`, an input, select or textarea that paints a background)
-  whose painted surface misses WCAG 1.4.11's 3:1 against the surface under
-  it, translucent surfaces composited over what is behind them, while no
-  border the control draws reaches 3:1 either. A control with a transparent
-  surface (a ghost or link button) is judged by its text, which
-  `axe/color-contrast` covers.
+- `control-surface-contrast` (COL-001): a filled accent control (a button or
+  a `[role=button]` that paints a background) whose painted surface stands
+  out from the screen's own surface - the background of the screen root the
+  sweep resolves - by at least 1.5:1, and that then misses WCAG 1.4.11's 3:1
+  against the surface under it, translucent surfaces composited over what is
+  behind them, while no border the control draws reaches 3:1 either. What it
+  does not cover, deliberately: neutral controls whose surface sits at the
+  screen's own colours (the kit's outline and secondary buttons), and form
+  fields - input, select, textarea, and the kit's field triggers, whose
+  boundary is a page-wide convention - none of which 1.4.11's accent case
+  names; their text is judged by `axe/color-contrast` and their boundaries
+  by the review. A control with a transparent surface (a ghost or link
+  button) is judged by its text, which `axe/color-contrast` covers.
 - `adjacent-sections-no-gap` (LAY-004, the runtime half of the spacing gate;
   the review rubric holds the rest of it): sibling sections or regions -
   grouped under the element that lays them out, a screen's shadow host
