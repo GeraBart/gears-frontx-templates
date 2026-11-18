@@ -117,8 +117,55 @@ export const COVERAGE_THRESHOLDS = Object.freeze({
  * differed by lane would move the false red rather than remove it. Every other
  * site that sets these two options points here instead of restating the
  * reasoning.
+ *
+ * The default can be raised from the environment: set
+ * `FRONTX_TEST_TIMEOUT_MS` to a positive integer of milliseconds before
+ * running Vitest and every config built from this module picks it up. The
+ * package configs read {@link COLD_START_TIMEOUT_MS}, resolved when this
+ * module loads; the rendered standalone configs embed a lookup that runs when
+ * the scaffolded project's own Vitest loads them (see
+ * {@link renderStandaloneTimeoutLookup}), so a variable set while scaffolding
+ * does not leak into the generated project. Unset, empty or whitespace-only
+ * keeps the 30 s default; anything that is not a positive integer of
+ * milliseconds within the timer limit throws at config load so a typo fails
+ * fast instead of silently timing out.
  */
-export const COLD_START_TIMEOUT_MS = 30_000;
+export const FRONTX_TEST_TIMEOUT_MS_ENV_VAR = 'FRONTX_TEST_TIMEOUT_MS';
+
+export const DEFAULT_COLD_START_TIMEOUT_MS = 30_000;
+
+/**
+ * Node clamps a timer above the 32-bit `setTimeout` maximum to 1 ms and
+ * prints a TimeoutOverflowWarning, so a huge value would time out every test
+ * at once - the opposite of the fail-fast behaviour a user setting one
+ * expects. Rejected instead of clamped.
+ */
+export const MAX_TIMER_MS = 2_147_483_647;
+
+/**
+ * Resolve the per-test and per-hook timeout from the raw value of
+ * `FRONTX_TEST_TIMEOUT_MS`. Unset, empty or whitespace-only falls back to
+ * {@link DEFAULT_COLD_START_TIMEOUT_MS}; anything that is not a positive
+ * integer of milliseconds up to {@link MAX_TIMER_MS} throws, naming the
+ * variable and the offending value.
+ */
+export function resolveFrontxTestTimeoutMs(rawValue: string | undefined): number {
+  const trimmed = rawValue?.trim() ?? '';
+  if (trimmed === '') {
+    return DEFAULT_COLD_START_TIMEOUT_MS;
+  }
+  const value = /^[0-9]+$/.test(trimmed) ? Number.parseInt(trimmed, 10) : Number.NaN;
+  if (!(value > 0 && value <= MAX_TIMER_MS)) {
+    throw new Error(
+      `${FRONTX_TEST_TIMEOUT_MS_ENV_VAR} must be a positive integer of milliseconds up to ${MAX_TIMER_MS} (unset, empty or whitespace keeps the default of ${DEFAULT_COLD_START_TIMEOUT_MS} ms); got "${rawValue}".`,
+    );
+  }
+  return value;
+}
+
+export const COLD_START_TIMEOUT_MS: number = resolveFrontxTestTimeoutMs(
+  process.env[FRONTX_TEST_TIMEOUT_MS_ENV_VAR],
+);
 
 /**
  * Node.js 25+ enables experimental global Web Storage; without
@@ -140,6 +187,29 @@ const STANDALONE_VITEST_NODE_WORKER_EXEC_ARGV_FN = `function vitestNodeWorkerExe
   return ['--no-experimental-webstorage'];
 }
 `;
+
+/**
+ * The timeout lookup the rendered standalone configs embed. They cannot read
+ * this module's constant: they load in the scaffolded project's own test run,
+ * so the value must be resolved there - a number resolved while scaffolding
+ * would bake the scaffolding shell's `FRONTX_TEST_TIMEOUT_MS` (if any) into
+ * every generated project, and the generated project would never honour the
+ * variable set in its own environment. The default is baked in as a literal;
+ * the lookup itself must stay aligned with {@link resolveFrontxTestTimeoutMs}.
+ */
+function renderStandaloneTimeoutLookup(): string {
+  return `const COLD_START_TIMEOUT_MS = (() => {
+  const raw = process.env.${FRONTX_TEST_TIMEOUT_MS_ENV_VAR};
+  const trimmed = raw?.trim() ?? '';
+  if (trimmed === '') return ${DEFAULT_COLD_START_TIMEOUT_MS};
+  const value = /^[0-9]+$/.test(trimmed) ? Number.parseInt(trimmed, 10) : Number.NaN;
+  if (!(value > 0 && value <= ${MAX_TIMER_MS})) {
+    throw new Error('${FRONTX_TEST_TIMEOUT_MS_ENV_VAR} must be a positive integer of milliseconds up to ${MAX_TIMER_MS} (unset, empty or whitespace keeps the default of ${DEFAULT_COLD_START_TIMEOUT_MS} ms); got "' + raw + '".');
+  }
+  return value;
+})();
+`;
+}
 
 // Resolve this file's directory so we can anchor the setup-file path against
 // it instead of the caller's CWD. vite-node occasionally passes a
@@ -205,7 +275,7 @@ import react from '@vitejs/plugin-react';
 const sharedSetupFile = fileURLToPath(new URL('./vitest.setup.ts', import.meta.url));
 
 ${STANDALONE_VITEST_NODE_WORKER_EXEC_ARGV_FN}
-
+${renderStandaloneTimeoutLookup()}
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -221,8 +291,8 @@ export default defineConfig({
     environment: 'jsdom',
     execArgv: vitestNodeWorkerExecArgv(),
     setupFiles: [sharedSetupFile],
-    testTimeout: ${COLD_START_TIMEOUT_MS},
-    hookTimeout: ${COLD_START_TIMEOUT_MS},
+    testTimeout: COLD_START_TIMEOUT_MS,
+    hookTimeout: COLD_START_TIMEOUT_MS,
     include: ${formatArrayLiteral([...TEST_INCLUDE_TSX, ...HOST_SCRIPT_TEST_INCLUDE], 6)},
     exclude: ${formatArrayLiteral(['src/mfe_packages/**', ...DEFAULT_TEST_EXCLUDE], 6)},
     coverage: {
@@ -345,7 +415,7 @@ export function definePackageVitestConfig(
  */
 export function renderStandaloneMfeVitestBase(): string {
   const inlineConstants = [
-    `const COLD_START_TIMEOUT_MS = ${COLD_START_TIMEOUT_MS};`,
+    renderStandaloneTimeoutLookup(),
     `const TEST_INCLUDE_TSX = ${formatArrayLiteral(TEST_INCLUDE_TSX, 0)};`,
     `const DEFAULT_TEST_EXCLUDE = ${formatArrayLiteral(DEFAULT_TEST_EXCLUDE, 0)};`,
     `const COVERAGE_EXCLUDE = ${formatArrayLiteral(COVERAGE_EXCLUDE, 0)};`,

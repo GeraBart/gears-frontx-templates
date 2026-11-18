@@ -171,6 +171,9 @@ my-app/
 | `npm run arch:deps` | Dependency-boundary rules check |
 | `npm run test:unit` | Unit tests (package + host app + workspace MFEs) |
 
+Set `FRONTX_TEST_TIMEOUT_MS` (a positive integer of milliseconds) to raise the
+per-test and hook timeout for every test lane; unset or empty keeps 30000 ms.
+
 ## Deploying the build
 
 `npm run build` writes one self-contained folder, `dist/`:

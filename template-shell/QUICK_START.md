@@ -291,6 +291,10 @@ npm run arch:deps         # dependency-boundary rules
 npm run test:unit         # unit tests (package + app + workspace MFEs)
 ```
 
+On a cold transform cache the per-test timeout may need headroom: set
+`FRONTX_TEST_TIMEOUT_MS` (a positive integer of milliseconds) to raise the
+per-test and hook timeout for every test lane; unset or empty keeps 30000 ms.
+
 ## Development best practices
 
 1. **Keep MFEs isolated** - no cross-MFE imports; communicate via the bridge and
