@@ -201,7 +201,7 @@ Each feature is delivered as a single phase; no sub-decomposition is needed at t
   - The widget-author obligations (renders `render` and `data`, makes no requests, theme mapping, ui-kit tokens, formats, text not markup, no cut-off, no meaning by colour alone, keyboard-operable).
   - The shared-dependency and budget rules (ADR-0010).
   - The request type, the render base and the value_format type (part of the bundle).
-  - The adoption procedure in the widget-author guide, including the product developer's re-point of a template widget type to another entry in the product's copy of the served file.
+  - The adoption procedure in the widget-author guide, including the product developer's re-point of a template widget type to another entry: the type's `entry` trait edited in that template bundle's `mfe.json` in the product's copy of the template, with its part rebuilt, or the template bundle taken off the widget list and the product's own bundle served with the re-pointed type and the catalog render and data types unchanged.
 
 - **Out of scope**:
   - The 15 concrete widget types and their render types/data shapes (feature-widget-catalog).
@@ -216,7 +216,7 @@ Each feature is delivered as a single phase; no sub-decomposition is needed at t
   - [ ] `p2` - `cpt-frontx-dashboard-interface-render-widget`
   - [ ] `p3` - `cpt-frontx-dashboard-nfr-bundle-budget` (shared-dependency and root budget rules)
   - [ ] `p2` - `cpt-frontx-dashboard-usecase-add-fix-widget` (contract side: the publish flow)
-  - [ ] `p2` - `cpt-frontx-dashboard-usecase-adopt-template` (contract side: the adoption procedure in the widget-author guide and the re-point of a widget type's entry)
+  - [ ] `p2` - `cpt-frontx-dashboard-usecase-adopt-template` (contract side: the adoption procedure in the widget-author guide and the re-point of a widget type's `entry` trait in a bundle's `mfe.json`)
 
 - **Design Principles Covered**:
   - [ ] `p2` - `cpt-frontx-dashboard-principle-open-bases-closed-leaves`

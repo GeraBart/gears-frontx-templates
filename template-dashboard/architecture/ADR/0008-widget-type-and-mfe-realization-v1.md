@@ -160,6 +160,6 @@ The dashboard root contains every widget type as an internal component; there ar
 
 This decision directly addresses the following requirements or design elements:
 
-* `cpt-frontx-dashboard-fr-add-fix-widget` — a product changes which entry a template widget type points to in its copy of the served file, and a fix shows on the next page load.
+* `cpt-frontx-dashboard-fr-add-fix-widget`: a product changes which entry a template widget type points to in that template bundle's `mfe.json` in its copy of the template, with its part rebuilt, or in a bundle of its own that declares the type with the template bundle off its widget list, and a fix shows on the next page load.
 * `cpt-frontx-dashboard-fr-widget-catalog` — each widget type points to its entry through the `entry` trait, and `data_widget` separates data widgets from `markdown_card`.
 * `cpt-frontx-dashboard-interface-contract` — the `entry` and `data_type` traits are part of the published contract.

@@ -124,7 +124,7 @@ Business success metrics are not set at template level. The template is a buildi
 
 **ID**: `cpt-frontx-dashboard-actor-product-developer`
 
-**Role**: A developer on the product team that adopts the template. Copies the template into a host application, places the dashboard root, and passes the root the product's `DashboardHost` (the shipped `fetchHost` over the product's same-origin API, or the product's own) in the product's copy. Serves the product's copy of the runtime-loaded JSON, and may point a template widget type to the product's own widget there. Checks generated dashboards before serving them. Assumed skill: a front-end developer who knows the host application.
+**Role**: A developer on the product team that adopts the template. Copies the template into a host application, places the dashboard root, and passes the root the product's `DashboardHost` (the shipped `fetchHost` over the product's same-origin API, or the product's own) in the product's copy. Serves the product's copy of the runtime-loaded JSON, and may point a template widget type to the product's own widget by setting the type's `entry` trait in that template bundle's `mfe.json` in its copy of the template, with its part rebuilt, or in a bundle of its own with the template bundle off the widget list. Checks generated dashboards before serving them. Assumed skill: a front-end developer who knows the host application.
 
 **Needs**: The author guides, the dashboard and widget contract, and a clear list of what the host and the product must provide.
 
@@ -354,7 +354,7 @@ The template **MUST** make these checks when it opens a dashboard:
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-fr-add-fix-widget`
 
-A widget author **MUST** be able to add a new widget type, or fix an existing one, at runtime, without a product redeploy. A fix released under the same widget type **MUST** take effect on the next page load. A product **MUST** be able to change which widget a template widget type points to, in its own copy of the runtime-loaded JSON.
+A widget author **MUST** be able to add a new widget type, or fix an existing one, at runtime, without a product redeploy. A fix released under the same widget type **MUST** take effect on the next page load. A product **MUST** be able to change which widget a template widget type points to, by setting the type's `entry` trait in that template bundle's `mfe.json` in its own copy of the template and rebuilding its part, or in a bundle of its own with the template bundle off the widget list.
 
 **Rationale**: Widget fixes and additions must not wait for a product release.
 
@@ -559,7 +559,7 @@ The template publishes one public surface, its dashboard and widget contract. It
 
 **Direction**: required from client
 
-**Protocol/Format**: Product-level need only: the product serves the runtime-loaded JSON, and the dashboard root reads it at runtime. It holds the widget types, the data types, the widget instances and the dashboards, and for each widget type where its widget code loads from. Widget authors add or fix widget types in it; the product owns its own copy and may point a template widget type to its own widget there. Each widget's code is served from where its widget type says, as the widget author shipped it. The format is defined in the DESIGN.
+**Protocol/Format**: Product-level need only: the product serves the runtime-loaded JSON, and the dashboard root reads it at runtime. It holds the widget types, the data types, the widget instances and the dashboards, and for each widget type where its widget code loads from. Widget authors add or fix widget types in it; the product owns its own copy and may point a template widget type to its own widget by setting the type's `entry` trait in that template bundle's `mfe.json` in its copy of the template, with its part rebuilt, or in a bundle of its own with the template bundle off the widget list. Each widget's code is served from where its widget type says, as the widget author shipped it. The format is defined in the DESIGN.
 
 **Compatibility**: Follows the breaking change policy of `cpt-frontx-dashboard-interface-contract`. A fix under the same widget type keeps its presentation settings and data shape compatible; an incompatible change ships as a new version of the widget type.
 

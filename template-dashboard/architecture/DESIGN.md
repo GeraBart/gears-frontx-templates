@@ -65,7 +65,7 @@ The dashboard root renders a dashboard from its JSON, owns the `widgets` domain,
 | `cpt-frontx-dashboard-fr-no-product-data-code` | The root runs each binding (own, shared, or static); own and shared send requests against the product's same-origin API, static evaluates with no request. |
 | `cpt-frontx-dashboard-fr-shared-data` | A shared request is sent once per dashboard load and per built request; every dependent widget shapes its part with its own transform. Variables the host gives (a period switch) build the requests that name them and re-run only the dependent cells. |
 | `cpt-frontx-dashboard-fr-static-data` | A static binding builds the widget's data from the dashboard JSON alone, with no request. |
-| `cpt-frontx-dashboard-fr-add-fix-widget` | A widget type points to its entry through the `entry` trait; a product changes the entry in its copy of the served file. |
+| `cpt-frontx-dashboard-fr-add-fix-widget` | A widget type points to its entry through the `entry` trait; a product changes the entry in that template bundle's `mfe.json` in its copy of the template, with its part rebuilt, or in a bundle of its own with the template bundle off the widget list. |
 | `cpt-frontx-dashboard-fr-grid-sort-page` | The grid sorts and pages client-side over the rows the transform delivered. The transform output is capped at 500 rows in total; an over-cap result fails data validation and is never truncated. The page size is a render choice up to 500. |
 | `cpt-frontx-dashboard-fr-larger-view` | The larger view is an overlay inside the root's own container. |
 | `cpt-frontx-dashboard-fr-theme` | The root publishes the host theme/language; a switch restyles only. |
@@ -306,7 +306,7 @@ The bundle also carries the render base, the value_format type, the request type
 |---|---|---|
 | Experimental (stable from the first non-alpha release) | the `gts.frontx.dashboard.*` types, including the widget types, the render types, the data types, the render base, the value_format type, the request type, the `render_widget` action type, the `widgets` domain and its extension type; the identifiers of the entries | `v1` from the start; changes during alpha are listed in the release notes; frozen from the first non-alpha release; incompatible changes then ship as a new version |
 | Internal | the id derivation of generated extensions, the GTS file loader, the diagnostics | may change in any release; coordinated inside the owning package |
-| Product-supplied implementation | the product's `DashboardHost`; the entry changes in the product's copy of the served file | added without changing the template's engine; during alpha, changes are listed in the release notes, and from the first non-alpha release breaking changes are controlled and announced |
+| Product-supplied implementation | the product's `DashboardHost`; the entry changes in that bundle's `mfe.json` in the product's copy of the template, or in a bundle of its own | added without changing the template's engine; during alpha, changes are listed in the release notes, and from the first non-alpha release breaking changes are controlled and announced |
 
 **Versions after the freeze.** In GTS a new version is a new type id, such as `…pie_chart.v2~`. It is registered next to the old one, and both stay usable:
 
@@ -805,7 +805,7 @@ In the browser tests, the test stub API serves the served GTS file, the MFE buil
 
 A walkthrough with someone who did not build the template verifies each guide.
 
-**Adopting the template.** The product developer (`cpt-frontx-dashboard-actor-product-developer`) adopts the template in a product (`cpt-frontx-dashboard-usecase-adopt-template`) by following the shipped guides: copy the template, give the root its `DashboardHost` (§3.3 Host interface), place the dashboard root with what the host must provide, serve the product's copy of the GTS file (§3.5), and, where the product needs its own widget, point a template widget type to that widget's entry in that copy. The widget contract FEATURE owns this procedure in the widget-author guide (`cpt-frontx-dashboard-dod-widget-contract-guide`).
+**Adopting the template.** The product developer (`cpt-frontx-dashboard-actor-product-developer`) adopts the template in a product (`cpt-frontx-dashboard-usecase-adopt-template`) by following the shipped guides: copy the template, give the root its `DashboardHost` (§3.3 Host interface), place the dashboard root with what the host must provide, serve the product's copy of the GTS file (§3.5), and, where the product needs its own widget, point a template widget type to that widget's entry by setting the type's `entry` trait in that template bundle's `mfe.json` in the product's copy of the template, with its part rebuilt, or in a bundle of its own with the template bundle off the widget list. The widget contract FEATURE owns this procedure in the widget-author guide (`cpt-frontx-dashboard-dod-widget-contract-guide`).
 
 ### 5.1 Dashboard Author
 

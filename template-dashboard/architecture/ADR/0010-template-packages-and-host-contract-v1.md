@@ -35,7 +35,7 @@ description: "Decision record on how template-dashboard splits into packages, wh
 
 ## Context and Problem Statement
 
-The dashboard runs inside a host application. The template is a blueprint: the product copies it into its project and modifies it. The template's code has parts with different roles: the dashboard root, which owns the `widgets` domain and renders dashboards; and a library of widgets, each widget type with one FrontX MFE entry ([ADR-0007](0007-extension-domain-taxonomy-v1.md), [ADR-0008](0008-widget-type-and-mfe-realization-v1.md)). The template has no backend access of its own; the product's API answers the requests a binding makes ([ADR-0011](0011-widget-data-binding-v1.md)). A product may change which entry a template widget type points to, in its own copy of the served file.
+The dashboard runs inside a host application. The template is a blueprint: the product copies it into its project and modifies it. The template's code has parts with different roles: the dashboard root, which owns the `widgets` domain and renders dashboards; and a library of widgets, each widget type with one FrontX MFE entry ([ADR-0007](0007-extension-domain-taxonomy-v1.md), [ADR-0008](0008-widget-type-and-mfe-realization-v1.md)). The template has no backend access of its own; the product's API answers the requests a binding makes ([ADR-0011](0011-widget-data-binding-v1.md)). A product may change which entry a template widget type points to by editing the type's `entry` trait in that bundle's `mfe.json` in its copy of the template, or, with no template change, by serving a bundle of its own for the type.
 
 The GTS types and instances (widget types, data types, entries) are read at runtime, never baked in at build time. In v1 they come from a JSON file the template serves as if from a backend; a product may serve its own. The dashboard root registers the bundle schemas at start, before it fetches the file.
 
@@ -131,7 +131,7 @@ Confirmed when:
 A `dashboard` package and a `widgets` package, a dependency on FrontX packages only, and host requirements stated by role.
 
 * Good, because the dashboard runs in any host that meets the role-based requirements, with no host or shell template dependency.
-* Good, because the widget library is one release unit, and a product changes entries in its own copy of the served file.
+* Good, because the widget library is one release unit, and a product changes entries in the `mfe.json` of the bundle that declares them, in its copy of the template, or in a bundle of its own.
 * Good, because the served GTS file can be replaced by a backend without changing the dashboard root.
 * Bad, because the product's copy can drift from the template; the contract is the stable part.
 
@@ -209,4 +209,4 @@ This decision directly addresses the following requirements or design elements:
 * `cpt-frontx-dashboard-contract-host` — the template depends on FrontX packages only, never on a host or shell template, and the host supplies a container, a dashboard id, and the theme and language values.
 * `cpt-frontx-dashboard-nfr-bundle-budget` — shared dependencies are fetched once and counted once in the page total.
 * `cpt-frontx-dashboard-nfr-initial-render` — the served file's fetch and registration sit inside the initial-render window and are measured there.
-* `cpt-frontx-dashboard-fr-add-fix-widget` — a product changes which entry a widget type points to in its own copy of the served file.
+* `cpt-frontx-dashboard-fr-add-fix-widget`: a product changes which entry a widget type points to in that bundle's `mfe.json` in its copy of the template, or in a bundle of its own.
