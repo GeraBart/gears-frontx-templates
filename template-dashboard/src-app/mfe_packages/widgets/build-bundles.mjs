@@ -59,7 +59,7 @@ const parseJobs = (value, origin) => {
   return count;
 };
 
-// Measured on 15 bundles: 4 at a time is about 2.4 times faster than one at a time, at about a third of the memory of all at once.
+// Measured on 15 bundles: 4 at a time is about 2.3 times faster than one at a time, at about a third of the memory of all at once.
 const DEFAULT_JOBS = 4;
 
 // A child builds the bundle named in the environment: the parent sets
