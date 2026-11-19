@@ -35,9 +35,9 @@
 }
 
 .title {
-  /* The kit's heading-1 step: the title painted 1.125rem before the shell
-     mapped its type to kit tokens, so it grows to 1.25rem. The no-kit build
-     takes its values from src-app/app/themes/none-build.css. */
+  /* The kit's heading-1 step, one step larger than the 1.125rem body size
+     the title falls back to in the no-kit build. That build takes its values
+     from src-app/app/themes/none-build.css. */
   font-size: var(--text-heading-1-size);
   line-height: var(--text-heading-1-line-height);
   font-weight: var(--text-heading-1-weight);

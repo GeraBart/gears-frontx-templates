@@ -17,7 +17,7 @@
  * A local custom property definition (`--x: ...` in CSS or a `style` object,
  * or a CSS Modules `@value name: value`) hides its value from every use site,
  * so it is read as a declaration in its own right, not for colour only: a
- * colour as before, an easing whenever its value holds one (a value-shape
+ * colour, an easing whenever its value holds one (a value-shape
  * kind on definitions, like colour: a silent name does not spare it), and a
  * length or time literal when the definition says which kit kind it steps -
  * by its own name (`radius`; `text` or `font` for a size; `space`, `spacing`,

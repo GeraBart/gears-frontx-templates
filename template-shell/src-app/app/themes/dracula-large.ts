@@ -42,8 +42,7 @@ export const draculaLargeTheme: ThemeConfig = {
     '--shadow-md': '0 4px 6px -1px rgba(0, 0, 0, 0.5)',
     '--shadow-lg': '0 10px 15px -3px rgba(0, 0, 0, 0.6)',
     '--shadow-xl': '0 20px 25px -5px rgba(0, 0, 0, 0.7)',
-    // The popup's own two-layer elevation: the value the shell layout has
-    // always painted, the same in every theme
+    // The popup's own two-layer elevation, the same in every theme
     '--shadow-popover': '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
 
     // Transitions
@@ -51,7 +50,7 @@ export const draculaLargeTheme: ThemeConfig = {
     '--transition-base': '200ms',
     '--transition-slow': '300ms',
     '--transition-slower': '500ms',
-    // The curve the shell layout has always moved with, the same in every theme
+    // The curve the shell layout moves with, the same in every theme
     '--transition-easing': 'cubic-bezier(0.4, 0, 0.2, 1)',
   },
 };

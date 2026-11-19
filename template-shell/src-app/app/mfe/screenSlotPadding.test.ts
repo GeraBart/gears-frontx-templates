@@ -11,8 +11,8 @@
  * Two invariants on the screens' side, one on the shell chrome beside them:
  *
  * - The scroller (`.container`) declares no padding and keeps its overflow:
- *   the scrollbar stays at the window's edge, and the padding the scroller
- *   used to carry would re-inset it and put a band under the scrollbar.
+ *   the scrollbar stays at the window's edge, and padding on the scroller
+ *   would re-inset it and put a band under the scrollbar.
  * - The host selector (`.slot > [data-extension-id]`, the div the screen
  *   domain's container hooks create) declares the `padding-inline` whose
  *   `var()` names the opt-out property with the shell gutter as fallback.

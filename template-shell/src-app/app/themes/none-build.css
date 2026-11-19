@@ -15,8 +15,8 @@
   --transition-base: 200ms;
   --transition-easing: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* The kit's heading-1 step, at the size the popup title painted before the
-     shell mapped its type to kit tokens. */
+  /* The kit's heading-1 step, at the body-adjacent size the popup title
+     reads without the kit's stylesheet. */
   --text-heading-1-size: 1.125rem;
   --text-heading-1-line-height: 1.75rem;
   --text-heading-1-weight: 600;

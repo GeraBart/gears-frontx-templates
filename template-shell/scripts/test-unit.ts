@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * Runs every leg of the old `test:unit` one-command chain, in order, and fails
+ * Runs every leg of the `test:unit` chain, in order, and fails
  * at the end if any of them failed.
  *
  * `npm run` chains commands with `&&`, which stops at the first failing leg:
  * when the package lane failed, the app lane and the workspace MFE lanes never
  * ran and their failures (or passes) stayed unknown. This script keeps the
- * legs and their flags exactly as they were but always runs all of them with
+ * legs and their flags exactly as the package.json chain has them but always
+ * runs all of them with
  * inherited stdio, prints one summary line per leg and exits 1 when any leg
  * failed, so one run reports the state of every lane.
  *
@@ -19,7 +20,7 @@
 import { spawn } from 'node:child_process';
 import { isProcessEntryPoint } from './lib/entry-point.js';
 
-/** The legs of `test:unit`, verbatim from the previous `&&` chain. */
+/** The legs of `test:unit`: the package.json `test:unit` chain's commands. */
 export const TEST_UNIT_LEGS: readonly string[] = [
   'vitest --run --passWithNoTests=false',
   'vitest --run --config src-app/vitest.config.ts --passWithNoTests=false',

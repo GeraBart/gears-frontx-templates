@@ -237,7 +237,7 @@ font (system-ui) there, and zeroes margin and padding on every element.
 
 - `npm run dev:all` (`scripts/dev-all.ts`) builds every conforming package,
   starts its preview server on the port read from step 1, and runs the host. A
-  package rebuilt by hand while `dev:all` runs keeps its old entry in the
+  package rebuilt by hand while `dev:all` runs keeps its stale entry in the
   manifest the host already fetched: `npm run generate:mfe-manifests` picks up
   its new hashed asset paths, and a page reload then loads it without
   restarting `dev:all`.

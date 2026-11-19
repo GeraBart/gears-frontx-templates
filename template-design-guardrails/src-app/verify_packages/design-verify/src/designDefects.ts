@@ -41,7 +41,7 @@
  *   - touching sections (two stacked sibling sections, regions or screen-root
  *     children painting distinct surfaces whose boxes meet with no gap on
  *     their shared horizontal edge - the runtime half of the spacing gate,
- *     which until now only the review rubric judged. The rule judges stacked
+ *     which otherwise only the review rubric judges. The rule judges stacked
  *     sections: side-by-side pairs overlap so deeply on the vertical axis
  *     that the shared-gap bound leaves them out. Two sections sharing one
  *     background with their content separated by their own padding are not a

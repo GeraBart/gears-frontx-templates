@@ -273,7 +273,7 @@ export function buildIconCollection(
     const packages = [...new Set(used.flatMap((icon) => icon.packageDirs))].join(', ');
     throw new Error(
       `Menu icon(s) "${names}" (declared by ${packages}) need the icon set "${prefix}", ` +
-        `which is not installed. Install it in template-shell: npm install -D @iconify-json/${prefix}`
+        `which is not installed. Install it in the shell project: npm install -D @iconify-json/${prefix}`
     );
   }
 
