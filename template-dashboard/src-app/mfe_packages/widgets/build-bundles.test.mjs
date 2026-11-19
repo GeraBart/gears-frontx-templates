@@ -238,6 +238,28 @@ describe('build-bundles.mjs', () => {
     }
   }, 120_000);
 
+  it('a full build names the part directories it did not list, and a clean dist and a named run name none', async () => {
+    // The full build owns the catalog of its out dir: a part directory a previous build left behind, which the list
+    // it writes does not name, comes out in one line naming it. Over a clean dist nothing is left to name, and a
+    // run that names bundles adds to the list it starts from instead of owning the catalog, so it prints no line.
+    const broken = path.join(scratch, 'bundles', BROKEN, 'mfe.json');
+    const aside = `${broken}.away`;
+    renameSync(broken, aside);
+    try {
+      const stale = await runBuild({ seedWidgetsJson: '["/widgets/stale_widget/widget.gts.json"]\n', seedParts: ['stale_widget'] });
+      expect(stale.code, stale.stderr).toBe(0);
+      expect(stale.stdout).toContain(`not listed: stale_widget (part directories in ${outPath()} this build did not build)`);
+      const clean = await runBuild({});
+      expect(clean.code, clean.stderr).toBe(0);
+      expect(clean.stdout).not.toContain('not listed:');
+      const named = await runBuild({ args: [OK], seedParts: ['stale_widget'] });
+      expect(named.code, named.stderr).toBe(0);
+      expect(named.stdout).not.toContain('not listed:');
+    } finally {
+      renameSync(aside, broken);
+    }
+  }, 240_000);
+
   it('a run that names bundles keeps the entries of the list it starts from and leaves a stale part directory off it', async () => {
     // The list of an earlier full build names a part of another bundles dir that is still on disk, and a stale
     // part directory the list no longer names sits in the out dir: a run that names one bundle starts from that
