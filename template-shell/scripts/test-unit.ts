@@ -12,9 +12,12 @@
  * failed, so one run reports the state of every lane.
  *
  * Arguments after `--` on the command line (`npm run test:unit -- <args>`)
- * are appended to every leg, after a `--` on the `npm run` leg, so a file
- * filter or a reporter flag reaches the package lane, the app lane and every
- * workspace lane alike.
+ * are appended to every leg, after a `--` on the `npm run` leg, so a flag
+ * every lane accepts (`npm run test:unit -- --reporter=verbose`) reaches the
+ * package lane, the app lane and every workspace lane alike. A file filter
+ * runs in its own lane instead: `npx vitest --run <filter>` from that lane's
+ * directory (or with its `--config`), or `npm run test:unit -w <package> --
+ * <filter>` for a workspace package.
  */
 
 import { spawn } from 'node:child_process';
@@ -45,11 +48,14 @@ function shellQuote(argument: string): string {
 
 /**
  * The legs with the command line's own arguments appended, so
- * `npm run test:unit -- <args>` reaches every leg: a file filter or a
- * reporter flag runs on the package lane, the app lane and every workspace
- * lane alike. The `npm run` leg takes the arguments after a `--`, so npm
- * forwards them to each workspace's `test:unit` instead of reading them as
- * its own flags. No arguments, no change: the legs stay verbatim.
+ * `npm run test:unit -- <args>` reaches every leg: a flag every lane accepts
+ * (`--reporter=verbose`) runs on the package lane, the app lane and every
+ * workspace lane alike. A file filter cannot go this way: every leg keeps
+ * `--passWithNoTests=false`, so a lane with no matching file fails; run the
+ * filter in the one lane that holds the file instead. The `npm run` leg takes
+ * the arguments after a `--`, so npm forwards them to each workspace's
+ * `test:unit` instead of reading them as its own flags. No arguments, no
+ * change: the legs stay verbatim.
  */
 export function legsWithArgs(legs: readonly string[], args: readonly string[]): string[] {
   if (args.length === 0) return [...legs];

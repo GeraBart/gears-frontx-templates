@@ -77,10 +77,10 @@ describe('runTestUnitLegs', () => {
 
 describe('legsWithArgs', () => {
   it('appends the arguments to every leg, after -- on the npm leg', () => {
-    expect(legsWithArgs(TEST_UNIT_LEGS, ['--reporter=dot', 'src-app/__tests__/app.test.tsx'])).toEqual([
-      'vitest --run --passWithNoTests=false --reporter=dot src-app/__tests__/app.test.tsx',
-      'vitest --run --config src-app/vitest.config.ts --passWithNoTests=false --reporter=dot src-app/__tests__/app.test.tsx',
-      'npm run test:unit --workspaces --if-present -- --reporter=dot src-app/__tests__/app.test.tsx',
+    expect(legsWithArgs(TEST_UNIT_LEGS, ['--reporter=verbose'])).toEqual([
+      'vitest --run --passWithNoTests=false --reporter=verbose',
+      'vitest --run --config src-app/vitest.config.ts --passWithNoTests=false --reporter=verbose',
+      'npm run test:unit --workspaces --if-present -- --reporter=verbose',
     ]);
   });
 
@@ -121,13 +121,12 @@ describe('the test:unit script wiring', () => {
   // The entry block calls main with the command line's own arguments, and
   // main is the only place that wiring exists: a main that dropped the
   // arguments and ran the bare legs would leave `npm run test:unit -- <args>`
-  // silently checking everything instead of the named filter. Asserted
-  // against the leg strings themselves, so the seam the process runs
-  // through is the one under test.
+  // silently running without them. Asserted against the leg strings
+  // themselves, so the seam the process runs through is the one under test.
   it('hands the command line arguments to the legs', async () => {
     const ranLegs: string[] = [];
     const exitCode = await main(
-      ['--reporter=dot', 'src-app/__tests__/app.test.tsx'],
+      ['--reporter=verbose'],
       async (leg) => {
         ranLegs.push(leg);
         return 0;
@@ -137,9 +136,9 @@ describe('the test:unit script wiring', () => {
 
     expect(exitCode).toBe(0);
     expect(ranLegs).toEqual([
-      'vitest --run --passWithNoTests=false --reporter=dot src-app/__tests__/app.test.tsx',
-      'vitest --run --config src-app/vitest.config.ts --passWithNoTests=false --reporter=dot src-app/__tests__/app.test.tsx',
-      'npm run test:unit --workspaces --if-present -- --reporter=dot src-app/__tests__/app.test.tsx',
+      'vitest --run --passWithNoTests=false --reporter=verbose',
+      'vitest --run --config src-app/vitest.config.ts --passWithNoTests=false --reporter=verbose',
+      'npm run test:unit --workspaces --if-present -- --reporter=verbose',
     ]);
   });
 });
