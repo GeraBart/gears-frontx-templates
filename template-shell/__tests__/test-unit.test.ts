@@ -50,6 +50,22 @@ describe('runTestUnitLegs', () => {
     expect(exitCode).toBe(1);
   });
 
+  // The summary is the run's only report of a lane the shell cannot see
+  // past: with the first leg failing, its line must name that leg and its
+  // exit code and the next leg must be named as passed, one line per leg,
+  // in leg order.
+  it('names every leg in the summary: the failed one with its exit code, then the passed one', async () => {
+    const lines: string[] = [];
+    const exitCode = await runTestUnitLegs(
+      ['leg-one', 'leg-two'],
+      async (leg) => (leg === 'leg-one' ? 3 : 0),
+      (message) => lines.push(message),
+    );
+
+    expect(exitCode).toBe(1);
+    expect(lines).toEqual(['[test:unit] failed (exit 3): leg-one', '[test:unit] passed (exit 0): leg-two']);
+  });
+
   it('keeps the three package.json legs verbatim, in order', () => {
     expect(TEST_UNIT_LEGS).toEqual([
       'vitest --run --passWithNoTests=false',
