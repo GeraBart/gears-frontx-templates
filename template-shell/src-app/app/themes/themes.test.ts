@@ -88,6 +88,17 @@ const isKitScaleStep = (name: string): boolean => {
 };
 
 /**
+ * The one documented prefix a project's own theme tokens live under, in its
+ * theme file under `src-app/app/themes/`: a layout width, a gutter, a hero
+ * size, a type role the kit's scales do not carry (`--app-gutter`,
+ * `--app-hero-size`). Such a token is neither a kit colour override nor a kit
+ * scale step: it maps no kit colour, so it never makes a theme a palette of
+ * its own. The prefix is the whole door - the bare `--app-` and any other
+ * unknown name stay rejected.
+ */
+const isProjectToken = (name: string): boolean => /^--app-[\w-]+$/.test(name);
+
+/**
  * The left menu family a kit-palette theme declares, selected label token
  * included. The set is pinned so a member dropped or added by hand is caught.
  */
@@ -132,11 +143,15 @@ const names = (theme: ThemeConfig): string[] => Object.keys(theme.variables);
 
 /**
  * The names of a theme that neither the kit, nor the shell, nor a kit scale
- * step shapes: the real check's predicate, defined once so the assertions
- * below cannot drift from it (or from each other).
+ * step, nor the project's own `--app-` prefix shapes: the real check's
+ * predicate, defined once so the assertions below cannot drift from it (or
+ * from each other).
  */
 const unknownNames = (theme: ThemeConfig): string[] =>
-  names(theme).filter((name) => !kitTokens.has(name) && !isShellToken(name) && !isKitScaleStep(name));
+  names(theme).filter(
+    (name) =>
+      !kitTokens.has(name) && !isShellToken(name) && !isKitScaleStep(name) && !isProjectToken(name),
+  );
 
 /**
  * The page surface a theme may repaint alone: the page background and the
@@ -211,6 +226,30 @@ describe('shell themes over the ui-kit palette', () => {
       },
     };
     expect(unknownNames(madeUp)).toEqual(['--made-up-token', '--text-row-height', '--text-icon-height']);
+  });
+
+  it('lets a theme declare its own tokens under the documented --app- prefix, and nothing unprefixed', () => {
+    // A project's own layout or type token (a gutter, a hero size) is not a
+    // kit colour override and not a kit scale step: it maps no kit colour, so
+    // the theme is not a palette of its own because of it.
+    const projectTokens: ThemeConfig = {
+      id: 'project-tokens',
+      name: 'Project tokens',
+      appearance: 'light',
+      variables: { '--app-gutter': '1.5rem', '--app-hero-size': '3rem' },
+    };
+    expect(unknownNames(projectTokens)).toEqual([]);
+    expect(hasOwnPalette(projectTokens)).toBe(false);
+
+    // The prefix is the whole door: the same names without it stay rejected,
+    // wherever they appear.
+    const unprefixed: ThemeConfig = {
+      id: 'unprefixed',
+      name: 'Unprefixed',
+      appearance: 'light',
+      variables: { '--gutter': '1.5rem', '--hero-size': '3rem' },
+    };
+    expect(unknownNames(unprefixed)).toEqual(['--gutter', '--hero-size']);
   });
 
   it('makes a theme with its own palette map every colour token of its appearance', () => {
