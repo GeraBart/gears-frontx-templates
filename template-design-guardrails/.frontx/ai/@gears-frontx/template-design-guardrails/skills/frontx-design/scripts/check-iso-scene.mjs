@@ -81,7 +81,9 @@ export function checkScene(text, file) {
   each(/\b(?:rgba?|hsla?|oklch|color)\(/g, (m) => `colour literal ${m[0]}: use a kit token class`);
   for (const m of code.matchAll(/\b(fill|stroke)=(\{[^}]*\}|"[^"]*"|'[^']*')/g)) {
     const value = m[2].replace(/^\{\s*|\s*\}$/g, '').replace(/^["'`]|["'`]$/g, '');
-    if (value !== 'none' && value !== 'currentColor') add(m.index, `${m[1]}=${m[2]}: set colours by class, not by attribute`);
+    if (value !== 'none' && value !== 'currentColor' && !/^var\(--[\w-]+\)$/.test(value)) {
+      add(m.index, `${m[1]}=${m[2]}: set colours by class, not by attribute`);
+    }
   }
   for (const m of code.matchAll(/\bstyle\s*=\s*\{\{([^}]*)\}\}/g)) {
     for (const s of m[1].matchAll(/\b(fill|stroke|color)\s*:\s*(["'])([^"']*)\2/g)) {
@@ -118,11 +120,15 @@ function main(files) {
   const findings = [];
   const errors = [];
   for (const file of files) {
+    let text;
     try {
-      findings.push(...checkScene(readFileSync(file, 'utf8'), file));
+      text = readFileSync(file, 'utf8');
     } catch (error) {
       errors.push(`cannot read ${file}: ${error.code ?? error.message}`);
+      continue;
     }
+    // Outside the try: a checker bug is a bug, not an unreadable file.
+    findings.push(...checkScene(text, file));
   }
   for (const line of findings) console.log(line);
   for (const line of errors) console.error(line);

@@ -80,7 +80,8 @@ describe('check-iso-scene', () => {
 
   it.each([
     ['a fragment link', '      <path href="#face" className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />'],
-    ['a hyphenated fragment id', '      <path id="1a2b3c-top" className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />'],
+    ['a hyphenated fragment id', `      <path clipPath="${HEX}-top" className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />`],
+    ['a var() fill attribute', `      <path fill="var(--primary)" className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />`],
   ])('stays clean with %s', (_name, extra) => {
     expect(checkScene(withShapes(extra), 'scene.tsx')).toEqual([]);
   });
