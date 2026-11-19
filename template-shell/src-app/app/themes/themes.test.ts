@@ -139,11 +139,22 @@ const unknownNames = (theme: ThemeConfig): string[] =>
   names(theme).filter((name) => !kitTokens.has(name) && !isShellToken(name) && !isKitScaleStep(name));
 
 /**
- * A theme with a palette of its own repaints the page surface. Overriding
- * --background is the mark of one; a theme on the kit's palette leaves it to
- * the kit and may still override a few tokens on purpose.
+ * The page surface a theme may repaint alone: the page background and the
+ * text colour it is read against. The kit's own palette keeps every other
+ * colour, so the theme's page surface change stays on the kit's palette.
  */
-const hasOwnPalette = (theme: ThemeConfig): boolean => '--background' in theme.variables;
+const PAGE_SURFACE_TOKENS: readonly string[] = ['--background', '--foreground'];
+
+/**
+ * A theme with a palette of its own repaints more than the page surface:
+ * any kit colour token beyond the page surface pair is the mark of one. A
+ * mixed palette risks unreadable pairs, so such a theme must map every
+ * colour token of its appearance. A theme that only sets the page surface
+ * keeps the kit's palette for everything else and may override a few tokens
+ * on purpose without mapping the rest.
+ */
+const hasOwnPalette = (theme: ThemeConfig): boolean =>
+  names(theme).some((name) => kitTokens.has(name) && !PAGE_SURFACE_TOKENS.includes(name));
 
 describe('shell themes over the ui-kit palette', () => {
   it('reads the token set, both appearances and the font stacks from the installed kit', () => {
@@ -209,6 +220,39 @@ describe('shell themes over the ui-kit palette', () => {
       const kitSet = kitTokensByAppearance[theme.appearance ?? 'light'];
       expect([...kitSet].filter((name) => !(name in theme.variables)), theme.id).toEqual([]);
     }
+  });
+
+  it('lets a theme change the page surface alone, without mapping every colour token', () => {
+    // A white page on the kit's light palette: the kit keeps every other
+    // colour, so this is not a palette of its own and maps nothing.
+    const whitePage: ThemeConfig = {
+      id: 'white-page',
+      name: 'White page',
+      appearance: 'light',
+      variables: { '--background': '#ffffff' },
+    };
+    expect(hasOwnPalette(whitePage)).toBe(false);
+    // And the kit palette really does hold colour tokens the white page
+    // never declares, so the mapping rule would reject it if the predicate
+    // fired here: the predicate, not an accident of the shipped themes, is
+    // what decides.
+    expect([...kitTokensByAppearance.light].filter((name) => !(name in whitePage.variables)).length).toBeGreaterThan(0);
+  });
+
+  it('still asks a theme that overrides a kit colour beyond the page surface to map every colour token', () => {
+    // One kit colour token past --background/--foreground is a palette of
+    // its own: a mixed palette risks unreadable pairs, so the theme must
+    // map every colour token of its appearance, --primary included.
+    const tintedPrimary: ThemeConfig = {
+      id: 'tinted-primary',
+      name: 'Tinted primary',
+      appearance: 'light',
+      variables: { '--primary': '#7c3aed' },
+    };
+    expect(hasOwnPalette(tintedPrimary)).toBe(true);
+    const unmapped = [...kitTokensByAppearance.light].filter((name) => !(name in tintedPrimary.variables));
+    expect(unmapped).toContain('--background');
+    expect(unmapped.length).toBeGreaterThan(0);
   });
 
   it.each(['default', 'light', 'dark'])('keeps %s on the kit palette, re-declaring no kit token', (id) => {
