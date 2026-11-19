@@ -1,4 +1,4 @@
-// Isometric geometry for line illustrations: projection of a grid point (x to the right and down, y to the left and down, z up) onto the 400 x 320 drawing, and the path data of the shapes a scene is made of. Every scene uses these few shapes, so all scenes share one projection, one scale and one stroke.
+// Isometric geometry for line illustrations: projection of a grid point (x to the right and down, y to the left and down, z up) onto the 400 x 320 drawing, the view that fits a scene into it, and the path data of the shapes a scene is made of. Every scene uses these few shapes, so all scenes share one projection, one scale and one stroke.
 
 /** A grid point: x, y on the floor, z up. */
 export type Point = readonly [number, number, number];
@@ -93,4 +93,25 @@ export function cylinder(view: View, cx: number, cy: number, r: number, h: numbe
 /** A straight segment between two grid points. */
 export function segment(view: View, from: Point, to: Point): string {
   return polyline(view, [from, to]);
+}
+
+/** The view that fits the scene into the drawing: min and max are opposite corners of the box around everything drawn, floor grid included, in grid units. The projected box spans nine tenths of the drawing's width, unless that would exceed nine tenths of its height, and sits centred in it. */
+export function fitView(min: Point, max: Point): View {
+  const corners: Point[] = [];
+  for (const x of [min[0], max[0]]) {
+    for (const y of [min[1], max[1]]) {
+      for (const z of [min[2], max[2]]) corners.push([x, y, z]);
+    }
+  }
+  // Projection at unit 1 with the origin at 0: only the shape of the box matters.
+  const left = Math.min(...corners.map(([x, y]) => (x - y) * COS));
+  const right = Math.max(...corners.map(([x, y]) => (x - y) * COS));
+  const top = Math.min(...corners.map(([x, y, z]) => (x + y) * SIN - z));
+  const bottom = Math.max(...corners.map(([x, y, z]) => (x + y) * SIN - z));
+  const unit = Math.min((0.9 * 400) / (right - left), (0.9 * 320) / (bottom - top));
+  return {
+    ox: 200 - ((left + right) / 2) * unit,
+    oy: 160 - ((top + bottom) / 2) * unit,
+    unit,
+  };
 }

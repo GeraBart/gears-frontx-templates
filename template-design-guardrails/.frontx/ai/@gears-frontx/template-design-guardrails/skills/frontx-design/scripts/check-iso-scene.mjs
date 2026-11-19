@@ -7,17 +7,21 @@
  *
  * Findings, one line each as `file:line message`: no `viewBox="0 0 400 320"`;
  * a colour literal (#hex, rgb(), rgba(), hsl(), hsla(), oklch(), color(), or a
- * fill= or stroke= attribute, or a fill, stroke or colour key in a style
- * object, other than none, currentColor or var(--...)); literal path
- * data in a d= attribute (paths come from the `iso` helpers); a <text>,
- * <image>, <foreignObject> or <img> element; more than 12 shapes (<Box>,
- * <Cylinder>, <Line>, <path> outside the FloorGrid, Box, Cylinder and Line
- * definitions); not exactly one highlighted element (tone="hi", kind="hi" or a
- * className={styles.hi} outside those definitions).
+ * fill= or stroke= attribute on a lowercase SVG element, or a fill, stroke or
+ * colour key in a style object, other than none, currentColor or var(--...));
+ * literal path data in a d= attribute (paths come from the `iso` helpers); a
+ * <text>, <image>, <foreignObject> or <img> element; more than 12 shapes
+ * (<Box>, <Cylinder>, <Line>, <Face> and raw <path>; <FloorGrid> is not
+ * counted) outside the definitions of FloorGrid, Box, Cylinder, Line and Face;
+ * not exactly one highlighted element (tone="hi", kind="hi" or a
+ * className={styles.hi} outside those definitions); a view written as a
+ * hand-made object literal with ox and oy keys while the scene never calls
+ * fitView (build the view with fitView(min, max) so the drawing fills its
+ * width).
  *
  * The shape count is an optional aid for an honest agent: it counts the
- * skill's own shape components (Box, Cylinder, Line, path) written out one
- * per element, as the reference asks.
+ * skill's own shape components (Box, Cylinder, Line, Face, path) written out
+ * one per element, as the reference asks.
  *
  * Exit 0 clean, 1 findings, 2 input error (no file given, a file it cannot read).
  * The CLI runs only when this file is the entry point.
@@ -27,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 
 const USAGE = 'usage: node check-iso-scene.mjs <scene.tsx>...';
 const MAX_SHAPES = 12;
-const NOT_SHAPES = ['FloorGrid', 'Box', 'Cylinder', 'Line'];
+const NOT_SHAPES = ['FloorGrid', 'Box', 'Cylinder', 'Line', 'Face'];
 
 /** Comments become spaces, newlines kept, so indexes and line numbers stay put.
  * String and template spans match first and are kept, so a `//` inside a
@@ -105,10 +109,15 @@ export function checkScene(text, file) {
     (m) => `colour literal ${m[0]}: use a kit token class`,
   );
   each(/\b(?:rgba?|hsla?|oklch|color)\(/g, (m) => `colour literal ${m[0]}: use a kit token class`);
-  for (const m of code.matchAll(/\b(fill|stroke)=(\{[^}]*\}|"[^"]*"|'[^']*')/g)) {
-    const value = m[2].replace(/^\{\s*|\s*\}$/g, '').replace(/^["'`]|["'`]$/g, '').trim();
-    if (value !== 'none' && value !== 'currentColor' && !/^var\(--[\w-]+\)$/.test(value)) {
-      add(m.index, `${m[1]}=${m[2]}: set colours by class, not by attribute`);
+  // fill= and stroke= on lowercase SVG elements only, not at props of the
+  // capitalised parts: a part's own props (view, at, tone, surface, ...) may
+  // hold anything, and a prop named fill on <Box> is not an SVG attribute.
+  for (const tag of code.matchAll(/<[a-z][\w-]*\b[^>]*>/g)) {
+    for (const m of tag[0].matchAll(/\b(fill|stroke)=(\{[^}]*\}|"[^"]*"|'[^']*')/g)) {
+      const value = m[2].replace(/^\{\s*|\s*\}$/g, '').replace(/^["'`]|["'`]$/g, '').trim();
+      if (value !== 'none' && value !== 'currentColor' && !/^var\(--[\w-]+\)$/.test(value)) {
+        add(tag.index + m.index, `${m[1]}=${m[2]}: set colours by class, not by attribute`);
+      }
     }
   }
   for (const m of code.matchAll(/\bstyle\s*=\s*\{\{([^}]*)\}\}/g)) {
@@ -124,11 +133,18 @@ export function checkScene(text, file) {
 
   // Shapes outside the definitions of the grid and the shape components.
   const skip = NOT_SHAPES.map((name) => functionRange(code, name)).filter(Boolean);
-  const shapes = [...code.matchAll(/<(?:Box|Cylinder|Line|path)\b/g)].filter(
+  const shapes = [...code.matchAll(/<(?:Box|Cylinder|Line|Face|path)\b/g)].filter(
     (m) => !skip.some(([start, end]) => m.index >= start && m.index < end),
   );
   if (shapes.length > MAX_SHAPES) {
     add(shapes[MAX_SHAPES].index, `${shapes.length} shapes, at most ${MAX_SHAPES}`);
+  }
+
+  // A view built by hand instead of fitted: an object literal with ox and oy
+  // keys and no fitView call anywhere.
+  if (!/\bfitView\s*\(/.test(code)) {
+    const literal = code.match(/\{[^{}]*(?<![\w$])ox\s*:[^{}]*(?<![\w$])oy\s*:[^{}]*\}/) ?? code.match(/\{[^{}]*(?<![\w$])oy\s*:[^{}]*(?<![\w$])ox\s*:[^{}]*\}/);
+    if (literal) add(literal.index, 'build the view with fitView(min, max) so the drawing fills its width');
   }
 
   // A ring, plane or polyline highlight is a <path className={styles.hi}>, so

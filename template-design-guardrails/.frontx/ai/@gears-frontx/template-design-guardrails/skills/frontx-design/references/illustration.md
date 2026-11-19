@@ -16,15 +16,15 @@ No people, no faces, no logos, no free subjects (animals, landscapes, objects dr
 
 ## Files and steps
 
-1. Copy `templates/iso.ts` and `templates/iso.module.css` next to the screen's components. The helper exports `project`, `polygon`, `polyline`, `plane`, `box`, `ring`, `cylinder` and `segment`, over `Point = [x, y, z]` and `View = { ox, oy, unit }`. The stylesheet carries the classes `figure`, `hi`, `edge`, `lo`, `dash`, `face` and `side`.
-2. Copy `templates/iso-scene.tsx` beside them and rename it after the drawing, for example `HubScene.tsx`. It brings the components `Box`, `Cylinder`, `Line` and `FloorGrid` and the exported `IsoScene({ label })`.
-3. Replace the placeholder scene in the copy with the shapes of the drawing, following the scene rules and the shape vocabulary.
+1. Copy `templates/iso.ts`, `templates/iso-parts.tsx` and `templates/iso.module.css` once into a folder next to the screen's components. The helper exports `project`, `polygon`, `polyline`, `plane`, `box`, `ring`, `cylinder`, `segment` and `fitView`, over `Point = [x, y, z]` and `View = { ox, oy, unit }`. The parts file carries the components `Box`, `Cylinder`, `Line`, `Face` and `FloorGrid`. The stylesheet carries the classes `figure`, `hi`, `edge`, `lo`, `dash`, `face` and `side`.
+2. Copy `templates/iso-scene.tsx` once per drawing into that folder and rename it after the drawing, for example `HubScene.tsx`. It brings the exported `IsoScene({ label })`.
+3. Replace the placeholder scene in the copy with the shapes of the drawing, following the scene rules and the shape vocabulary. Import only the parts the scene uses, since an unused one in the scene file fails a type-check with `noUnusedLocals`, and set the bounds passed to `fitView` and `FloorGrid` to what it draws.
 4. Give the scene a label when it carries meaning. Without a label it stays hidden from assistive technology, which is right for a drawing that is only decoration.
 5. Run `node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-iso-scene.mjs <scene.tsx>`. Exit 0 is clean, 1 lists findings, 2 means the input is wrong.
 
 ## Scene rules
 
-- One drawing of 400 x 320: `viewBox="0 0 400 320"`, a 5:4 field, and the figure fills the width of the element it sits in. Put it straight into the picture slot, or give its wrapper the slot's full width and no fixed width of its own; the drawing keeps a margin inside its box, so its lines span about nine tenths of that width.
+- One drawing of 400 x 320: `viewBox="0 0 400 320"`, a 5:4 field. The view comes from `fitView(min, max)` on the scene's bounds, the lowest and highest x, y, z of everything drawn, so the drawing spans nine tenths of the width, or of the height for a tall scene, and sits centred. Tight bounds make a bigger picture, loose bounds a smaller one. The figure fills the width of the element it sits in, so give the picture slot or its wrapper the width the picture should have. Way to check: the quick check reports a hand-written view; in the browser the svg's drawn lines should reach close to both sides of the slot.
 - A floor grid in the `lo` tone, so the drawing stands on something.
 - About 10 to 12 shapes at most. The floor grid is not counted among them.
 - Exactly one highlighted element, in the `hi` tone. One point per drawing.
@@ -39,7 +39,8 @@ No people, no faces, no logos, no free subjects (animals, landscapes, objects dr
 |---|---|---|
 | Box | `box` | a tile, a card, a block, a server, a step |
 | Cylinder | `cylinder` | a store, a dial, a post |
-| Plane | `plane` | a sheet, a panel, a tray floor |
+| Plane | `plane`, drawn with `Face` or a path | a sheet, a panel, a tray floor |
+| Face | `Face` (polygon) | a ramp, a recess, an upright slab, a panel on a plate |
 | Ring | `ring` | a dial, a lens rim, a target |
 | Line / segment | `segment` | a wire, a link, a flow; `dash` for a flow |
 | Polyline | `polyline` | a ruled line, a chart line on a sheet |
@@ -53,10 +54,14 @@ Build from the floor up, larger shapes behind and smaller in front, and keep one
 
 A host tile on a floor grid, wired to the tiles around it, the host in the `hi` tone.
 
-The view and the shapes that replace the placeholder:
+The bounds and the shapes that replace the placeholder:
 
 ```tsx
-const view: View = { ox: 200, oy: 162, unit: 17 };
+import { Box, FloorGrid, Line } from './iso-parts';
+
+const view = fitView([-4.4, -4.4, 0], [5, 4.6, 0.75]);
+
+<FloorGrid view={view} from={[-4.4, -4.4]} to={[5, 4.6]} />
 <Line view={view} from={[0, 0, 0.35]} to={[-3.7, -3.7, 0.2]} kind="dash" />
 <Line view={view} from={[0, 0, 0.35]} to={[3.9, -3.2, 0.2]} kind="dash" />
 <Line view={view} from={[0, 0, 0.35]} to={[-3.2, 3.9, 0.2]} kind="dash" />
@@ -74,10 +79,14 @@ const view: View = { ox: 200, oy: 162, unit: 17 };
 
 A tree of tiles: the highlighted root wired to two tiles, which carry three leaves.
 
-The view and the shapes that replace the placeholder:
+The bounds and the shapes that replace the placeholder:
 
 ```tsx
-const view: View = { ox: 200, oy: 170, unit: 17 };
+import { Box, FloorGrid, Line } from './iso-parts';
+
+const view = fitView([-5, -5, 0], [6.4, 6.4, 0.6]);
+
+<FloorGrid view={view} from={[-5, -5]} to={[6.4, 6.4]} />
 <Line view={view} from={[-4, -4, 0]} to={[-3, 1, 0.5]} />
 <Line view={view} from={[-4, -4, 0]} to={[1, -3, 0.5]} />
 <Line view={view} from={[-3, 1, 0]} to={[-2.3, 5.7, 0.45]} />
@@ -93,12 +102,16 @@ const view: View = { ox: 200, oy: 170, unit: 17 };
 
 ### Rest
 
-Three plates at rest on posts, the top plate in the `hi` tone with a panel on it (a `plane` drawn as a path, so `plane` joins the helper import).
+Three plates at rest on posts, the top plate in the `hi` tone with a panel on it drawn as a `Face`.
 
-The view and the shapes that replace the placeholder:
+The bounds and the shapes that replace the placeholder:
 
 ```tsx
-const view: View = { ox: 200, oy: 190, unit: 17 };
+import { Box, Cylinder, Face, FloorGrid } from './iso-parts';
+
+const view = fitView([-4.2, -3.2, 0], [4.2, 3.2, 3.7]);
+
+<FloorGrid view={view} from={[-4.2, -3.2]} to={[4.2, 3.2]} />
 <Box view={view} at={[-4.2, -3.2]} size={[8.4, 6.4, 0.5]} />
 <Cylinder view={view} at={[-3.4, -2.4]} r={0.22} h={1.1} z0={0.5} />
 <Cylinder view={view} at={[3.4, -2.4]} r={0.22} h={1.1} z0={0.5} />
@@ -110,11 +123,11 @@ const view: View = { ox: 200, oy: 190, unit: 17 };
 <Cylinder view={view} at={[-3.4, 2.4]} r={0.22} h={1.1} z0={2.1} />
 <Cylinder view={view} at={[3.4, 2.4]} r={0.22} h={1.1} z0={2.1} />
 <Box view={view} at={[-4.2, -3.2]} size={[8.4, 6.4, 0.5]} z0={3.2} tone="hi" />
-<path className={styles.edge} d={plane(view, -2.4, -1.6, 4.8, 3.2, 3.7)} />
+<Face view={view} points={[[-2.4, -1.6, 3.7], [2.4, -1.6, 3.7], [2.4, 1.6, 3.7], [-2.4, 1.6, 3.7]]} />
 ```
 
 ## Check
 
-`check-iso-scene.mjs` reads the scene and reports: a missing or wrong `viewBox`, colour literals, literal path data, text or image elements, more than 12 shapes, and not exactly one highlighted element. Exit 0 is clean, 1 lists the findings, 2 means the input cannot be read.
+`check-iso-scene.mjs` reads the scene and reports: a missing or wrong `viewBox`; colour literals, and a `fill=` or `stroke=` attribute other than `none`, `currentColor` or `var(--...)`, read on the lowercase SVG elements only, never on the props of a part, plus a `fill`, `stroke` or `color` key in a style object; literal path data; a `<text>`, `<image>`, `<foreignObject>` or `<img>` element; more than 12 shapes (`Box`, `Cylinder`, `Line`, `Face` and raw `path`, with `FloorGrid` not counted); not exactly one highlighted element; and a hand-written view, an object with `ox` and `oy` keys, in a scene that never calls `fitView`. Exit 0 is clean, 1 lists the findings, 2 means the input cannot be read.
 
 It is a quick optional command, not a gate of design-verify. Run it when the scene changes, and treat a clean run as proof of the shape rules only, never as proof that the drawing carries its point.

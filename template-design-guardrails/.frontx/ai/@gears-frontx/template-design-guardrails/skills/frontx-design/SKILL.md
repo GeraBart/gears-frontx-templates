@@ -31,7 +31,7 @@ Extra steps: a project that needs steps the kit's scales do not carry (a bigger 
 | Review a screen | `references/review.md`, run in a fresh context: a separate agent that sees screenshots and source, not the builder's reasoning; its report opens with a one-word verdict: `blocked`, `revise`, `unverified` or `pass` |
 | Verify: static check of the source, browser check of the render, waivers | `references/verify.md` |
 | Read or update DESIGN.md | `references/design-md.md` |
-| Draw an illustration for a block's picture slot | `references/illustration.md`; it copies `templates/iso.ts`, `templates/iso.module.css` and `templates/iso-scene.tsx` and checks with `scripts/check-iso-scene.mjs` |
+| Draw an illustration for a block's picture slot | `references/illustration.md`; it copies `templates/iso.ts`, `templates/iso-parts.tsx`, `templates/iso.module.css` and `templates/iso-scene.tsx` and checks with `scripts/check-iso-scene.mjs` |
 | Close any task | `templates/handoff.md`, plus `templates/state-inventory.md` for a screen |
 
 A request that spans rows runs them in this order: place, theme, build, verify, review, DESIGN.md, close. The theme, build and review rows read `DESIGN.md` at the project root first. Surface: application screens by default. On marketing and documentation pages every gate binds except APP-001 and APP-002, which only advise; documentation pages also load `references/typography.md`.
