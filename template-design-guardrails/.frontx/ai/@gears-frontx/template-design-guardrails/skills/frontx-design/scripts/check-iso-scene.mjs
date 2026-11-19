@@ -39,23 +39,48 @@ function stripComments(text) {
   );
 }
 
-/** The [start, end) range of `function name(...) { ... }`, by paren and brace counting. */
+/** The [start, end) range of `function name(...) { ... }` or of the arrow form
+ * `const|let name = (...) => ...`, by paren and brace counting. An expression
+ * body (no brace after `=>`) ends at the matching `)` of a wrapping `(`, else
+ * at the first `;` or line break at depth 0. */
 function functionRange(text, name) {
-  const m = new RegExp(`function\\s+${name}\\s*\\(`).exec(text);
+  const m = new RegExp(
+    `(?:function\\s+${name}\\s*\\(|(?:const|let)\\s+${name}\\s*=\\s*(?:function\\s*)?\\()`,
+  ).exec(text);
   if (!m) return null;
-  let i = m.index + m[0].length;
+  const start = m.index;
+  let i = start + m[0].length;
   for (let depth = 1; i < text.length && depth > 0; i += 1) {
     if (text[i] === '(') depth += 1;
     else if (text[i] === ')') depth -= 1;
   }
-  i = text.indexOf('{', i);
+  const arrow = /^\s*=>\s*/.exec(text.slice(i, i + 128));
+  if (arrow) i += arrow[0].length;
+  else i = text.indexOf('{', i);
   if (i === -1) return null;
+  if (text[i] === '{') {
+    let depth = 0;
+    for (let j = i; j < text.length; j += 1) {
+      if (text[j] === '{') depth += 1;
+      else if (text[j] === '}' && --depth === 0) return [start, j + 1];
+    }
+    return [start, text.length];
+  }
+  if (text[i] === '(') {
+    let depth = 1;
+    for (i += 1; i < text.length && depth > 0; i += 1) {
+      if (text[i] === '(') depth += 1;
+      else if (text[i] === ')') depth -= 1;
+    }
+    return [start, i];
+  }
   let depth = 0;
   for (let j = i; j < text.length; j += 1) {
-    if (text[j] === '{') depth += 1;
-    else if (text[j] === '}' && --depth === 0) return [m.index, j + 1];
+    if ('([{'.includes(text[j])) depth += 1;
+    else if (')]}'.includes(text[j])) depth -= 1;
+    else if (depth === 0 && (text[j] === ';' || text[j] === '\n')) return [start, j];
   }
-  return [m.index, text.length];
+  return [start, text.length];
 }
 
 /** Findings for one scene's text, each `file:line message`. */
@@ -80,7 +105,7 @@ export function checkScene(text, file) {
   );
   each(/\b(?:rgba?|hsla?|oklch|color)\(/g, (m) => `colour literal ${m[0]}: use a kit token class`);
   for (const m of code.matchAll(/\b(fill|stroke)=(\{[^}]*\}|"[^"]*"|'[^']*')/g)) {
-    const value = m[2].replace(/^\{\s*|\s*\}$/g, '').replace(/^["'`]|["'`]$/g, '');
+    const value = m[2].replace(/^\{\s*|\s*\}$/g, '').replace(/^["'`]|["'`]$/g, '').trim();
     if (value !== 'none' && value !== 'currentColor' && !/^var\(--[\w-]+\)$/.test(value)) {
       add(m.index, `${m[1]}=${m[2]}: set colours by class, not by attribute`);
     }
@@ -93,7 +118,7 @@ export function checkScene(text, file) {
       }
     }
   }
-  each(/\bd=(?:"[^"]*"|'[^']*'|\{\s*(?:"[^"]*"|'[^']*'|`\s*[Mm][^`]*`)\s*\})/g, () => 'literal path data: build d from the iso helpers');
+  each(/(?<![\w-])d=(?:"[^"]*"|'[^']*'|\{\s*(?:"[^"]*"|'[^']*'|`\s*[Mm][^`]*`)\s*\})/g, () => 'literal path data: build d from the iso helpers');
   each(/<(text|image|foreignObject|img)\b/g, (m) => `<${m[1]}> is not allowed: line shapes only`);
 
   // Shapes outside the definitions of the grid and the shape components.
@@ -105,7 +130,7 @@ export function checkScene(text, file) {
     add(shapes[MAX_SHAPES].index, `${shapes.length} shapes, at most ${MAX_SHAPES}`);
   }
 
-  const highlights = [...code.matchAll(/\b(?:tone|kind)\s*=\s*(?:\{\s*)?(["'])hi\1(?:\s*\})?/g)];
+  const highlights = [...code.matchAll(/(?<![\w-])(?:tone|kind)\s*=\s*(?:\{\s*)?(["'])hi\1(?:\s*\})?/g)];
   if (highlights.length !== 1) {
     add(highlights[1]?.index ?? 0, `${highlights.length} highlighted elements (tone="hi" or kind="hi"), exactly 1`);
   }

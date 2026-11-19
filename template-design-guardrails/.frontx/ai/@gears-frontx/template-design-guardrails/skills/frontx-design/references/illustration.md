@@ -24,7 +24,7 @@ No people, no faces, no logos, no free subjects (animals, landscapes, objects dr
 
 ## Scene rules
 
-- One drawing of 400 x 320: `viewBox="0 0 400 320"`, a 5:4 field, and the figure fills its slot's width.
+- One drawing of 400 x 320: `viewBox="0 0 400 320"`, a 5:4 field, and the figure fills the width of the element it sits in. Put it straight into the picture slot, or give its wrapper the slot's full width and no fixed width of its own; the drawing keeps a margin inside its box, so its lines span about nine tenths of that width.
 - A floor grid in the `lo` tone, so the drawing stands on something.
 - About 10 to 12 shapes at most. The floor grid is not counted among them.
 - Exactly one highlighted element, in the `hi` tone. One point per drawing.

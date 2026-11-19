@@ -30,6 +30,21 @@ const withShapes = (extra) => {
   return SCENE.replace(PLACEHOLDER_END, `${extra}\n${PLACEHOLDER_END}`);
 };
 
+/** The scene with `Box`, `Cylinder`, `Line` and `FloorGrid` written as arrow
+ * functions with block bodies, as an agent may write them. */
+const asArrows = (text) =>
+  text.replace(
+    /^function (Box|Cylinder|Line|FloorGrid)\((.*)\) \{$/gm,
+    (_, name, params) => `const ${name} = (${params}) => {`,
+  );
+
+/** Eight honest lines: with the base scene's three shapes that is 11, one under
+ * the limit, so a body that stops being skipped shows as 19. */
+const EIGHT_LINES = Array.from(
+  { length: 8 },
+  (_, i) => `      <Line view={view} from={[${i}, 0, 0]} to={[${i}, 1, 0]} />`,
+).join('\n');
+
 const run = (...args) => {
   const result = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
@@ -82,8 +97,18 @@ describe('check-iso-scene', () => {
     ['a fragment link', '      <path href="#face" className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />'],
     ['a hyphenated fragment id', `      <path clipPath="${HEX}-top" className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />`],
     ['a var() fill attribute', `      <path fill="var(--primary)" className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />`],
+    ['a var() fill attribute with spaces around it', `      <path fill=" var(--primary) " className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />`],
+    ['data-tone and data-d attributes', `      <path data-tone="hi" data-d="M0 0" className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />`],
   ])('stays clean with %s', (_name, extra) => {
     expect(checkScene(withShapes(extra), 'scene.tsx')).toEqual([]);
+  });
+
+  it('stays clean with the shape components as arrow functions', () => {
+    const arrow = asArrows(SCENE);
+    expect(arrow).toContain('const Box = (');
+    expect(arrow).not.toContain('function Box(');
+    expect(checkScene(arrow, 'scene.tsx')).toEqual([]);
+    expect(checkScene(asArrows(withShapes(EIGHT_LINES)), 'scene.tsx')).toEqual([]);
   });
 
   it('exits 1 when a scene has a finding', () => {
