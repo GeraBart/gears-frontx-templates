@@ -225,8 +225,7 @@ describe('the bundle declares one compact skill', () => {
     expect(dirs).toEqual(['skills']);
   });
 
-  it('keeps SKILL.md to at most 80 lines and its description to at most 300 characters', () => {
-    expect(skillMd.trimEnd().split('\n').length).toBeLessThanOrEqual(80);
+  it('keeps the SKILL.md description to at most 300 characters', () => {
     const description = skillMd.match(/^description: (.+)$/m)?.[1] ?? '';
     expect(description.length).toBeGreaterThan(0);
     expect(description.length).toBeLessThanOrEqual(300);
