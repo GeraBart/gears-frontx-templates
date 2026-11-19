@@ -233,28 +233,32 @@ describe('build-bundles.mjs', () => {
       expect(run.code, run.stderr).toBe(0);
       expect(JSON.parse(readFileSync(outPath('widgets.json'), 'utf-8'))).toEqual(['/widgets/ok_widget/widget.gts.json']);
       expect(existsSync(outPath('stale_widget'))).toBe(true);
+      expect(run.stdout).toContain(`not listed: stale_widget (part directories in ${outPath()} this build did not build)`);
     } finally {
       renameSync(aside, broken);
     }
   }, 120_000);
 
-  it('a full build names the part directories it did not list, and a clean dist and a named run name none', async () => {
-    // The full build owns the catalog of its out dir: a part directory a previous build left behind, which the list
-    // it writes does not name, comes out in one line naming it. Over a clean dist nothing is left to name, and a
-    // run that names bundles adds to the list it starts from instead of owning the catalog, so it prints no line.
+  it('a full build names the stale part directories sorted, and a clean dist and a named run name none', async () => {
+    // The line names the part directories the build did not list, sorted, so it reads the same on every file
+    // system: the two stale parts are seeded in reverse alphabetical order, and readdirSync order is the
+    // directory's own. Over a clean dist nothing is left to name. A run that names bundles adds to the list it
+    // starts from instead of owning the catalog, so it prints no line: the seeded list leaves the stale part out,
+    // so only the full-build guard can keep the line out, and the run takes the list path, with no fallback line.
     const broken = path.join(scratch, 'bundles', BROKEN, 'mfe.json');
     const aside = `${broken}.away`;
     renameSync(broken, aside);
     try {
-      const stale = await runBuild({ seedWidgetsJson: '["/widgets/stale_widget/widget.gts.json"]\n', seedParts: ['stale_widget'] });
-      expect(stale.code, stale.stderr).toBe(0);
-      expect(stale.stdout).toContain(`not listed: stale_widget (part directories in ${outPath()} this build did not build)`);
       const clean = await runBuild({});
       expect(clean.code, clean.stderr).toBe(0);
       expect(clean.stdout).not.toContain('not listed:');
-      const named = await runBuild({ args: [OK], seedParts: ['stale_widget'] });
+      const named = await runBuild({ args: [OK], seedWidgetsJson: '[]\n', seedParts: ['stale_widget'] });
       expect(named.code, named.stderr).toBe(0);
+      expect(named.stdout).not.toContain('no dist/widgets.json');
       expect(named.stdout).not.toContain('not listed:');
+      const sorted = await runBuild({ seedParts: ['zeta_widget', 'alpha_widget'] });
+      expect(sorted.code, sorted.stderr).toBe(0);
+      expect(sorted.stdout).toContain(`not listed: alpha_widget, zeta_widget (part directories in ${outPath()} this build did not build)`);
     } finally {
       renameSync(aside, broken);
     }

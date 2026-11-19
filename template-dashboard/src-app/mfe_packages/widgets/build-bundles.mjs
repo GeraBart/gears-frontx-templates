@@ -210,8 +210,8 @@ if (only !== undefined) {
     writeFileSync(path.join(outDir, 'widgets.json'), `${JSON.stringify(listed.map((type) => `${base}${type}/widget.gts.json`), null, 2)}\n`);
     // A full build owns the catalog of its out dir: the part directories it did not build, and so did not list, come
     // out in one line, so a stale part an earlier build left behind is named rather than dropped without a word.
-    if (full && existsSync(outDir)) {
-      const unlisted = readdirSync(outDir).filter((name) => !listed.includes(name) && existsSync(path.join(outDir, name, 'widget.gts.json')));
+    if (full) {
+      const unlisted = readdirSync(outDir).filter((name) => !listed.includes(name) && existsSync(path.join(outDir, name, 'widget.gts.json'))).sort();
       if (unlisted.length) console.log(`not listed: ${unlisted.join(', ')} (part directories in ${outDir} this build did not build)`);
     }
   };
