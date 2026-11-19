@@ -343,7 +343,7 @@ The triggers, by level:
 | Dashboard | the dashboard fails validation (including an embedded widget that breaks the open widget base, such as one with no `id`) or a layout check fails | Open a dashboard, step 17 |
 | Cell | a widget instance fails its own registration against the type its `id` names | Open a dashboard, steps 13.1 and 18.4.1 |
 | Cell | the widget's `entry` or `data_type` doesn't exist | Open a dashboard, step 18.4.3 |
-| Cell | the widget's `entry` came with a widget part left out | Load the served GTS file, step 6; Open a dashboard, step 13.1 |
+| Cell | the widget's `entry` came with a widget part left out, or its widget type, a type it extends, its render type or its data type that came only with a widget part left out, while the store lacks them | Load the served GTS file, step 6; Open a dashboard, step 13.1 |
 | Cell | the generated extension's registration or `mount_ext` fails, its widget bundle fails to load or is served from an origin that is not allowed | Open a dashboard, step 18.4.5 |
 | Cell | the transform fails to parse or check | Run a binding, step 1 |
 | Cell | the request is not same-origin or not GET/POST | Run a binding, step 3.1 |
