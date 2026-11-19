@@ -159,20 +159,28 @@ authority on each step.
    - `lifecycle.test.tsx`: "renders the real home screen with the provided
      bridge", and the example status payload its `beforeEach` supplies for it.
    Kept, and they must keep passing:
-   - `HomeScreen.test.tsx`: "renders no kit scope of its own while the theme
-     changes around it", "re-reads current properties when the host swaps the
-     bridge instance", "reacts to bridge property updates and unsubscribes on
-     unmount", "sets the host direction from the primary subtag of a
-     region-tagged language". The first asserts the screen root carries no
-     `data-theme` at all across theme changes (the lifecycle stamps the kit
-     scope on the shadow host); "re-reads current properties when the host
-     swaps the bridge instance" and "sets the host direction from the primary
-     subtag of a region-tagged language" query the scaffold's `screen-theme`
-     and `screen-language` testids, while "reacts to bridge property updates
-     and unsubscribes on unmount" matches the rendered theme and language
-     values with `findByText`/`getByText`; all three also assert the host
-     direction (`host.dir`), so re-point those queries at the new screen
-     rather than deleting the cases.
+   - `HomeScreen.test.tsx`: "scopes the screen to the kit dark tokens for
+     every dark host theme and to light otherwise", "re-reads current
+     properties when the host swaps the bridge instance", "reacts to bridge
+     property updates and unsubscribes on unmount", "sets the host direction
+     from the primary subtag of a region-tagged language", "%s keeps the cold
+     loading frame as tall as the screen slot". The first asserts that the
+     screen root's `data-theme` is `dark` for each dark host theme the host
+     registers (`dark`, `dracula`, `dracula-large`) and `light` for the light
+     themes and for an identifier the host never registers (the lifecycle
+     stamps the same kit scope on the shadow host); "re-reads current
+     properties when the host swaps the bridge instance" and "sets the host
+     direction from the primary subtag of a region-tagged language" query the
+     scaffold's `screen-theme` and `screen-language` testids, while "reacts to
+     bridge property updates and unsubscribes on unmount" matches the rendered
+     theme and language values with `findByText`/`getByText`; all three also
+     assert the host direction (`host.dir`), so re-point those queries at the
+     new screen rather than deleting the cases. The theme-scope case also
+     waits on the scaffold's domain-id text (`findByText(TEST_DOMAIN_ID)`)
+     before asserting `data-theme`; re-point that wait at the new screen too
+     (for example the `screen-root` testid). The `it.each` case asserts the
+     loading root keeps a `min-height` of `100%` of the screen slot; when the
+     new screen keeps the hook's loading branch, add it to that table.
    - `lifecycle.test.tsx`: every other case - app binding, token re-anchoring,
      base mount, and the eight host-scope cases (light, dark, theme change after
      unmount, duplicate mount, second container, missing theme, non-string
