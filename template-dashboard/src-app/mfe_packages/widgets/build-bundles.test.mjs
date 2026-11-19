@@ -223,7 +223,7 @@ describe('build-bundles.mjs', () => {
     // names them, are seeded first, eleven of them in a scattered order: the not-listed line names every part
     // directory the build did not list, sorted, and readdirSync order is the directory's own. APFS returns the
     // names sorted anyway, so on a developer Mac the assertion holds either way; the check bites on a file system
-    // whose readdir order is not sorted (ext4 on CI), where twelve names sorted by chance have odds of 1/12!. The
+    // whose readdir order is not sorted (ext4 on CI), where eleven names sorted by chance have odds of 1/11!. The
     // list the build writes names only the bundle it built, and the stale directories themselves stay on disk,
     // since the build removes nothing.
     const broken = path.join(scratch, 'bundles', BROKEN, 'mfe.json');

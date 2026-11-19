@@ -707,11 +707,11 @@ describe('the served file in parts', () => {
     const brokenEntry = { id: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.broken.v1', manifest: 7 };
     const broken = { ...base, instances: [...base.instances, brokenEntry] };
     const first = registerServedFile(types, broken, bundleIds);
-    expect(first).toMatchObject({ ok: false, problem: expect.stringMatching(/the registry rejected it: /) });
     const redefined = { ...catalogPie, description: 'otherwise' };
     const second = registerServedFile(types, [base, { types: [redefined], instances: [] }], bundleIds);
     const lines = errors.mock.calls.map(([line]) => String(line));
     errors.mockRestore();
+    expect(first).toMatchObject({ ok: false, problem: expect.stringMatching(/the registry rejected it: /) });
     expect(second.ok).toBe(true);
     expect(lines).toEqual([
       expect.stringMatching(
