@@ -93,10 +93,11 @@ const isKitScaleStep = (name: string): boolean => {
  * size, a type role the kit's scales do not carry (`--app-gutter`,
  * `--app-hero-size`). Such a token is neither a kit colour override nor a kit
  * scale step: it maps no kit colour, so it never makes a theme a palette of
- * its own. The prefix is the whole door - the bare `--app-` and any other
- * unknown name stay rejected.
+ * its own. The prefix is the whole door - the bare `--app-`, a name of
+ * separators alone after it (`--app--`) and any other unknown name stay
+ * rejected: the first character after the prefix must be alphanumeric.
  */
-const isProjectToken = (name: string): boolean => /^--app-[\w-]+$/.test(name);
+const isProjectToken = (name: string): boolean => /^--app-[a-z0-9][\w-]*$/i.test(name);
 
 /**
  * The left menu family a kit-palette theme declares, selected label token
@@ -187,7 +188,7 @@ describe('shell themes over the ui-kit palette', () => {
     }
   });
 
-  it('lets every theme override only tokens the kit or the shell declares, or add a kit scale step', () => {
+  it('lets every theme override only tokens the kit or the shell declares, add a kit scale step, or name a project token under --app-', () => {
     for (const theme of frontxThemes) {
       expect(unknownNames(theme), theme.id).toEqual([]);
     }
@@ -241,15 +242,28 @@ describe('shell themes over the ui-kit palette', () => {
     expect(unknownNames(projectTokens)).toEqual([]);
     expect(hasOwnPalette(projectTokens)).toBe(false);
 
-    // The prefix is the whole door: the same names without it stay rejected,
-    // wherever they appear.
-    const unprefixed: ThemeConfig = {
-      id: 'unprefixed',
-      name: 'Unprefixed',
+    // The prefix is the whole door: the bare prefix, a separator-only name
+    // after it, a lookalike family name and the same names without the prefix
+    // all stay rejected, wherever they appear.
+    const rejected: ThemeConfig = {
+      id: 'rejected-project-tokens',
+      name: 'Rejected project tokens',
       appearance: 'light',
-      variables: { '--gutter': '1.5rem', '--hero-size': '3rem' },
+      variables: {
+        '--app-': '1.5rem',
+        '--app--': '3rem',
+        '--application-gutter': '1.5rem',
+        '--gutter': '1.5rem',
+        '--hero-size': '3rem',
+      },
     };
-    expect(unknownNames(unprefixed)).toEqual(['--gutter', '--hero-size']);
+    expect(unknownNames(rejected)).toEqual([
+      '--app-',
+      '--app--',
+      '--application-gutter',
+      '--gutter',
+      '--hero-size',
+    ]);
   });
 
   it('makes a theme with its own palette map every colour token of its appearance', () => {
