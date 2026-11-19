@@ -23,19 +23,21 @@
  * by its own name (`radius`; `text` or `font` for a size; `space`, `spacing`,
  * `gap`, `gutter`, `padding`, `margin` or `inset` for a spacing step; a whole
  * shadow value for `shadow`; `duration` or `delay` for a time), else by the
- * property its `var()` (or `@value`) references read in across every scanned
- * file (`font-size` for font-size, margin/padding/gap for spacing,
+ * property its `var()` (or `@value`) references read in across the scanned
+ * style sheets (`font-size` for font-size, margin/padding/gap for spacing,
  * border-radius for radius): a tokens file declaring the steps and the screen
  * file spending them is the arrangement the check exists for, so the
- * use-site table is built over all the files the run reads before any of them
- * is checked. A definition whose name and use sites are silent declares no
- * length or time kind: not reported, the way a length on an unlisted property
- * is not. A literal a `var()` carries as its fallback is read wherever a kind
- * is known - the property's, or the definition's: the browser paints the
- * fallback when the variable is invalid at computed-value time, and the
- * source declares the literal either way (`var(--x, 64px)` under `padding`
- * reports the `64px`; `font:` reads its size out of a fallback the same way
- * it reads it out of the shorthand head, size seat only, line height
+ * use-site table is built over every scanned style sheet before any file is
+ * checked. A use in a script style object, or a script style declaration
+ * spent from a style sheet, is not followed: script use sites stay within
+ * their own file. A definition whose name and use sites are silent declares
+ * no length or time kind: not reported, the way a length on an unlisted
+ * property is not. A literal a `var()` carries as its fallback is read
+ * wherever a kind is known - the property's, or the definition's: the browser
+ * paints the fallback when the variable is invalid at computed-value time, and
+ * the source declares the literal either way (`var(--x, 64px)` under
+ * `padding` reports the `64px`; `font:` reads its size out of a fallback the
+ * same way it reads it out of the shorthand head, size seat only, line height
  * excluded). Each branch runs only when
  * DESIGN.md names tokens for that kind, whatever the colour kind carries. The
  * import form `@value a from '...'` defines nothing. The fix of a finding on
@@ -372,7 +374,7 @@ const USE_SITE_KINDS = [
  * the definition unreported.
  *
  * @param {ReadonlySet<string>} [properties] the properties the references of
- *   one definition name read in, from the same file
+ *   one definition name read in, across the scanned style sheets
  * @returns {'radius' | 'font-size' | 'spacing' | undefined}
  */
 function useSiteKind(properties) {
@@ -409,8 +411,8 @@ function customLiteralKind(ctx, property, useSites) {
  * @param {string} rawProperty
  * @param {any} value a css-tree Value node
  * @param {ReadonlySet<string>} [useSites] for a custom property definition:
- *   the properties its references read in across the scanned files, which
- *   name its kind when its own name is silent
+ *   the properties its references read in, naming its kind when its own name
+ *   is silent
  * @returns {Array<{kind: string, found: string, loc?: {line: number, column: number}}>}
  */
 export function literalsInValue(ctx, rawProperty, value, useSites) {
