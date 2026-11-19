@@ -1,0 +1,23 @@
+/*
+ * Token defaults for the --uikit none build, which loads neither the kit's
+ * stylesheet nor the shell themes: main.no-uikit.tsx imports this file so the
+ * layout's token references resolve to the values the default theme declares
+ * for the kit builds. The kit builds never bundle this file (nothing in their
+ * entry imports it), so the kit's palette and the shell themes stay the only
+ * token source there. This folder is the project's own token declarations,
+ * the one place a declared step is not a static-check finding.
+ */
+:root {
+  /* The shell's popover elevation, the default theme's --shadow-popover. */
+  --shadow-popover: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* The collapse animation of the layout sidebar. */
+  --transition-base: 200ms;
+  --transition-easing: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* The kit's heading-1 step, at the size the popup title painted before the
+     shell mapped its type to kit tokens. */
+  --text-heading-1-size: 1.125rem;
+  --text-heading-1-line-height: 1.75rem;
+  --text-heading-1-weight: 600;
+}

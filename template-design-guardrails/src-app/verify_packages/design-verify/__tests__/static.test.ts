@@ -256,12 +256,12 @@ describe('CSS Modules', () => {
     ]);
   });
 
-  it('accepts tokens, var() fallbacks, 0, the allowed keywords and plain .css files', async () => {
+  it('accepts tokens, var() fallbacks that name tokens, 0, the allowed keywords and plain .css files', async () => {
     const root = project({
       'src/Clean.module.css': [
         '.a {',
         '  color: var(--foreground);',
-        '  background: var(--surface, #fff);',
+        '  background: var(--surface, var(--background));',
         '  border-color: transparent;',
         '  fill: currentColor;',
         '  padding: 0;',
@@ -329,6 +329,70 @@ describe('literal steps behind var()', () => {
     );
     // The colour the shadow-named definition holds is still a literal colour.
     expect(found(findings)).toEqual(['color #e11d48 in --shadow-color']);
+  });
+
+  // The use-site table spans every scanned file: a tokens file declaring the
+  // steps and the screen file spending them is the arrangement the check
+  // exists for, so a definition whose kind only another file names is
+  // reported all the same. Six definitions, six findings, none of them
+  // visible to a per-file table.
+  it('reads a definition kind from a use site in another file', async () => {
+    const { findings, code } = await check(
+      project({
+        'src/Tokens.module.css':
+          '.t { --my-gap: 8px; --my-size: 14px; --my-radius: 6px; --my-pad: 16px; --my-row: 20px; --my-inset: 24px; }',
+        'src/Hero.module.css': [
+          '.hero {',
+          '  gap: var(--my-gap);',
+          '  font-size: var(--my-size);',
+          '  border-radius: var(--my-radius);',
+          '  padding-left: var(--my-pad);',
+          '  row-gap: var(--my-row);',
+          '  margin-block-start: var(--my-inset);',
+          '}',
+        ].join('\n'),
+      }),
+    );
+    expect(findings.map((f) => `${f.file} ${f.kind} ${f.found}`)).toEqual([
+      'src/Tokens.module.css spacing 8px in --my-gap',
+      'src/Tokens.module.css font-size 14px in --my-size',
+      'src/Tokens.module.css radius 6px in --my-radius',
+      'src/Tokens.module.css spacing 16px in --my-pad',
+      'src/Tokens.module.css spacing 20px in --my-row',
+      'src/Tokens.module.css spacing 24px in --my-inset',
+    ]);
+    expect(code).toBe(0);
+  });
+
+  // A literal a var() carries as its fallback is a literal the source
+  // declares and the browser can paint (when the variable is invalid at
+  // computed-value time), so it hides from no check a direct literal hides
+  // from - a var() without a fallback still names nothing.
+  it('reports a literal given as a var() fallback where the kind is known', async () => {
+    const { findings } = await check(
+      project({
+        'src/Fallback.module.css': [
+          '.a {',
+          '  padding: var(--unknown, 64px);',
+          '  color: var(--brand, #0756f5);',
+          '  font: 600 var(--size, 14px)/20px sans-serif;',
+          '  font: var(--stack, 600 14px/20px sans-serif);',
+          '  box-shadow: var(--shadow-x, 0 1px 2px #000);',
+          '  transition: opacity var(--dur, 150ms) var(--ease, ease-in);',
+          '  margin: var(--space-2);',
+          '}',
+        ].join('\n'),
+      }),
+    );
+    expect(found(findings)).toEqual([
+      'spacing 64px in padding',
+      'color #0756f5 in color',
+      'font-size 14px in font',
+      'font-size 14px in font',
+      'shadow var(--shadow-x,0 1px 2px #000) in box-shadow',
+      'duration 150ms in transition',
+      'easing ease-in in transition',
+    ]);
   });
 
   it('reports a duration definition only on a time unit, and a shadow-named colour as a colour', async () => {

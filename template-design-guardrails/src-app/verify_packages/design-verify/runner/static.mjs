@@ -23,11 +23,20 @@
  * by its own name (`radius`; `text` or `font` for a size; `space`, `spacing`,
  * `gap`, `gutter`, `padding`, `margin` or `inset` for a spacing step; a whole
  * shadow value for `shadow`; `duration` or `delay` for a time), else by the
- * property its `var()` (or `@value`) references read in elsewhere in the same
+ * property its `var()` (or `@value`) references read in across every scanned
  * file (`font-size` for font-size, margin/padding/gap for spacing,
- * border-radius for radius). A definition whose name and use sites are silent
- * declares no length or time kind: not reported, the way a length on an
- * unlisted property is not. Each branch runs only when
+ * border-radius for radius): a tokens file declaring the steps and the screen
+ * file spending them is the arrangement the check exists for, so the
+ * use-site table is built over all the files the run reads before any of them
+ * is checked. A definition whose name and use sites are silent declares no
+ * length or time kind: not reported, the way a length on an unlisted property
+ * is not. A literal a `var()` carries as its fallback is read wherever a kind
+ * is known - the property's, or the definition's: the browser paints the
+ * fallback when the variable is invalid at computed-value time, and the
+ * source declares the literal either way (`var(--x, 64px)` under `padding`
+ * reports the `64px`; `font:` reads its size out of a fallback the same way
+ * it reads it out of the shorthand head, size seat only, line height
+ * excluded). Each branch runs only when
  * DESIGN.md names tokens for that kind, whatever the colour kind carries. The
  * import form `@value a from '...'` defines nothing. The fix of a finding on
  * a definition also names the theme folder, `src-app/app/themes/`, where a
@@ -220,6 +229,42 @@ function isZero(node) {
 }
 
 /**
+ * The fallback nodes of a `var()` function: everything after its first
+ * top-level comma (`var(--x, 64px)` -> the `64px` node). No comma, no
+ * fallback. css-tree wraps the fallback in one Value node when the value is
+ * parsed with custom properties (every CSS path here does), so that wrapper
+ * is read as the list of the nodes it holds.
+ */
+function varFallbackNodes(node) {
+  const children = node.children?.toArray() ?? [];
+  const comma = children.findIndex((n) => n.type === 'Operator' && n.value === ',');
+  if (comma === -1) return [];
+  const fallback = children.slice(comma + 1);
+  return fallback.length === 1 && fallback[0].type === 'Value' ? fallback[0].children.toArray() : fallback;
+}
+
+/**
+ * Walk a value's literal nodes the way the checks read them: outside `var()`,
+ * with a `var()`'s fallback entered in its place. A fallback is a literal the
+ * source declares and the browser can paint (when the variable is invalid at
+ * computed-value time), so it hides from no check a direct literal hides
+ * from; `enter` runs on every node a plain walk would visit, `visit` handles
+ * the var() indirection itself.
+ *
+ * @param {any} value a css-tree Value node
+ * @param {(node: any) => any} enter
+ */
+function walkOutsideVar(value, enter) {
+  csstree.walk(value, function visit(node) {
+    if (node.type === 'Function' && node.name.toLowerCase() === 'var') {
+      for (const fallback of varFallbackNodes(node)) csstree.walk(fallback, visit);
+      return csstree.walk.skip;
+    }
+    return enter(node);
+  });
+}
+
+/**
  * The colour channel keywords relative colour syntax gives each colour
  * function: the origin's channels, by the CSS Color 5 grammar. `color()` names
  * `r g b` or `x y z` by its colour space. `alpha` is not a colour channel.
@@ -364,7 +409,7 @@ function customLiteralKind(ctx, property, useSites) {
  * @param {string} rawProperty
  * @param {any} value a css-tree Value node
  * @param {ReadonlySet<string>} [useSites] for a custom property definition:
- *   the properties its references read in elsewhere in the same file, which
+ *   the properties its references read in across the scanned files, which
  *   name its kind when its own name is silent
  * @returns {Array<{kind: string, found: string, loc?: {line: number, column: number}}>}
  */
@@ -383,17 +428,28 @@ export function literalsInValue(ctx, rawProperty, value, useSites) {
 
   if (property === 'font') {
     // The shorthand holds one font size: the length (or calc) before its
-    // `/line-height`, else its only length. The line height is not one.
+    // `/line-height`, else its only length. The line height is not one. A
+    // `var()` standing in the size seat names no literal, its fallback can:
+    // the fallback is read as the same shorthand head, so a full shorthand
+    // fallback gives up its size, never its line height.
     const nodes = value.children.toArray();
-    const slash = nodes.findIndex((n) => n.type === 'Operator' && n.value === '/');
-    const size = (slash === -1 ? nodes : nodes.slice(0, slash)).findLast(
-      (n) =>
-        (n.type === 'Dimension' && ctx.lengthUnits.has(n.unit.toLowerCase())) ||
-        (n.type === 'Function' && n.name.toLowerCase() !== 'var'),
-    );
+    // The size is the last length (or function) before the list's own
+    // `/line-height`, so a fallback holding a whole shorthand is cut at its
+    // internal slash, not the outer one.
+    const sizeOf = (list) => {
+      const cut = list.findIndex((n) => n.type === 'Operator' && n.value === '/');
+      return (cut === -1 ? list : list.slice(0, cut)).findLast(
+        (n) =>
+          (n.type === 'Dimension' && ctx.lengthUnits.has(n.unit.toLowerCase())) ||
+          n.type === 'Function',
+      );
+    };
+    let size = sizeOf(nodes);
+    if (size?.type === 'Function' && size.name.toLowerCase() === 'var') {
+      size = sizeOf(varFallbackNodes(size));
+    }
     if (!size) return out;
-    csstree.walk(size, function enter(node) {
-      if (node.type === 'Function' && node.name.toLowerCase() === 'var') return csstree.walk.skip;
+    walkOutsideVar(size, function enter(node) {
       if (node.type === 'Dimension' && !isZero(node) && ctx.lengthUnits.has(node.unit.toLowerCase())) {
         out.push({ kind: 'font-size', found: csstree.generate(node), loc: node.loc?.start });
       }
@@ -409,8 +465,7 @@ export function literalsInValue(ctx, rawProperty, value, useSites) {
     const wholeShadow = kinds.has('shadow') || !isColourOnlyValue(ctx, value);
     if (wholeShadow) {
       let literal = false;
-      csstree.walk(value, function enter(node) {
-        if (node.type === 'Function' && node.name.toLowerCase() === 'var') return csstree.walk.skip;
+      walkOutsideVar(value, function enter(node) {
         if ((node.type === 'Dimension' && !isZero(node)) || isColorLiteral(ctx, node)) literal = true;
         return undefined;
       });
@@ -425,8 +480,7 @@ export function literalsInValue(ctx, rawProperty, value, useSites) {
   const customLengthKind = ['spacing', 'radius', 'font-size'].includes(customKind) ? customKind : undefined;
   const customDuration = customKind === 'duration';
 
-  csstree.walk(value, function enter(node) {
-    if (node.type === 'Function' && node.name.toLowerCase() === 'var') return csstree.walk.skip;
+  walkOutsideVar(value, function enter(node) {
     const loc = node.loc?.start;
     if (kinds.has('color') && isColorLiteral(ctx, node)) {
       out.push({ kind: 'color', found: csstree.generate(node), loc });
@@ -559,8 +613,13 @@ function useSiteProperties(ast) {
  * @param {ReturnType<typeof checkContext>} ctx
  * @param {string} text
  * @param {string} file root-relative path, for the report
+ * @param {ReadonlyMap<string, ReadonlySet<string>>} [useSites] the use-site
+ *   table over every scanned file, built by the caller; a definition's kind
+ *   is read from it as is. Omitted, the table is built for this file alone -
+ *   the shape a direct call gets, and the shape that misses a definition
+ *   whose kind another file names.
  */
-export function checkCss(ctx, text, file) {
+export function checkCss(ctx, text, file, useSites) {
   const findings = [];
   const parseErrors = [];
   const ast = csstree.parse(text, {
@@ -571,7 +630,7 @@ export function checkCss(ctx, text, file) {
     parseAtrulePrelude: false,
     onParseError: (error) => parseErrors.push(`${file}:${error.line}:${error.column}: ${error.message}`),
   });
-  const sites = useSiteProperties(ast);
+  const sites = useSites ?? useSiteProperties(ast);
   csstree.walk(ast, {
     visit: 'Declaration',
     enter(decl) {
@@ -1188,17 +1247,45 @@ async function run(argv, io) {
   const ts = files.some(([, type]) => type === 'script') ? loadTypeScript(root) : undefined;
   const findings = [];
   const parseErrors = [];
-  for (const [file, type] of files) {
-    const inTheme = file.startsWith(THEME_DIR);
+  const texts = new Map();
+  for (const [file] of files) {
     let text;
     try {
       text = fs.readFileSync(path.join(root, file), 'utf8');
     } catch (error) {
       throw new InputError(`${file} could not be read: ${error instanceof Error ? error.message : String(error)}`);
     }
+    texts.set(file, text);
+  }
+  // The use-site table is built over every scanned CSS file before any file
+  // is checked: a definition in one file and the property its var() reads in
+  // another name the kind between them - a tokens file declaring the steps
+  // and the screen file spending them is the arrangement the check exists
+  // for - so a per-file table reports nothing there. Theme files contribute
+  // their uses too: they are scanned, their literals are only never findings.
+  const useSites = new Map();
+  for (const [file, type] of files) {
+    if (type !== 'css') continue;
+    let ast;
+    try {
+      ast = csstree.parse(texts.get(file), { parseCustomProperty: true, parseAtrulePrelude: false });
+    } catch {
+      // A file that does not parse reports that through checkCss's own parse;
+      // its uses are unknowable before then anyway.
+      continue;
+    }
+    for (const [name, set] of useSiteProperties(ast)) {
+      const merged = useSites.get(name) ?? new Set();
+      for (const property of set) merged.add(property);
+      useSites.set(name, merged);
+    }
+  }
+  for (const [file, type] of files) {
+    const inTheme = file.startsWith(THEME_DIR);
+    const text = texts.get(file);
     let result;
     if (type === 'css') {
-      const css = checkCss(ctx, text, file);
+      const css = checkCss(ctx, text, file, useSites);
       // A theme CSS file declares the project's own token steps: its literals
       // are never findings (see collectFiles), but a file that does not parse
       // still reports, like every selected source.

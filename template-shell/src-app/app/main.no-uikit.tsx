@@ -8,6 +8,10 @@ import '@/app/i18n/shellTranslations'; // Register the shell namespace's transla
 import { applyPersistedLanguage } from '@/app/i18n/languagePersistence'; // Restore the remembered language before the first render
 import { registerBootstrapEffects } from '@/app/effects/bootstrapEffects'; // Register app-level effects
 import App from './App';
+// The no-kit build loads neither the kit's stylesheet nor the shell themes,
+// so the token defaults the layout's var() references resolve against come
+// from this import (src-app/app/themes/none-build.css).
+import './themes/none-build.css';
 import { loadStudioOverlay } from './studioOverlay';
 
 // Register accounts service (application-level service for user info)

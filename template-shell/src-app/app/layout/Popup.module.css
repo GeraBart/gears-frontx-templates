@@ -24,11 +24,10 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background-color: var(--background);
-  /* The shell's popover elevation, declared per theme in src-app/app/themes.
-     The kit's --popover-shadow and --panel-shadow draw different shadows.
-     The fallback keeps the elevation in the --uikit none build, which loads
-     neither the kit's stylesheet nor the shell themes that declare it. */
-  box-shadow: var(--shadow-popover, 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1));
+  /* The shell's popover elevation, declared per theme in src-app/app/themes
+     and for the --uikit none build in src-app/app/themes/none-build.css.
+     The kit's --popover-shadow and --panel-shadow draw different shadows. */
+  box-shadow: var(--shadow-popover);
 }
 
 .header {
@@ -37,11 +36,9 @@
 
 .title {
   /* The kit's heading-1 step: the title painted 1.125rem before the shell
-     mapped its type to kit tokens, so it grows to 1.25rem. The fallbacks
-     keep the title's size and weight in the --uikit none build, which loads
-     neither the kit's stylesheet nor the shell themes: without them the
-     inherited properties would take the body's values. */
-  font-size: var(--text-heading-1-size, 1.125rem);
-  line-height: var(--text-heading-1-line-height, 1.75rem);
-  font-weight: var(--text-heading-1-weight, 600);
+     mapped its type to kit tokens, so it grows to 1.25rem. The no-kit build
+     takes its values from src-app/app/themes/none-build.css. */
+  font-size: var(--text-heading-1-size);
+  line-height: var(--text-heading-1-line-height);
+  font-weight: var(--text-heading-1-weight);
 }
