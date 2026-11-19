@@ -31,7 +31,7 @@ No people, no faces, no logos, no free subjects (animals, landscapes, objects dr
 - Three line tones plus dash: `hi` for the one element that carries the point, `edge` for the other solids, `lo` for the grid and quiet lines, `dash` for a flow or a link.
 - Every path comes from the helper. No hand-written path data, ever.
 - Write each shape out as its own element, no `.map`, so the check counts what is drawn.
-- No fixed colours and no fixed sizes in the scene. The stylesheet carries them, and every colour is a FrontX UI Kit token: `hi` is `var(--primary)`, `edge` is `var(--muted-foreground)`, `lo` is `var(--border)`, the face fill is `var(--card)`, the side fill is `var(--muted)`.
+- No fixed colours and no fixed sizes in the scene. The stylesheet carries them, and every colour is a FrontX UI Kit token: `hi` is `var(--primary)`, `edge` is `var(--muted-foreground)`, `lo` is `var(--border)`, the face fill is `var(--card)`, the side fill is `var(--secondary)`, which stays a step away from `var(--card)` in light and dark themes alike.
 
 ## Shape vocabulary
 
