@@ -112,8 +112,22 @@ export async function runTestUnitLegs(
   return exitCodes.some((code) => code !== 0) ? 1 : 0;
 }
 
+/**
+ * The entry point's whole job: turn the command line's own arguments into
+ * the legs and run them. Exported because it is what the entry block below
+ * calls, so the wiring from `process.argv` to the legs is testable at the
+ * same seam the process runs through.
+ */
+export function main(
+  argv: readonly string[],
+  runner: LegRunner,
+  log: (message: string) => void = console.log,
+): Promise<number> {
+  return runTestUnitLegs(legsWithArgs(TEST_UNIT_LEGS, argv), runner, log);
+}
+
 if (isProcessEntryPoint(import.meta.url)) {
-  runTestUnitLegs(legsWithArgs(TEST_UNIT_LEGS, process.argv.slice(2)), spawnLeg)
+  main(process.argv.slice(2), spawnLeg)
     .then((code) => {
       // Every leg has emitted close by now, so nothing holds the event loop:
       // setting the exit code lets the last [test:unit] summary line flush to

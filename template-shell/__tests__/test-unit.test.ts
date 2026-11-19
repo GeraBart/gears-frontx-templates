@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { legsWithArgs, TEST_UNIT_LEGS, runTestUnitLegs } from '../scripts/test-unit.js';
+import { legsWithArgs, TEST_UNIT_LEGS, runTestUnitLegs, main } from '../scripts/test-unit.js';
 
 describe('runTestUnitLegs', () => {
   it('runs legs two and three after the first leg fails, and exits non-zero', async () => {
@@ -116,5 +116,30 @@ describe('the test:unit script wiring', () => {
       scripts: Record<string, string>;
     };
     expect(manifest.scripts['test:unit']).toContain('scripts/test-unit.ts');
+  });
+
+  // The entry block calls main with the command line's own arguments, and
+  // main is the only place that wiring exists: a main that dropped the
+  // arguments and ran the bare legs would leave `npm run test:unit -- <args>`
+  // silently checking everything instead of the named filter. Asserted
+  // against the leg strings themselves, so the seam the process runs
+  // through is the one under test.
+  it('hands the command line arguments to the legs', async () => {
+    const ranLegs: string[] = [];
+    const exitCode = await main(
+      ['--reporter=dot', 'src-app/__tests__/app.test.tsx'],
+      async (leg) => {
+        ranLegs.push(leg);
+        return 0;
+      },
+      () => undefined,
+    );
+
+    expect(exitCode).toBe(0);
+    expect(ranLegs).toEqual([
+      'vitest --run --passWithNoTests=false --reporter=dot src-app/__tests__/app.test.tsx',
+      'vitest --run --config src-app/vitest.config.ts --passWithNoTests=false --reporter=dot src-app/__tests__/app.test.tsx',
+      'npm run test:unit --workspaces --if-present -- --reporter=dot src-app/__tests__/app.test.tsx',
+    ]);
   });
 });
