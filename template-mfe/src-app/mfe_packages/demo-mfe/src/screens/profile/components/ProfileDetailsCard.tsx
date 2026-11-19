@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
   Button,
   Card,
   CardContent,
@@ -42,6 +45,30 @@ function getFormValues(user: ApiUser): ProfileFormValues {
     department:
       typeof user.extra?.department === 'string' ? user.extra.department : '',
   };
+}
+
+/**
+ * Derive the avatar initials the way the shell header does: the first letter
+ * of the first and the last name, the first two letters of a single-word name,
+ * or the first letter of the email when no name came back at all. The name
+ * fields are coalesced although `ApiUser` types them as `string` (see
+ * `getFormValues`), so a profile of nulls still lands on the email fallback
+ * instead of rendering "null null" as initials.
+ */
+function getInitials(user: ApiUser): string {
+  const displayName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+
+  if (!displayName) {
+    return (user.email?.[0] || '?').toUpperCase();
+  }
+
+  const parts = displayName.split(/\s+/);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }
+
+  return displayName.slice(0, 2).toUpperCase();
 }
 
 export const ProfileDetailsCard: React.FC<ProfileDetailsCardProps> = ({
@@ -212,13 +239,18 @@ export const ProfileDetailsCard: React.FC<ProfileDetailsCardProps> = ({
     <Card>
       <CardContent>
         <div className={styles.identity}>
-          {user.avatarUrl && (
-            <img
-              src={user.avatarUrl}
-              alt={`${user.firstName} ${user.lastName}`}
-              className={styles.avatar}
-            />
-          )}
+          {/* The image renders only behind a URL; without one the fallback
+              keeps the card's avatar block the height the old <img> reserved,
+              the same arrangement the shell header uses. */}
+          <Avatar className={styles.avatar}>
+            {user.avatarUrl && (
+              <AvatarImage
+                src={user.avatarUrl}
+                alt={`${user.firstName} ${user.lastName}`}
+              />
+            )}
+            <AvatarFallback>{getInitials(user)}</AvatarFallback>
+          </Avatar>
           <h2 className={styles.name}>
             {user.firstName} {user.lastName}
           </h2>

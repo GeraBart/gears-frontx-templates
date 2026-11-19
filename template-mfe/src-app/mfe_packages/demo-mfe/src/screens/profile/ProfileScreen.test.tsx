@@ -3,12 +3,13 @@ import userEvent from '@testing-library/user-event';
 import {
   FRONTX_SHARED_PROPERTY_LANGUAGE,
   FRONTX_SHARED_PROPERTY_THEME,
+  Language,
   TextDirection,
 } from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserRole } from '../../api/types';
+import { UserRole, type ApiUser } from '../../api/types';
 import { AccountsApiService } from '../../api/AccountsApiService';
 
 /*
@@ -55,12 +56,15 @@ vi.mock('../../shared/useScreenTranslations', () => ({
   useScreenTranslations: mockUseScreenTranslations,
 }));
 
-const defaultUser = {
+// Typed as the API type it stands in for, so the avatar tests can add or omit
+// the optional `avatarUrl` without widening anything by hand.
+const defaultUser: ApiUser = {
   id: 'user-42',
   email: 'ada@example.com',
   firstName: 'Ada',
   lastName: 'Lovelace',
   role: UserRole.Admin,
+  language: Language.English,
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-02-01T00:00:00.000Z',
   extra: {
@@ -198,6 +202,56 @@ describe('ProfileScreen', () => {
 
     for (const label of ['first_name_label', 'last_name_label', 'department_label']) {
       expect(screen.getByLabelText(label)).toHaveProperty('value', '');
+    }
+  });
+
+  // The mock profile carries no avatarUrl, so the identity block must hold its
+  // shape through the fallback initials instead of a removed external avatar
+  // host: the initials render, and no <img> is placed anywhere in the card.
+  it('renders the initials fallback and no img element when the profile has no avatar URL', async () => {
+    const { rootElement } = await setupProfileScreen();
+
+    expect(screen.getByText('AL')).toBeTruthy();
+    expect(rootElement?.querySelector('img')).toBeNull();
+  });
+
+  // The kit Avatar renders its <img> only after the image reports `loaded`,
+  // and jsdom never decodes an image resource, so without help the URL test
+  // could not observe anything: the src wiring would render no element at
+  // all. The stub stands in for the browser's decode: the moment the kit
+  // hands the URL to an Image, that Image reports the load the browser
+  // would, and the img the kit then mounts is observable with its src.
+  it('mounts the avatar image with the profile URL and hides the fallback once it loads', async () => {
+    const avatarUrl = 'https://cdn.example.test/ada.png';
+
+    class FakeLoadedImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      complete = false;
+      naturalWidth = 0;
+
+      set src(_value: string) {
+        // The kit assigns `onload` before `src`, so the load it reports here
+        // is the one it subscribed for.
+        this.onload?.();
+      }
+    }
+
+    vi.stubGlobal('Image', FakeLoadedImage);
+
+    try {
+      const { rootElement } = await setupProfileScreen({
+        queryResult: createQueryResult({
+          data: { user: { ...defaultUser, avatarUrl } },
+        }),
+      });
+
+      const image = await screen.findByAltText('Ada Lovelace');
+      expect(image.getAttribute('src')).toBe(avatarUrl);
+      expect(screen.queryByText('AL')).toBeNull();
+      expect(rootElement?.querySelector('img')).not.toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 
