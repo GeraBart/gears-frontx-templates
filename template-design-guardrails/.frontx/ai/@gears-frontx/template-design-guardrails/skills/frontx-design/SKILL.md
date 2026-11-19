@@ -31,6 +31,7 @@ Extra steps: a project that needs steps the kit's scales do not carry (a bigger 
 | Review a screen | `references/review.md`, run in a fresh context: a separate agent that sees screenshots and source, not the builder's reasoning; its report opens with a one-word verdict: `blocked`, `revise`, `unverified` or `pass` |
 | Verify: static check of the source, browser check of the render, waivers | `references/verify.md` |
 | Read or update DESIGN.md | `references/design-md.md` |
+| Draw an illustration for a block's picture slot | `references/illustration.md`; it copies `templates/iso.ts`, `templates/iso.module.css` and `templates/iso-scene.tsx` and checks with `scripts/check-iso-scene.mjs` |
 | Close any task | `templates/handoff.md`, plus `templates/state-inventory.md` for a screen |
 
 A request that spans rows runs them in this order: place, theme, build, verify, review, DESIGN.md, close. The theme, build and review rows read `DESIGN.md` at the project root first. Surface: application screens by default. On marketing and documentation pages every gate binds except APP-001 and APP-002, which only advise; documentation pages also load `references/typography.md`.
@@ -68,9 +69,7 @@ A request that spans rows runs them in this order: place, theme, build, verify, 
 - `rules/static-check.json` - data of the static check: native elements and roles with a kit component, literal kinds with the DESIGN.md group of their tokens.
 - `rules/render-check.json` - data of the render runner: the gate of each runtime checker rule id.
 
-`templates/`, blanks to fill: `templates/state-inventory.md` (one row per data region with each state's outcome, widths and themes seen) and `templates/handoff.md` (built, checked with gate id and outcome, not checked, known gaps).
-
-`scripts/`, run from the project root: `scripts/check-design-md.mjs` checks the `DESIGN.md` front matter token names and `version` against the installed kit; exit 0 clean, 1 findings, 2 input error.
+`templates/`, blanks to fill: `templates/state-inventory.md` (one row per data region with each state's outcome, widths and themes seen) and `templates/handoff.md` (built, checked with gate id and outcome, not checked, known gaps). `scripts/`, run from the project root: `scripts/check-design-md.mjs` checks the `DESIGN.md` front matter token names and `version` against the installed kit; exit 0 clean, 1 findings, 2 input error.
 
 Outside this directory:
 - `DESIGN.md` at the project root - kit token names in its front matter (the kit version is its `version`) and the human summary.

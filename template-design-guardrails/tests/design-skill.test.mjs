@@ -30,7 +30,7 @@ const skillMd = readText(path.join(skill, 'SKILL.md'));
 // Gate ids look like SYS-001 or A11Y-003.
 const GATE_ID = /\b[A-Z][A-Z0-9]{1,4}-\d{3}\b/g;
 // A path into the skill, as the markdown writes it.
-const SKILL_PATH = /\b(?:references|rules|templates|scripts)\/[\w.-]+\.(?:md|json|mjs)\b/g;
+const SKILL_PATH = /\b(?:references|rules|templates|scripts)\/[\w.-]+\.(?:md|json|mjs|ts|tsx|css)\b/g;
 
 describe('rules/quality-gates.json', () => {
   const registry = readJson('rules/quality-gates.json');
@@ -158,6 +158,16 @@ describe('the SKILL.md map', () => {
   it('names every file under references/, rules/, templates/ and scripts/', () => {
     expect(skillFiles.length).toBeGreaterThan(0);
     expect(skillFiles.filter((rel) => !named.has(rel))).toEqual([]);
+  });
+
+  it('reports a .ts, .tsx or .css skill file the map leaves out', () => {
+    const missingFrom = (text) => {
+      const names = new Set(text.match(SKILL_PATH) ?? []);
+      return skillFiles.filter((rel) => !names.has(rel));
+    };
+    for (const rel of ['templates/iso.ts', 'templates/iso-scene.tsx', 'templates/iso.module.css']) {
+      expect(missingFrom(skillMd.replaceAll(rel, 'PLACEHOLDER')), rel).toContain(rel);
+    }
   });
 
   it('points only at skill files that exist from any skill markdown', () => {

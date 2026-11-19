@@ -1,0 +1,43 @@
+/* Isometric line illustration: one 400 x 320 drawing, three line tones, two fills. Every colour is a FrontX UI Kit token, so the drawing follows the theme. */
+
+.figure {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 5 / 4;
+  overflow: visible;
+}
+
+.figure path {
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  fill: none;
+}
+
+/* Line tones: the one highlighted element, plain edges, the floor grid. */
+.hi {
+  stroke: var(--primary);
+}
+
+.edge {
+  stroke: var(--muted-foreground);
+}
+
+.lo {
+  stroke: var(--border);
+}
+
+.dash {
+  stroke-dasharray: 3 4;
+}
+
+/* Fills: tops of solids, and their shaded sides. */
+.figure .face {
+  fill: var(--card);
+}
+
+.figure .side {
+  fill: var(--muted);
+}
