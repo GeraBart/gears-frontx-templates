@@ -59,11 +59,16 @@ const isObject = (item: unknown): item is Record<string, unknown> => item !== nu
 const canonical = (value: unknown) =>
   JSON.stringify(value, (_key, item: unknown) => (isObject(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : item));
 
-/** What the served file brought so far: the base file and every widget part that registered whole. */
+/**
+ * What the served file brought so far: the base file and every widget part that registered whole, with the source
+ * each registered type id came from first.
+ */
 interface Held {
   /** Each manifest and entry id with its canonical content. */
   instances: Map<string, string>;
   dashboards: Map<string, Dashboard>;
+  /** Each type id in the store with the phrase naming the source that registered it first: the served file or the widget part. */
+  sources: Map<string, string>;
 }
 
 const idOfInstance = (instance: Record<string, unknown>) => String(instance.id ?? '');
@@ -71,9 +76,11 @@ const idOfInstance = (instance: Record<string, unknown>) => String(instance.id ?
 /**
  * The reason a served file or part cannot register, or nothing. A widget part is checked whole against what is held
  * before anything of it registers; past that check, the store keeps what the part registered before a failing item.
- * Only a part that registers whole adds its manifests, entries and dashboards to `held`.
+ * Only a part that registers whole adds its manifests, entries and dashboards to `held`. Every type id the served
+ * file or part registers is recorded in `held.sources` under `source`, its first source: the store keeps those types
+ * when the part is left out later, so the first source stays theirs.
  */
-function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: ReadonlySet<string>, held: Held, isBase: boolean): string | undefined {
+function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: ReadonlySet<string>, held: Held, isBase: boolean, source: string): string | undefined {
   const served = part as Partial<ServedFile> | null;
   if (!isObject(served) || !Array.isArray(served.types) || !Array.isArray(served.instances)) return 'it has no types and instances lists';
   if (!served.types.every(isObject) || !served.instances.every(isObject)) return 'it has an entry that is not an object';
@@ -92,10 +99,13 @@ function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: Readonl
     seen.set(id, instance);
   }
   if (!isBase) {
-    // The store keeps the first definition of a type and ignores a different one; a part that brings one is left out.
+    // The store keeps the first definition of a type and ignores a different one; a part that brings one is left out,
+    // with the name of the source that registered the type first.
     for (const schema of served.types) {
-      const was = types.getSchema(idOf(schema));
-      if (was && canonical(was) !== canonical(schema)) return `its type ${idOf(schema)} is already defined otherwise`;
+      const id = idOf(schema);
+      const was = types.getSchema(id);
+      const first = held.sources.get(id);
+      if (was && canonical(was) !== canonical(schema)) return `its type ${id} is already defined otherwise${first ? ` by ${first}` : ''}`;
     }
     // The store keeps the last write of an instance; a part may not replace what the base file or a registered part brought.
     for (const instance of instances) {
@@ -110,7 +120,13 @@ function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: Readonl
     if (taken) return `its dashboard ${idOfInstance(taken)} is already served otherwise`;
   }
   try {
-    for (const schema of served.types) types.registerSchema(schema);
+    for (const schema of served.types) {
+      types.registerSchema(schema);
+      // Recorded per type as it registers: a later item of the same part can still fail it, and the store keeps
+      // the types that registered, so they keep this source as their first one.
+      const id = idOf(schema);
+      if (!held.sources.has(id)) held.sources.set(id, source);
+    }
     for (const instance of instances) types.register(instance);
   } catch (error) {
     return `the registry rejected it: ${message(error)}`;
@@ -143,6 +159,15 @@ export const escapeControls = (text: string) =>
 const quoted = (name: string) => escapeControls(JSON.stringify(name));
 
 /**
+ * The name a console line gives a part: its manifest ids, quoted, escaped and capped (the ids come from the part, and
+ * a line break in one would fake another console line), or its place in the answer.
+ */
+const partName = (ids: string[], index: number) => {
+  const listed = ids.filter((id) => id.startsWith(MANIFEST_TYPE_PREFIX)).join(', ');
+  return listed ? quoted(listed.length > NAME_CAP ? `${listed.slice(0, NAME_CAP)}...` : listed) : `number ${index + 2} of the answer (the served file is number 1)`;
+};
+
+/**
  * Step 2: the served file, or a dashboard-level failure. A host answers one
  * joined file, or the file in parts: the base file (the catalog types and the
  * dashboards), then one part per widget bundle. A rejected base file fails
@@ -155,8 +180,12 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
   const [base, ...parts] = Array.isArray(file) ? file : [file];
   // The stand-in records and the plugin's lifecycle stages, in the store before the file, count as held, so no part replaces them.
   const before = [...STAND_IN.instances, ...(loadLifecycleStages() as unknown as Record<string, unknown>[])];
-  const held: Held = { instances: new Map(before.map((instance) => [idOfInstance(instance), canonical(instance)])), dashboards: new Map() };
-  const problem = guarded(() => registerPart(types, base, bundleIds, held, true));
+  const held: Held = {
+    instances: new Map(before.map((instance) => [idOfInstance(instance), canonical(instance)])),
+    dashboards: new Map(),
+    sources: new Map(),
+  };
+  const problem = guarded(() => registerPart(types, base, bundleIds, held, true, 'the served file'));
   if (problem) return { ok: false, problem: `the served file: ${problem}` };
   const rejected = { instances: new Map<string, string>(), types: new Map<string, string>() };
   parts.forEach((part, index) => {
@@ -168,7 +197,7 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
     const reason = guarded(() => {
       const instances = isObject(part) && Array.isArray(part.instances) ? part.instances.filter(isObject) : [];
       ids = instances.map(idOfInstance).filter((id) => id && !id.startsWith(DASHBOARD_TYPE_ID));
-      return registerPart(types, part, bundleIds, held, false);
+      return registerPart(types, part, bundleIds, held, false, `the widget part ${partName(ids, index)}`);
     });
     guarded(() => {
       if (isObject(part) && Array.isArray(part.types)) typeIds = part.types.filter(isObject).map(idOf).filter(Boolean);
@@ -180,9 +209,7 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
       for (const id of typeIds) rejected.types.delete(id);
       return;
     }
-    const listed = ids.filter((id) => id.startsWith(MANIFEST_TYPE_PREFIX)).join(', ');
-    // Quoted, escaped and capped: the ids come from the part, and a line break in one would fake another console line.
-    const name = listed ? quoted(listed.length > NAME_CAP ? `${listed.slice(0, NAME_CAP)}...` : listed) : `number ${index + 2} of the answer (the served file is number 1)`;
+    const name = partName(ids, index);
     // The reason quotes ids from the part as well (a registry message, an id held otherwise), so it is escaped the same way.
     const line = `the widget part ${name} is left out: ${escapeControls(reason)}`;
     console.error(`[dashboard] ${line}`);

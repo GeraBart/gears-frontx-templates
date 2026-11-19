@@ -629,6 +629,37 @@ describe('the served file in parts', () => {
     expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
   });
 
+  it('names the part that defined a type first in the line of the part left out for it', () => {
+    // An earlier part with no manifest brings the pie widget type: it registers, and the catalog pie part is left
+    // out for the type alone. The line names the earlier part the way that part's own console line would name it,
+    // and the pie cells fail with that line.
+    const pie = bundlePart('pie_chart');
+    const redefined = { ...IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE}`)!, description: 'otherwise' };
+    const fromPart = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), { types: [redefined], instances: [] }, pie]);
+    expect(fromPart.lines).toEqual([
+      expect.stringMatching(
+        new RegExp(
+          `the widget part "${PIE_MANIFEST.replace(/[.~]/g, '\\$&')}" is left out: its type .*pie_chart\\.v1~ is already defined otherwise by the widget part number 3 of the answer \\(the served file is number 1\\)$`,
+        ),
+      ),
+    ]);
+    const result = registerDashboard(fromPart.types, demoDashboard(), fromPart.outcome.ok ? fromPart.outcome.rejected : undefined);
+    expect(pieSlots().length).toBeGreaterThan(0);
+    expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
+    expect(result.ok && result.failed.get(pieSlots()[0])).toMatch(/is already defined otherwise by the widget part number 3 of the answer \(the served file is number 1\)$/);
+  });
+
+  it('names the served file in the line of a part left out for a type the base file defined first', () => {
+    const pieType = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE}`)!;
+    const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, pieType] };
+    const loadedFile = loadedParts([base, { types: [{ ...pieType, description: 'otherwise' }], instances: [] }]);
+    expect(loadedFile.lines).toEqual([
+      expect.stringMatching(
+        new RegExp(`the widget part number 2 of the answer \\(the served file is number 1\\) is left out: its type .*pie_chart\\.v1~ is already defined otherwise by the served file$`),
+      ),
+    ]);
+  });
+
   it('serves the re-point of a catalog widget type to the product entry: the catalog part off the list, a product part carrying the type, and no failed cell', () => {
     // The re-point the guides describe: the catalog pie bundle stays off the widget list, and a product bundle's part
     // carries the pie widget type with its `entry` trait set to the product's own entry, the catalog render and data
@@ -685,12 +716,12 @@ describe('the served file in parts', () => {
     const restInstances = IN_BUNDLE_PARTS.instances.filter((instance) => !String(instance.id).endsWith(`.${widget}.v1`));
     const { types, outcome, lines } = loadedParts([base, { types: restTypes, instances: restInstances }, bundlePart(widget)]);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(new RegExp(`the widget part "${MANIFEST.replace(/[.~]/g, '\\$&')}" is left out: its type .*${widget}\\.v1~ is already defined otherwise$`));
+    expect(lines[0]).toMatch(new RegExp(`the widget part "${MANIFEST.replace(/[.~]/g, '\\$&')}" is left out: its type .*${widget}\\.v1~ is already defined otherwise by the served file$`));
     const result = registerDashboard(types, demoDashboard(), outcome.ok ? outcome.rejected : undefined);
     const slots = slotsOf(widget);
     expect(slots.length).toBeGreaterThan(0);
     expect(result.ok && [...result.failed.keys()]).toEqual(slots);
-    expect(result.ok && result.failed.get(slots[0])).toMatch(new RegExp(`^the widget part ".*${widget}.*" is left out: its type .* is already defined otherwise$`));
+    expect(result.ok && result.failed.get(slots[0])).toMatch(new RegExp(`^the widget part ".*${widget}.*" is left out: its type .* is already defined otherwise by the served file$`));
   });
 
   it('fails no cell of the healthy parts when a left-out part declares a type the registry refuses for its id', () => {
@@ -771,7 +802,7 @@ describe('the served file in parts', () => {
         { ...metric, types: [...metric.types, dataType, { ...summary, description: 'otherwise' }] },
         { ...pie, types: [...pie.types, changed] },
       ]);
-      expect(loadedFile.lines).toEqual([expect.stringMatching(/metric_card.* is left out: its type .*summary_card\.v1~ is already defined otherwise$/)]);
+      expect(loadedFile.lines).toEqual([expect.stringMatching(/metric_card.* is left out: its type .*summary_card\.v1~ is already defined otherwise by the widget part "/)]);
       expect(loadedFile.types.getSchema('gts.frontx.dashboard.widget_data.widget_data.v1~frontx.test.widget_data.shared.v1~')).toEqual(changed);
       // Only the left-out part's cells fail; the later part that brings the type otherwise registers.
       expect(slotsOf('metric_card').length).toBeGreaterThan(0);
@@ -788,7 +819,7 @@ describe('the served file in parts', () => {
       const loadedFile = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(rest), { ...metric, types: [...metric.types, dataType, bad] }, { ...pie, types: [...pie.types, changed] }]);
       expect(loadedFile.lines).toEqual([
         expect.stringMatching(/metric_card.* is left out: the registry rejected it: /),
-        expect.stringMatching(/pie_chart.* is left out: its type .*frontx\.test\.widget_data\.shared\.v1~ is already defined otherwise$/),
+        expect.stringMatching(/pie_chart.* is left out: its type .*frontx\.test\.widget_data\.shared\.v1~ is already defined otherwise by the widget part "gts\.frontx\.mfes\.mfe\.mf_manifest\.v1~frontx\.dashboard\.widgets\.metric_card\.v1"$/),
       ]);
       expect(loadedFile.types.getSchema('gts.frontx.dashboard.widget_data.widget_data.v1~frontx.test.widget_data.shared.v1~')).toEqual(dataType);
       expect([...(failedSlots(loadedFile) as string[])].sort()).toEqual([...slotsOf('metric_card'), ...slotsOf('pie_chart')].sort());
