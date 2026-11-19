@@ -4,7 +4,8 @@
  * must give a finding. The CLI is run in a child process for its exit codes.
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -18,6 +19,9 @@ const scenePath = path.join(skill, 'templates/iso-scene.tsx');
 const SCENE = readFileSync(scenePath, 'utf8');
 // Built at run time, so the source itself holds no colour literal.
 const HEX = ['#', '1a2b3c'].join('');
+const RED = ['r', 'e', 'd'].join('');
+const RGB = ['r', 'g', 'b'].join('');
+const HSL = ['h', 's', 'l'].join('');
 const PLACEHOLDER_END = '      {/* End of placeholder. */}';
 
 /** The base scene with `extra` added after the placeholder shapes. */
@@ -46,6 +50,67 @@ describe('check-iso-scene', () => {
   ])('reports %s', (_name, extra, message) => {
     const findings = checkScene(withShapes(extra), 'scene.tsx');
     expect(findings.some((line) => /^scene\.tsx:\d+ /.test(line) && message.test(line))).toBe(true);
+  });
+
+  it.each([
+    ['a stroke in a style object', `      <g style={{ stroke: "${RED}" }} />`, /set colours by class, not by style/],
+    ['a fill attribute', `      <path fill="${RED}" className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />`, /set colours by class, not by attribute/],
+    ['an rgb() call', `      <g style={{ fill: "${RGB}(59, 130, 246)" }} />`, new RegExp(`colour literal ${RGB}\\(`)],
+    ['an hsl() call', `      <g style={{ stroke: "${HSL}(210, 80%, 50%)" }} />`, new RegExp(`colour literal ${HSL}\\(`)],
+  ])('reports %s', (_name, extra, message) => {
+    const findings = checkScene(withShapes(extra), 'scene.tsx');
+    expect(findings.some((line) => /^scene\.tsx:\d+ /.test(line) && message.test(line))).toBe(true);
+  });
+
+  it.each([
+    ['a missing viewBox', SCENE.replace('viewBox="0 0 400 320"', ''), /no viewBox/],
+    ['zero highlighted elements', SCENE.replace(' tone="hi"', ''), /0 highlighted elements/],
+  ])('reports %s', (_name, text, message) => {
+    const findings = checkScene(text, 'scene.tsx');
+    expect(findings.some((line) => /^scene\.tsx:\d+ /.test(line) && message.test(line))).toBe(true);
+  });
+
+  it.each([
+    ['an xmlns url on the viewBox line', SCENE.replace('viewBox="0 0 400 320"', 'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 320"')],
+    ['a viewBox in single quotes', SCENE.replace('viewBox="0 0 400 320"', "viewBox='0 0 400 320'")],
+    ['a highlight in single quotes', SCENE.replace('tone="hi"', "tone='hi'")],
+  ])('stays clean with %s', (_name, text) => {
+    expect(checkScene(text, 'scene.tsx')).toEqual([]);
+  });
+
+  it.each([
+    ['a fragment link', '      <path href="#face" className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />'],
+    ['a hyphenated fragment id', '      <path id="1a2b3c-top" className={styles.edge} d={segment(view, [0, 0, 0], [1, 1, 0])} />'],
+  ])('stays clean with %s', (_name, extra) => {
+    expect(checkScene(withShapes(extra), 'scene.tsx')).toEqual([]);
+  });
+
+  it('exits 1 when a scene has a finding', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'check-iso-scene-'));
+    try {
+      const file = path.join(dir, 'scene.tsx');
+      writeFileSync(file, withShapes('      <text x="10" y="10">Label</text>'));
+      const result = run(file);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toMatch(/<text> is not allowed/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('exits 2 on an unreadable file and still prints the earlier findings', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'check-iso-scene-'));
+    try {
+      const file = path.join(dir, 'scene.tsx');
+      writeFileSync(file, withShapes('      <text x="10" y="10">Label</text>'));
+      const missing = path.join(dir, 'missing.tsx');
+      const result = run(file, missing);
+      expect(result.code).toBe(2);
+      expect(result.stdout).toMatch(/<text> is not allowed/);
+      expect(result.stderr).toContain(`cannot read ${missing}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('exits 2 with no file given', () => {

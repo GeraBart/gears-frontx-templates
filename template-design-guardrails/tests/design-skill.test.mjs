@@ -168,6 +168,10 @@ describe('the SKILL.md map', () => {
     for (const rel of ['templates/iso.ts', 'templates/iso-scene.tsx', 'templates/iso.module.css']) {
       expect(missingFrom(skillMd.replaceAll(rel, 'PLACEHOLDER')), rel).toContain(rel);
     }
+    // The extension list itself must cover .ts, .tsx and .css, or the two checks above go blind.
+    for (const rel of ['templates/iso.ts', 'templates/iso-scene.tsx', 'templates/iso.module.css']) {
+      expect(`see ${rel} here`.match(SKILL_PATH) ?? [], rel).toContain(rel);
+    }
   });
 
   it('points only at skill files that exist from any skill markdown', () => {

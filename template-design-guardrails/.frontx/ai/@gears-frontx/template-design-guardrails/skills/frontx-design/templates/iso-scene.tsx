@@ -47,13 +47,13 @@ function FloorGrid({ view }: { view: View }) {
 /** One isometric line illustration. With a label it is an image with that name; without one it is decoration. */
 export function IsoScene({ label }: { label?: string }) {
   const view: View = { ox: 200, oy: 162, unit: 17 };
-  const named = label !== undefined;
+  const named = label !== undefined && label.trim() !== '';
   return (
     <svg
       className={styles.figure}
       viewBox="0 0 400 320"
       role={named ? 'img' : undefined}
-      aria-label={label}
+      aria-label={named ? label : undefined}
       aria-hidden={named ? undefined : true}
       focusable="false"
     >

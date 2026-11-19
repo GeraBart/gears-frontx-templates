@@ -7,11 +7,16 @@
  *
  * Findings, one line each as `file:line message`: no `viewBox="0 0 400 320"`;
  * a colour literal (#hex, rgb(), rgba(), hsl(), hsla(), oklch(), color(), or a
- * fill= or stroke= attribute other than none or currentColor); literal path
+ * fill= or stroke= attribute, or a fill, stroke or colour key in a style
+ * object, other than none, currentColor or var(--...)); literal path
  * data in a d= attribute (paths come from the `iso` helpers); a <text>,
  * <image>, <foreignObject> or <img> element; more than 12 shapes (<Box>,
  * <Cylinder>, <Line>, <path> outside the FloorGrid, Box, Cylinder and Line
  * definitions); not exactly one highlighted element (tone="hi" or kind="hi").
+ *
+ * The shape count is an optional aid for an honest agent: it counts the
+ * skill's own shape components (Box, Cylinder, Line, path) written out one
+ * per element, as the reference asks.
  *
  * Exit 0 clean, 1 findings, 2 input error (no file given, a file it cannot read).
  * The CLI runs only when this file is the entry point.
@@ -23,10 +28,15 @@ const USAGE = 'usage: node check-iso-scene.mjs <scene.tsx>...';
 const MAX_SHAPES = 12;
 const NOT_SHAPES = ['FloorGrid', 'Box', 'Cylinder', 'Line'];
 
-/** Comments become spaces, newlines kept, so indexes and line numbers stay put. */
+/** Comments become spaces, newlines kept, so indexes and line numbers stay put.
+ * String and template spans match first and are kept, so a `//` inside a
+ * string (an xmlns url, say) does not blank the rest of its line. */
 function stripComments(text) {
   const blank = (m) => m.replace(/[^\n]/g, ' ');
-  return text.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
+  return text.replace(
+    /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g,
+    (m) => (m.startsWith('/') ? blank(m) : m),
+  );
 }
 
 /** The [start, end) range of `function name(...) { ... }`, by paren and brace counting. */
@@ -58,13 +68,28 @@ export function checkScene(text, file) {
     for (const m of code.matchAll(pattern)) add(m.index, message(m));
   };
 
-  if (!/viewBox="0 0 400 320"/.test(code)) add(0, 'no viewBox="0 0 400 320": the drawing is 400 x 320');
+  if (!/viewBox\s*=\s*(?:\{\s*)?(["'])0\s+0\s+400\s+320\1(?:\s*\})?/.test(code)) {
+    add(0, 'no viewBox="0 0 400 320": the drawing is 400 x 320');
+  }
 
-  each(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/g, (m) => `colour literal ${m[0]}: use a kit token class`);
+  // Not after href= or xlinkHref= (fragment links) or inside url( (a paint
+  // reference), and not a fragment id kept whole (`#face`, `#1a2b3c-top`).
+  each(
+    /(?<!\b(?:href|xlinkHref)\s*=\s*\{?\s*["'])(?<!\burl\()#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![\w-])/g,
+    (m) => `colour literal ${m[0]}: use a kit token class`,
+  );
   each(/\b(?:rgba?|hsla?|oklch|color)\(/g, (m) => `colour literal ${m[0]}: use a kit token class`);
   for (const m of code.matchAll(/\b(fill|stroke)=(\{[^}]*\}|"[^"]*"|'[^']*')/g)) {
     const value = m[2].replace(/^\{\s*|\s*\}$/g, '').replace(/^["'`]|["'`]$/g, '');
     if (value !== 'none' && value !== 'currentColor') add(m.index, `${m[1]}=${m[2]}: set colours by class, not by attribute`);
+  }
+  for (const m of code.matchAll(/\bstyle\s*=\s*\{\{([^}]*)\}\}/g)) {
+    for (const s of m[1].matchAll(/\b(fill|stroke|color)\s*:\s*(["'])([^"']*)\2/g)) {
+      const value = s[3].trim();
+      if (value !== 'none' && value !== 'currentColor' && !/^var\(--[\w-]+\)$/.test(value)) {
+        add(m.index + s.index, `style {{ ${s[1]}: ${s[2]}${s[3]}${s[2]} }}: set colours by class, not by style`);
+      }
+    }
   }
   each(/\bd=(?:"[^"]*"|'[^']*'|\{\s*(?:"[^"]*"|'[^']*'|`\s*[Mm][^`]*`)\s*\})/g, () => 'literal path data: build d from the iso helpers');
   each(/<(text|image|foreignObject|img)\b/g, (m) => `<${m[1]}> is not allowed: line shapes only`);
@@ -78,7 +103,7 @@ export function checkScene(text, file) {
     add(shapes[MAX_SHAPES].index, `${shapes.length} shapes, at most ${MAX_SHAPES}`);
   }
 
-  const highlights = [...code.matchAll(/\b(?:tone|kind)="hi"/g)];
+  const highlights = [...code.matchAll(/\b(?:tone|kind)\s*=\s*(?:\{\s*)?(["'])hi\1(?:\s*\})?/g)];
   if (highlights.length !== 1) {
     add(highlights[1]?.index ?? 0, `${highlights.length} highlighted elements (tone="hi" or kind="hi"), exactly 1`);
   }
@@ -91,17 +116,17 @@ function main(files) {
     return 2;
   }
   const findings = [];
+  const errors = [];
   for (const file of files) {
-    let text;
     try {
-      text = readFileSync(file, 'utf8');
+      findings.push(...checkScene(readFileSync(file, 'utf8'), file));
     } catch (error) {
-      console.error(`cannot read ${file}: ${error.code ?? error.message}`);
-      return 2;
+      errors.push(`cannot read ${file}: ${error.code ?? error.message}`);
     }
-    findings.push(...checkScene(text, file));
   }
   for (const line of findings) console.log(line);
+  for (const line of errors) console.error(line);
+  if (errors.length > 0) return 2;
   return findings.length > 0 ? 1 : 0;
 }
 
