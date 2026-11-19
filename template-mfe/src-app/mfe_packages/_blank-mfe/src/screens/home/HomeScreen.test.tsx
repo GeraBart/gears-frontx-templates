@@ -147,6 +147,36 @@ describe('HomeScreen', () => {
     expect(screen.getByTestId('screen-loading')).toBeTruthy();
   });
 
+  /*
+   * The cold first frame may show the placeholder, but its root is the screen
+   * root, which the screen's CSS Module holds at the host's height: the area
+   * below the header must not collapse to the skeleton and grow once the
+   * dictionary lands. The suite ships the module's real CSS (`css: true`), so
+   * the computed style pins the declaration through the same cascade a browser
+   * runs. Parameterised over this package's screens so the next screen joins
+   * the list instead of silently skipping the pin.
+   */
+  it.each([['HomeScreen', HomeScreen] as const])(
+    '%s keeps the cold loading frame as tall as the screen slot',
+    (_name, Screen) => {
+      useScreenTranslationsMock.mockReturnValue({ t: (key: string) => key, loading: true });
+
+      const { bridge } = createMfeBridgeFixture({
+        extDomainId: TEST_DOMAIN_ID,
+        extensionId: TEST_INSTANCE_ID,
+        initialProperties: {
+          [FRONTX_SHARED_PROPERTY_THEME]: TEST_THEME,
+          [FRONTX_SHARED_PROPERTY_LANGUAGE]: TEST_LANGUAGE,
+        },
+      });
+
+      const { unmount } = render(<Screen bridge={bridge} />);
+
+      expect(getComputedStyle(screen.getByTestId('screen-root')).minHeight).toBe('100%');
+      unmount();
+    }
+  );
+
   it('announces a busy region beside the bridge values while the API request is pending', async () => {
     useApiQueryMock.mockReturnValue({
       data: null,

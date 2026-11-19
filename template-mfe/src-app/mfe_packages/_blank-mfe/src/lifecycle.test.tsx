@@ -59,6 +59,16 @@ vi.mock('./shared/useScreenTranslations', () => ({
   useScreenTranslations: useScreenTranslationsMock,
 }));
 
+/*
+ * The lifecycle module pays its whole Vite transform on first import (it pulls
+ * the real home screen and the kit). Imported here, at file scope, that cost
+ * lands in the import phase, outside the per-test budget, which a cold
+ * transform cache otherwise blows on whichever test imports the module first.
+ * Every test and the afterEach hook below re-import the same module registry
+ * entry, so they get this instance without paying for it again.
+ */
+await import('./lifecycle');
+
 type ThemeListener = (property: { id: string; value: unknown }) => void;
 
 /*

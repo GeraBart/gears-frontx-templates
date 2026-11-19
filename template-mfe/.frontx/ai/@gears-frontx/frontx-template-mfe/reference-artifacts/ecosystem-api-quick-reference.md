@@ -263,7 +263,10 @@ are about the local hook.
 
 `useScreenTranslations(languageModules, bridge)` returns `{ t, loading }`. It starts
 `loading: true` with an EMPTY translation map, loads the locale module asynchronously, and
-only then flips `loading` to `false`. Inside the window, `t(key)` finds nothing, logs
+only then flips `loading` to `false`; a language already in the module-level dictionary
+cache renders its text on the first render with `loading` false, and a language switch
+keeps the words on screen with `loading` staying false until the new dictionary arrives.
+Inside the window, `t(key)` finds nothing, logs
 `[useScreenTranslations] Missing translation key: <key>` and returns the KEY as its value -
 no throw, no red gate, just raw keys on screen and a warning per call. Two rules keep a
 screen out of it:

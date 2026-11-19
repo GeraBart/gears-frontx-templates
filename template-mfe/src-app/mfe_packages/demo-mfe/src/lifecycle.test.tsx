@@ -75,6 +75,22 @@ vi.mock('./screens/uikit/UIKitElementsScreen', () => ({
   ),
 }));
 
+/*
+ * The lifecycle modules pay their whole Vite transform on first import: each
+ * entry renders a real screen, which pulls the kit. Imported here, at file
+ * scope, that cost lands in the import phase, outside the per-test budget,
+ * which a cold transform cache otherwise blows on whichever test imports the
+ * modules first. The tests below re-import the same module registry entries,
+ * so they get these instances without paying for them again.
+ */
+await Promise.all([
+  import('./lifecycle-helloworld'),
+  import('./lifecycle-profile'),
+  import('./lifecycle-settings'),
+  import('./lifecycle-theme'),
+  import('./lifecycle-uikit'),
+]);
+
 describe('demo-mfe lifecycles', () => {
   it('renders the hello world lifecycle content', async () => {
     const { bridge } = createMfeBridgeFixture({

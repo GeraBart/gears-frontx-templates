@@ -22,6 +22,19 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-6);
+  /*
+   * The lines stay at the top of the box: once min-height stretches the screen
+   * past its content, the default align-content would share the spare height
+   * between the wrapped lines and open a gap under the menu (on a narrow host
+   * the menu sits on its own line above the demos).
+   */
+  align-content: flex-start;
+  /*
+   * Keeps the screen root as tall as the host, so the loading frame below the
+   * header covers the slot instead of collapsing to the skeleton and growing
+   * when the dictionary lands.
+   */
+  min-height: 100%;
   padding: var(--space-4) 0;
 }
 

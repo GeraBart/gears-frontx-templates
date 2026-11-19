@@ -191,6 +191,9 @@ Each screen manages its own translations using `useScreenTranslations`:
 - Language changes trigger automatic translation reload
 - No host-side i18n dependencies
 
+A loaded dictionary is cached per language, so a screen remounts with its text
+already in place.
+
 ### Styling
 
 Components come from `@gears-frontx/ui-kit`, pinned to an exact version. It is

@@ -11,6 +11,17 @@ import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHROME_ACTION_SET_LANGUAGE } from '../../shared/extension-ids';
 
+/*
+ * The screen module pays its whole Vite transform on first import, and the
+ * sibling screen test files cold-start that transform at the same time.
+ * Imported here, at file scope, the cost lands in the import phase, outside
+ * the per-test budget; a first import inside the first test blows that budget
+ * on a cold transform cache, and every later test then finds the previous
+ * screen still mounted. The setup helpers re-import the same module registry
+ * entry, so they get this instance without paying for it again.
+ */
+await import('./SettingsScreen');
+
 const { useScreenTranslationsMock } = vi.hoisted(() => ({
   useScreenTranslationsMock: vi.fn(),
 }));
@@ -92,7 +103,7 @@ async function renderDuringFirstLoad() {
     },
   });
   mockShadowHost(HTMLDivElement);
-  const { rerender } = render(<SettingsScreen bridge={bridgeFixture.bridge} />);
+  const { rerender, unmount } = render(<SettingsScreen bridge={bridgeFixture.bridge} />);
 
   // Re-renders the same mounted screen with the hook reporting `loading`.
   const renderWithLoading = (loading: boolean) => {
@@ -100,7 +111,7 @@ async function renderDuringFirstLoad() {
     rerender(<SettingsScreen bridge={bridgeFixture.bridge} />);
   };
 
-  return { renderWithLoading };
+  return { renderWithLoading, unmount };
 }
 
 describe('SettingsScreen', () => {
@@ -243,6 +254,33 @@ describe('SettingsScreen', () => {
     expect(screen.getByRole('radio', { name: 'Deutsch' })).toBe(germanRadio);
     expect(germanRadio.isConnected).toBe(true);
     expect(document.activeElement).toBe(germanRadio);
+  });
+
+  /*
+   * The cold first frame may show the placeholder, but its root is the screen
+   * root, which the screen's CSS Module holds at the host's height: the area
+   * below the header must not collapse to the skeleton and grow once the
+   * dictionary lands. The suite ships the module's real CSS (`css: true`), so
+   * the computed style pins the declaration through the same cascade a browser
+   * runs.
+   */
+  it('keeps the cold loading frame as tall as the screen slot', async () => {
+    const { renderWithLoading, unmount } = await renderDuringFirstLoad();
+    expect(screen.getByRole('status')).toBeTruthy();
+
+    const loadingRoot = screen.getByRole('status');
+    expect(getComputedStyle(loadingRoot).minHeight).toBe('100%');
+
+    // Once the dictionary lands the branch is gone; the loaded root keeps the
+    // screen root's own class, so it stays as tall as the slot.
+    renderWithLoading(false);
+    expect(screen.queryByRole('status')).toBeNull();
+    const loadedRoot = screen
+      .getByRole('heading', { level: 1 })
+      .closest('[data-theme]') as HTMLElement | null;
+    expect(loadedRoot).toBeTruthy();
+    expect(getComputedStyle(loadedRoot as HTMLElement).minHeight).toBe('100%');
+    unmount();
   });
 
   it('opens on skeletons for the first load and brings the controls in once it lands', async () => {

@@ -5,6 +5,17 @@ import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixtur
 import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+/*
+ * The screen module pays its whole Vite transform on first import, and the
+ * sibling screen test files cold-start that transform at the same time.
+ * Imported here, at file scope, the cost lands in the import phase, outside
+ * the per-test budget; a first import inside the first test blows that budget
+ * on a cold transform cache, and every later test then finds the previous
+ * screen still mounted. The setup helpers re-import the same module registry
+ * entry, so they get this instance without paying for it again.
+ */
+await import('./UIKitElementsScreen');
+
 const {
   observeSpy,
   toasterContainerSpy,
