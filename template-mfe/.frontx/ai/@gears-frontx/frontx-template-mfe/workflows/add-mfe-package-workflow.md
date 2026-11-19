@@ -79,7 +79,23 @@ each step names the concrete command or file template-mfe ships.
      that misses the URL the service really sends passes it while the screen
      renders empty.
 
-6. **Regenerate manifests**
+6. **Build the shell's packages before the first package check**
+   Run this once at the project root (the applied shell), before the first
+   `type-check`, `test:unit` or `build` of the new MFE:
+   ```bash
+   npm run build:packages
+   ```
+   The MFE's `type-check`, `test:unit` and `build` resolve
+   `@gears-frontx/react` and `@gears-frontx/frontx-template-shell` through
+   their built output (`dist/`, `dist-lib/`), which a fresh seed does not carry
+   until these packages are built. Without this step they stop on
+   `TS2307: Cannot find module '@gears-frontx/react'` before they read any of the
+   screen's code. The command builds the shell's own packages only; the MFE
+   package keeps its own `build` script. `npm run build:mfes` and
+   `npm run dev:all` build the shell's packages themselves, so this explicit
+   step only matters for the package checks run before them.
+
+7. **Regenerate manifests**
    ```bash
    npm run build:mfes
    npm run generate:mfe-manifests
@@ -88,7 +104,7 @@ each step names the concrete command or file template-mfe ships.
    (`npm run build --workspace=<package-name>`) before regenerating manifests;
    `build:mfes` rebuilds every MFE and belongs in the final gate.
 
-7. **Validate**
+8. **Validate**
    While iterating, scope to the MFE's workspace:
    ```bash
    npm run type-check --workspace=<package-name>
@@ -101,7 +117,7 @@ each step names the concrete command or file template-mfe ships.
    npm run arch:deps
    ```
 
-8. **Run and confirm**
+9. **Run and confirm**
    ```bash
    npm run dev:all
    ```

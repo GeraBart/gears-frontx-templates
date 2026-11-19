@@ -28,7 +28,18 @@ new MFE.
    carries `@gears-frontx/ui-kit` and the framework packages; add anything
    the screen's plan calls for), then run `npm install` once. The lockfile is
    a shared file: after this step, no agent installs anything.
-3. Confirm each scaffold with the skill's flag-strip check before
+3. Build the shell's packages once, before dispatching: run
+   `npm run build:packages` at the project root (the applied shell). The
+   per-package `type-check`, `test:unit` and `build` in Phase 2 resolve
+   `@gears-frontx/react` and `@gears-frontx/frontx-template-shell` through
+   their built output (`dist/`, `dist-lib/`), which a fresh seed does not
+   carry, so a package check before this build stops on
+   `TS2307: Cannot find module '@gears-frontx/react'`. The lead runs it here
+   once; subagents do not run it themselves. `npm run build:mfes` and
+   `npm run dev:all` build the shell packages themselves, so this explicit
+   step only matters for the package checks run before them - the Phase 2
+   scoped checks.
+4. Confirm each scaffold with the skill's flag-strip check before
    dispatching; a package that kept `templateExample` fails silently and the
    parallel phase would build a screen nothing will ever load.
 
@@ -71,6 +82,8 @@ Each dispatch prompt must carry, explicitly:
 Hard boundaries for every parallel agent, stated in the dispatch prompt:
 
 - no writes outside its own package directory;
+- no `npm run build:packages` - the lead builds the shell's packages once in
+  Phase 1, and every check resolves them from that build;
 - no `npm install`, no lockfile or root-manifest edits — a mid-fill
   dependency need is a blocking return to the orchestrator, which applies it
   serially and re-dispatches that one agent;

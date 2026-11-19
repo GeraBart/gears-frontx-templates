@@ -177,7 +177,16 @@ authority on each step.
      base mount, and the eight host-scope cases (light, dark, theme change after
      unmount, duplicate mount, second container, missing theme, non-string
      theme, plain element container).
-7. **Regenerate manifests** — run `npm run generate:mfe-manifests` so the host's
+7. **Build the shell's packages before the first package check** - run
+   `npm run build:packages` once at the project root (the applied shell)
+   before the initial `type-check`, `test:unit` or `build` of the new MFE. The
+   package checks resolve `@gears-frontx/react` and
+   `@gears-frontx/frontx-template-shell` through their built output (`dist/`,
+   `dist-lib/`), which a fresh seed does not carry until this build runs;
+   without it they stop on `TS2307: Cannot find module '@gears-frontx/react'`
+   before they read any of the screen's code. The command builds the shell's
+   own packages; the MFE package keeps its own workspace build script.
+8. **Regenerate manifests** - run `npm run generate:mfe-manifests` so the host's
    `public/generated-mfe-manifests.json` picks up the new package (the same
    command rewrites the bundled menu icons from the installed `@iconify-json`
    sets); this step is mandatory before the new MFE is discoverable at runtime.
@@ -185,7 +194,7 @@ authority on each step.
    build` in that package) while `dev:all` runs: the manifest gains the new
    hashed asset paths and the next page load finds them, with no restart of
    `dev:all`.
-8. **Verify** — while iterating on the MFE, scope checks to its workspace:
+9. **Verify** - while iterating on the MFE, scope checks to its workspace:
    `npm run type-check --workspace=<package-name>` and
    `npm run test:unit --workspace=<package-name>` (a full `type-check` or
    `test:unit` sweep re-checks the shell and every other MFE on each fix —

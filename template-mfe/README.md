@@ -64,12 +64,12 @@ cd template-shell && npm install && npm run build
 cd ../template-mfe && npm install
 ```
 
-Use `template-shell`'s own `npm run build` rather than calling its `build:package`
-and `build:packages` by hand: those two are order-sensitive in a way that is easy
-to get backwards. `build:packages` type-checks against declarations the
-publishable package emits, so running it first fails on `@gears-frontx/framework`
-in a clean checkout. `npm run build` already sequences them correctly, along with
-the MFE and manifest steps that follow.
+Use `template-shell`'s own `npm run build` to build the whole shell: it
+sequences the publishable package, the subpackages, the MFEs, and the manifest
+step. Calling `npm run build:packages` by hand is safe too: its
+`prebuild:packages` runs `build:package` first, so the subpackages type-check
+against declarations that exist. `build:package` on its own builds only the
+publishable package, not the subpackages.
 
 If step 2 fails on `@gears-frontx/framework` with `TS2307: Cannot find module
 '@gears-frontx/frontx-template-shell'`, the shell's self-link is missing from its
@@ -78,15 +78,21 @@ always restore it, and Node hides the problem — it resolves the package throug
 the `exports` self-reference, so only the type build notices. `rm -rf
 template-shell/node_modules && npm install` recreates the link.
 
-For a seeded project (not this monorepo), the shell is a published, already-built
-package, so plain `npm install` is sufficient there:
+For a seeded project (not this monorepo), the shell arrives as source: its
+subpackages (`@gears-frontx/react`, `@gears-frontx/frontx-template-shell` and the
+rest) carry no `dist/` or `dist-lib/` until they are built, so run
+`npm run build:packages` once before checking an MFE package on its own
+(`type-check`, `test:unit` or `build` of that workspace). `npm run build:mfes`
+and `npm run dev:all` build those packages themselves, so they need no separate
+step.
 
 ```bash
 frontx seed frontx-template-shell ./my-app
 frontx add frontx-template-mfe ./my-app
-cd my-app && npm install   # required after every `add` — the shell's lock is
+cd my-app && npm install    # required after every `add` - the shell's lock is
                             # regenerated without MFE workspaces (see the
                             # shell's own README)
+npm run build:packages      # once, before a scoped MFE package check
 ```
 
 ## What it contributes
