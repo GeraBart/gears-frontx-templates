@@ -337,6 +337,7 @@ declare at this revision; re-deriving them costs a red gate cycle each.
 ```tsx
 import React, { useState } from 'react';  // the default import is what puts React.FormEvent in scope
 import { apiRegistry, useApiMutation, useApiQuery, useAppSelector } from '@gears-frontx/react';
+import { Input } from '@gears-frontx/ui-kit';  // the kit field the design check maps a text input to
 import { Button } from '../../components/ui/button';  // the package's own components, not an ecosystem import
 import { Card, CardContent } from '../../components/ui/card';
 import { BillingApiService } from '../../api/BillingApiService';
@@ -382,11 +383,11 @@ export const HomeScreen = () => {
       <CardContent className={styles.content}>
         <form onSubmit={onSubmit}>
           <label className={styles.label} htmlFor="name">Name</label>
-          <input
+          <Input
             id="name"
             required
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onValueChange={setName}
             data-testid="screen-name-input"
           />
           <Button type="submit" disabled={isPending} data-testid="screen-submit">Save</Button>
