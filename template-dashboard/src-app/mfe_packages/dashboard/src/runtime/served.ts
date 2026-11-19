@@ -71,10 +71,11 @@ export async function withWidgetParts(answer: unknown, loadParts: () => Promise<
  * Reads the served widget list at `listUrl`, a JSON array of the addresses of
  * the widget bundles' parts (`widget.gts.json`), and every part it names,
  * relative addresses against the list's own. A part that cannot be read is
- * left out with one console line: its widget types then have no entry, so
- * only their cells fail. A part that is read but that the registry rejects
- * is left out at registration in the same way (`registerServedFile`). A list
- * that cannot be read rejects.
+ * left out with one console line: the types of that part never arrive, so the
+ * root never learns the part's type ids, and its cells fail with the
+ * registry's own "Schema not found: ..." text. A part that is read but that
+ * the registry rejects is left out at registration in the same way
+ * (`registerServedFile`). A list that cannot be read rejects.
  */
 export async function loadWidgetParts(listUrl: string, signal: AbortSignal, base: string = globalThis.location?.href ?? '', partTimeoutMs: number = PART_TIMEOUT_MS): Promise<ServedFile[]> {
   const listAt = new URL(listUrl, base);
