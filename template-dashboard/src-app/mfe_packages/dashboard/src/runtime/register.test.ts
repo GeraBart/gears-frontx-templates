@@ -694,6 +694,27 @@ describe('the served file in parts', () => {
     ]);
   });
 
+  it('names no source in the line of a part left out for a shared-property type a base file carries alike', () => {
+    // The root registers the theme shared-property type, the base file carries an identical copy of it, and the
+    // store keeps the root's own: the identical copy makes the base file no source of the type, so a part that
+    // brings the theme type otherwise is left out with a line that names no source at all.
+    const THEME = 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~';
+    const theme = {
+      $id: `gts://${THEME}`,
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      allOf: [{ $ref: 'gts://gts.frontx.mfes.comm.shared_property.v1~' }],
+      properties: { value: { type: 'string', minLength: 1 } },
+    };
+    const otherwise = { ...theme, description: 'otherwise' };
+    const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, theme] };
+    const loadedFile = loadedParts([base, { types: [otherwise], instances: [] }]);
+    expect(loadedFile.lines).toEqual([
+      expect.stringMatching(
+        new RegExp(`the widget part number 2 of the answer \\(the served file is number 1\\) is left out: its type ${THEME.replace(/[.~]/g, '\\$&')} is already defined otherwise$`),
+      ),
+    ]);
+  });
+
   it('names the served file the source of a base type the store holds from a failed earlier call', () => {
     // The first call fails on a base instance the registry rejects: the base types are in the store, and the root
     // drops the file and calls again on the same store. The second call's base file registers the types the store

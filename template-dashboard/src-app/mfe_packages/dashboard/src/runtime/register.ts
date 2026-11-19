@@ -61,6 +61,13 @@ const canonical = (value: unknown) =>
   JSON.stringify(value, (_key, item: unknown) => (isObject(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : item));
 
 /**
+ * The ids of the shared-property types the root registers itself before the served file (the same constant
+ * registerBundle registers from): the store holds a definition of each from before the file, so no file that
+ * carries a copy of one is a source of the type.
+ */
+const ROOT_TYPE_IDS: ReadonlySet<string> = new Set(SHARED_PROPERTY_SCHEMAS.map(idOf));
+
+/**
  * What the served file brought so far: the base file and every widget part that registered whole, with the source
  * each registered type id came from first.
  */
@@ -79,8 +86,8 @@ const idOfInstance = (instance: Record<string, unknown>) => String(instance.id ?
  * before anything of it registers; past that check, the store keeps what the part registered before a failing item.
  * Only a part that registers whole adds its manifests, entries and dashboards to `held`. Every type id the served
  * file or part registers is recorded in `held.sources` under `source` when the store holds the definition it
- * registered, its first source: the store keeps those types when the part is left out later, so the first source
- * stays theirs.
+ * registered, its first source, except a type the root registers itself: the store keeps those types when the part
+ * is left out later, so the first source stays theirs.
  */
 function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: ReadonlySet<string>, held: Held, isBase: boolean, source: string): string | undefined {
   const served = part as Partial<ServedFile> | null;
@@ -124,15 +131,16 @@ function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: Readonl
   try {
     for (const schema of served.types) {
       // Recorded per type once it registers, when `held.sources` has no entry for the id and the schema the store
-      // holds for it equals the registered one in content (the store holds this source's own definition): a type
-      // the root registered (a shared-property type, say) keeps the store's own content, so a file that carries
-      // another definition of it is no source of the type, and a base file re-registering on a retry of a failed
-      // call, whose types the store already holds, names the served file again. The `held.sources` check keeps the
-      // first source: the store keeps the types that registered when a later item of the same part fails, so they
-      // keep this source as their first one.
+      // holds for it equals the registered one in content (the store holds this source's own definition): a base
+      // file re-registering on a retry of a failed call, whose types the store already holds, names the served
+      // file again. A type the root registers itself before the file (a shared-property type, say) is never given
+      // a source: the store holds its definition from before the file, so a file that carries a copy of it, alike
+      // or otherwise, names no source of the type. The `held.sources` check keeps the first source: the store
+      // keeps the types that registered when a later item of the same part fails, so they keep this source as
+      // their first one.
       const id = idOf(schema);
       types.registerSchema(schema);
-      if (!held.sources.has(id) && canonical(types.getSchema(id)) === canonical(schema)) held.sources.set(id, source);
+      if (!ROOT_TYPE_IDS.has(id) && !held.sources.has(id) && canonical(types.getSchema(id)) === canonical(schema)) held.sources.set(id, source);
     }
     for (const instance of instances) types.register(instance);
   } catch (error) {
