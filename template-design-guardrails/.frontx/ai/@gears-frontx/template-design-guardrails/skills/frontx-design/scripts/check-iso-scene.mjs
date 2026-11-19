@@ -15,9 +15,9 @@
  * counted) outside the definitions of FloorGrid, Box, Cylinder, Line and Face;
  * not exactly one highlighted element (tone="hi", kind="hi" or a
  * className={styles.hi} outside those definitions); a view written as a
- * hand-made object literal with ox and oy keys while the scene never calls
- * fitView (build the view with fitView(min, max) so the drawing fills its
- * width).
+ * hand-made object literal with numeric ox and oy values while the scene never
+ * calls fitView (build the view with fitView(min, max) so the drawing fills
+ * its width).
  *
  * The shape count is an optional aid for an honest agent: it counts the
  * skill's own shape components (Box, Cylinder, Line, Face, path) written out
@@ -140,10 +140,11 @@ export function checkScene(text, file) {
     add(shapes[MAX_SHAPES].index, `${shapes.length} shapes, at most ${MAX_SHAPES}`);
   }
 
-  // A view built by hand instead of fitted: an object literal with ox and oy
-  // keys and no fitView call anywhere.
+  // A view built by hand instead of fitted: an object literal with numeric
+  // ox and oy values and no fitView call anywhere. A type (`ox: number`) or a
+  // prop type is not a view.
   if (!/\bfitView\s*\(/.test(code)) {
-    const literal = code.match(/\{[^{}]*(?<![\w$])ox\s*:[^{}]*(?<![\w$])oy\s*:[^{}]*\}/) ?? code.match(/\{[^{}]*(?<![\w$])oy\s*:[^{}]*(?<![\w$])ox\s*:[^{}]*\}/);
+    const literal = code.match(/\{[^{}]*(?<![\w$])ox\s*:\s*[-+.(\d][^{}]*(?<![\w$])oy\s*:\s*[-+.(\d][^{}]*\}/) ?? code.match(/\{[^{}]*(?<![\w$])oy\s*:\s*[-+.(\d][^{}]*(?<![\w$])ox\s*:\s*[-+.(\d][^{}]*\}/);
     if (literal) add(literal.index, 'build the view with fitView(min, max) so the drawing fills its width');
   }
 

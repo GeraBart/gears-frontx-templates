@@ -39,7 +39,7 @@ No people, no faces, no logos, no free subjects (animals, landscapes, objects dr
 |---|---|---|
 | Box | `box` | a tile, a card, a block, a server, a step |
 | Cylinder | `cylinder` | a store, a dial, a post |
-| Plane | `plane`, drawn with `Face` or a path | a sheet, a panel, a tray floor |
+| Plane | `plane` in a path's `d`, or a `Face` through its four corners | a sheet, a panel, a tray floor |
 | Face | `Face` (polygon) | a ramp, a recess, an upright slab, a panel on a plate |
 | Ring | `ring` | a dial, a lens rim, a target |
 | Line / segment | `segment` | a wire, a link, a flow; `dash` for a flow |

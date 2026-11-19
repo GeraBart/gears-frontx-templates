@@ -30,11 +30,11 @@ const withShapes = (extra) => {
   return SCENE.replace(PLACEHOLDER_END, `${extra}\n${PLACEHOLDER_END}`);
 };
 
-/** The scene with `Box`, `Cylinder`, `Line` and `FloorGrid` written as arrow
- * functions with block bodies, as an agent may write them. */
+/** The scene with `Box`, `Cylinder`, `Line`, `Face` and `FloorGrid` written as
+ * arrow functions with block bodies, as an agent may write them. */
 const asArrows = (text) =>
   text.replace(
-    /^function (Box|Cylinder|Line|FloorGrid)\((.*)\) \{$/gm,
+    /^function (Box|Cylinder|Line|Face|FloorGrid)\((.*)\) \{$/gm,
     (_, name, params) => `const ${name} = (${params}) => {`,
   );
 
@@ -57,9 +57,24 @@ const LOCAL_SCENE = [
   '  );',
   '}',
   '',
+  "function Cylinder({ view, at, r, h, z0 = 0, tone = 'edge' }: { view: View; at: [number, number]; r: number; h: number; z0?: number; tone?: Tone }) {",
+  '  const shape = cylinder(view, at[0], at[1], r, h, z0);',
+  '  return (',
+  "    <g className={tone === 'hi' ? styles.hi : styles.edge}>",
+  '      <path className={styles.side} d={shape.side} />',
+  '      <path className={styles.face} d={shape.top} />',
+  '    </g>',
+  '  );',
+  '}',
+  '',
   "function Line({ view, from, to, kind = 'edge' }: { view: View; from: Point; to: Point; kind?: LineKind }) {",
   "  const className = kind === 'dash' ? `${styles.edge} ${styles.dash}` : styles[kind];",
   '  return <path className={className} d={segment(view, from, to)} />;',
+  '}',
+  '',
+  "function Face({ view, points, tone = 'edge', surface = 'none' }: { view: View; points: readonly Point[]; tone?: Tone; surface?: Surface }) {",
+  "  const className = surface === 'none' ? styles[tone] : `${styles[tone]} ${surface === 'face' ? styles.face : styles.side}`;",
+  '  return <path className={className} d={polygon(view, points)} />;',
   '}',
   '',
   'function FloorGrid({ view }: { view: View }) {',
@@ -77,6 +92,8 @@ const LOCAL_SCENE = [
   '    <svg className={styles.figure} viewBox="0 0 400 320" role={label ? \'img\' : undefined} aria-label={label} aria-hidden={label ? undefined : true} focusable="false">',
   '      <FloorGrid view={view} from={[-4.4, -4.4]} to={[4.4, 4.4]} />',
   '      <Box view={view} at={[-1.7, -1.7]} size={[3.4, 3.4, 0.75]} tone="hi" />',
+  '      <Cylinder view={view} at={[2.4, 2.4]} r={0.6} h={1.2} />',
+  '      <Face view={view} points={[[-4.4, -4.4, 0], [-2.4, -4.4, 0], [-2.4, -2.4, 0], [-4.4, -2.4, 0]]} surface="side" />',
   '    </svg>',
   '  );',
   '}',
@@ -92,6 +109,14 @@ const withLocalShapes = (extra) => {
  * the limit, so a body that stops being skipped shows as 19. */
 const EIGHT_LINES = Array.from(
   { length: 8 },
+  (_, i) => `      <Line view={view} from={[${i}, 0, 0]} to={[${i}, 1, 0]} />`,
+).join('\n');
+
+/** Nine honest lines: with the local scene's three shapes that is 12, the
+ * limit, so one path more from a part definition that stops being skipped
+ * shows as 13. */
+const NINE_LINES = Array.from(
+  { length: 9 },
   (_, i) => `      <Line view={view} from={[${i}, 0, 0]} to={[${i}, 1, 0]} />`,
 ).join('\n');
 
@@ -178,6 +203,11 @@ describe('check-iso-scene', () => {
     expect(checkScene(withLocalShapes(EIGHT_LINES), 'scene.tsx')).toEqual([]);
   });
 
+  it('gives no finding at the 12-shape limit with the parts defined locally', () => {
+    expect(checkScene(withLocalShapes(NINE_LINES), 'scene.tsx')).toEqual([]);
+    expect(checkScene(asArrows(withLocalShapes(NINE_LINES)), 'scene.tsx')).toEqual([]);
+  });
+
   it('counts a <Face> usage toward the 12 shapes', () => {
     const lines = Array.from(
       { length: 9 },
@@ -207,6 +237,19 @@ describe('check-iso-scene', () => {
       const findings = checkScene(text, 'scene.tsx');
       expect(findings.some((line) => /build the view with fitView\(min, max\) so the drawing fills its width/.test(line))).toBe(true);
     }
+  });
+
+  it('gives no view finding for a View type or a view taken from a prop', () => {
+    const text = [
+      'interface View { ox: number; oy: number; unit: number }',
+      '',
+      SCENE.replace('export function IsoScene({ label }: { label?: string }) {', 'export function IsoScene({ label, view }: { label?: string; view: View }) {').replace(
+        /const view = fitView\([^)]*\);/,
+        '',
+      ),
+    ].join('\n');
+    expect(text).not.toContain('fitView(');
+    expect(checkScene(text, 'scene.tsx')).toEqual([]);
   });
 
   it('exits 1 when a scene has a finding', () => {

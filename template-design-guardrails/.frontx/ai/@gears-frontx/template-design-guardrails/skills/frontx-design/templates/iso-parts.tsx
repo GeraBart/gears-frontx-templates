@@ -55,14 +55,14 @@ export function FloorGrid({ view, from, to, step }: { view: View; from: [number,
   const gap = step ?? Math.max(1, Math.max(x1 - x0, y1 - y0) / 6);
   const lines: ReactNode[] = [];
   const cross = (key: string, along: Point, toPoint: Point) => lines.push(<Line key={key} view={view} from={along} to={toPoint} kind="lo" />);
-  const stepsX = Math.floor((x1 - x0) / gap + 1e-9);
-  const stepsY = Math.floor((y1 - y0) / gap + 1e-9);
-  for (let i = 0; i <= stepsX; i += 1) {
-    const x = x0 + i * gap;
+  const countX = Math.max(1, Math.round((x1 - x0) / gap));
+  const countY = Math.max(1, Math.round((y1 - y0) / gap));
+  for (let i = 0; i <= countX; i += 1) {
+    const x = x0 + ((x1 - x0) * i) / countX;
     cross(`x${i}`, [x, y0, 0], [x, y1, 0]);
   }
-  for (let i = 0; i <= stepsY; i += 1) {
-    const y = y0 + i * gap;
+  for (let i = 0; i <= countY; i += 1) {
+    const y = y0 + ((y1 - y0) * i) / countY;
     cross(`y${i}`, [x0, y, 0], [x1, y, 0]);
   }
   return <>{lines}</>;
