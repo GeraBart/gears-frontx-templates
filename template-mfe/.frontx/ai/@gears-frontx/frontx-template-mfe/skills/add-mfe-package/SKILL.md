@@ -48,15 +48,27 @@ authority on each step.
 
 ## Steps
 
-1. **Copy the scaffold and strip its example flag** — one step, because a copy
-   that keeps the flag registers nothing and nothing fails to say so. Name the
-   new directory after the screenset/screen being added:
+1. **Copy the scaffold, rename the copy and strip its example flag**: one step,
+   because a copy that keeps the flag registers nothing and nothing fails to say
+   so, and because a copy that waits for its rename in a later step is a second
+   workspace under the scaffold's name. Name the new directory after the
+   screenset/screen being added, copy the scaffold, and rename the copied
+   package at once:
 
    ```bash
    NEW=src-app/mfe_packages/{name}-mfe
    cp -r src-app/mfe_packages/_blank-mfe "$NEW"
+   node -e 'const f=process.argv[1],fs=require("fs"),m=JSON.parse(fs.readFileSync(f,"utf8"));m.name="@gears-frontx/{name}-mfe";fs.writeFileSync(f,JSON.stringify(m,null,2)+"\n")' "$NEW/package.json"
    node -e 'const f=process.argv[1],fs=require("fs"),m=JSON.parse(fs.readFileSync(f,"utf8"));delete m.templateExample;fs.writeFileSync(f,JSON.stringify(m,null,2)+"\n")' "$NEW/mfe.json"
    ```
+
+   The rename runs directly after the copy, and no npm command at the project
+   root runs between the copy and the rename. Until the name changes, the copy
+   is a second workspace named `@gears-frontx/blank-mfe`, and any npm workspace
+   command at the project root exits 1 with `npm error code EDUPLICATEWORKSPACE`,
+   `npm error must not have multiple workspaces with the same name`, and
+   `npm error package '@gears-frontx/blank-mfe' has conflicts in the following
+   paths: .../_blank-mfe and .../<new>`.
 
    `_blank-mfe/mfe.json` declares `"templateExample": true`, which is what keeps
    the scaffold itself out of the running application; a copy that keeps it is
@@ -65,9 +77,10 @@ authority on each step.
    the run sets `FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1`. The only report is one line
    in the `generate:mfe-manifests` / `dev:all` / `type-check:mfe` output naming
    what was left out - nothing fails, and the new screen is simply absent from
-   the menu. Verify the strip landed before moving on:
+   the menu. Verify the rename and the strip before moving on:
 
    ```bash
+   grep -q '"name": "@gears-frontx/{name}-mfe"' "$NEW/package.json" && echo "package renamed" || echo "PACKAGE NAME NOT RENAMED"
    grep -q templateExample "$NEW/mfe.json" && echo "FLAG STILL PRESENT - remove it" || echo "flag stripped"
    ```
 2. **Pick a free port**: read the ports the project's MFE packages already use (the
@@ -82,9 +95,35 @@ authority on each step.
    `mfe.json` `manifest.remoteEntry` URL
    (`http://localhost:<port>/assets/remoteEntry.js`; the `_blank-mfe` copy points at
    `3099`). `dev:all` needs `--port <N>` literally in those scripts.
-3. **Rename package identity** — update the copied `package.json` `name` and the
-   Module Federation `name` in `vite.config.ts` (camelCase, must match across both), and keep `@gears-frontx/routing` in `sharedDeps` there and pinned in `package.json`, as the scaffold has it (add `@gears-frontx/routing-tanstack` to both, under `dependencies`, only when the MFE uses `<ExtensionRouter>` or `navigation()`).
-4. **Assign GTS IDs** — rewrite every placeholder ID in `mfe.json` following
+3. **Rename the Module Federation identity**: set `name` in the copied
+   `vite.config.ts` (camelCase, the camelCase of the package name from step 1,
+   so the two agree), and keep `@gears-frontx/routing` in `sharedDeps` there and
+   pinned in `package.json`, as the scaffold has it (add
+   `@gears-frontx/routing-tanstack` to both, under `dependencies`, only when the
+   MFE uses `<ExtensionRouter>` or `navigation()`).
+4. **Link the new workspace** - run `npm install` once at the project root (the
+   applied shell), after the copy and its rename:
+
+   ```bash
+   npm install
+   ```
+
+   The rename makes the package a workspace of the shell, but nothing links it
+   under `node_modules/@gears-frontx/` or records it in `package-lock.json`
+   until an install runs. Without that install, `npm ls` exits 1 with an
+   `UNMET DEPENDENCY <new name>@file:...` line and a `missing: <new name>,
+   required by @gears-frontx/frontx-template-shell` line, and no link appears
+   under `node_modules/@gears-frontx/`. `npm ci` exits 1 with:
+
+   > npm ci can only install packages when your package.json and
+   > package-lock.json ... are in sync ... Missing: <new name>@<version> from
+   > lock file
+
+   Scoped checks do not prove the link: `npm run type-check -w <new name>`,
+   the package's own vitest, and `npm run build -w <new name>` all exit 0 on an
+   unlinked workspace. Commit the `package-lock.json` change together with the
+   package.
+5. **Assign GTS IDs**: rewrite every placeholder ID in `mfe.json` following
    template-mfe's ID taxonomy (see the `gts-id-conventions` guideline and the
    `gts-id-patterns-reference` reference artifact in this same bundle): a manifest ID,
    one entry ID per exposed module, and one extension ID per screen contributed to a
@@ -105,7 +144,7 @@ authority on each step.
    missing only from a stale bundled file (the shell's
    `generated-menu-icons.json` older than the package) renders no icon and one
    dev console warning; nothing is fetched from the network for icons.
-5. **Implement the lifecycle** — `src/lifecycle.tsx` extends `ThemeAwareReactLifecycle`
+6. **Implement the lifecycle**: `src/lifecycle.tsx` extends `ThemeAwareReactLifecycle`
    from `@gears-frontx/react`; the MFE's own `init.ts` builds its app instance with
    `createFrontX().use(effects()).use(queryCacheShared()).use(mock()).build()` so it
    joins the host's shared `QueryClient` without owning a second one. Each API
@@ -114,7 +153,7 @@ authority on each step.
    then each endpoint's `fetch()`, asserting the mocked payload. A map test only
    calls the factory, so a key that misses the URL the service really sends
    passes it while the screen renders empty.
-6. **Build the screen's UI from `@gears-frontx/ui-kit`** — the shell installs the
+7. **Build the screen's UI from `@gears-frontx/ui-kit`**: the shell installs the
    kit, and its installed `llms.txt` is the component inventory. The kit is the
    only component source: no other component library, and no shadcn components
    or APIs — the kit follows shadcn conventions, so shadcn patterns may guide
@@ -185,7 +224,48 @@ authority on each step.
      base mount, and the eight host-scope cases (light, dark, theme change after
      unmount, duplicate mount, second container, missing theme, non-string
      theme, plain element container).
-7. **Build the shell's packages before the first package check** - run
+
+   The copy carries the scaffold's own identity outside those cases too.
+   Rewrite or delete it with the screen, file by file:
+   - `README.md`: the whole file describes the blank template, from its
+     `# Blank MFE Template` heading through the copy instructions,
+     `@gears-frontx/blank-mfe`, `blankMfe`, the `frontx.blank` ID tokens and
+     the `_blank-mfe/` tree listing. Replace it with the new package's README,
+     or delete it.
+   - `index.html`: `<title>Blank MFE Remote</title>`.
+   - `mfe.json`: the `/blank-home` route and the `Blank Home` label; step 5
+     rewrites the IDs around them.
+   - `src/init.ts`, `src/api/_BlankApiService.test.ts`, `src/api/mocks.test.ts`
+     and `src/shared/useScreenTranslations.test.tsx`: the
+     `@cpt-dod:...-blank-mfe-tests:p1` marker at the top of each file (point it
+     at the new package's own test-generation DOD, or delete it).
+   - `src/lifecycle.tsx`: the `BlankMfeLifecycle` class name.
+   - `src/lifecycle.test.tsx`: `describe('blank-mfe lifecycle')`, the
+     `mfeApp: { id: 'blank-mfe-app' }` fixture and its assertion, the
+     `blank-domain`, `blank-instance` and `blank-theme` ids, and the
+     `'Blank MFE query example is active.'` message; the kept cases re-point
+     them at the new screen.
+   - `src/init.test.ts`: `describe('_blank-mfe init')`, `'blank-mfe-app'` and
+     `'_blank/home'`.
+   - `src/homeFlux.test.ts`: `describe('blank-mfe home flux modules')` and
+     `'_blank/home'`.
+   - `src/slices/homeSlice.ts`: the `'_blank/home'` slice name and its state key.
+   - `src/api/_BlankApiService.ts` and `src/api/_BlankApiService.test.ts`: the
+     `_BlankApiService` file, class and mock-class names
+     (`MockBlankApiService`), the `'/api/blank'` base URL, and the
+     `inst-blank-descriptors` markers around the endpoint descriptors.
+   - `src/api/mocks.ts` and `src/api/mocks.test.ts`: `blankMockMap`,
+     `GetBlankStatusResponse`, the `'GET /api/blank/status'` mock key, the test
+     title that names the blank template, and the query-example message.
+   - `src/api/types.ts`: `GetBlankStatusResponse`.
+   - `src/init.ts`, `src/screens/home/HomeScreen.tsx` and the tests that mock
+     it: the `_BlankApiService` import, `vi.mock` path, mock class and service
+     lookup, which follow the file rename.
+
+   Comments that use `blank` as prose (the in-file headers, the shared-module
+   duplication notes, the verb to blank a screen) are not identity strings:
+   nothing resolves them at build or run time.
+8. **Build the shell's packages before the first package check** - run
    `npm run build:packages` once at the project root (the applied shell)
    before the initial `type-check`, `test:unit` or `build` of the new MFE. The
    package checks resolve `@gears-frontx/react` and
@@ -193,8 +273,11 @@ authority on each step.
    `dist-lib/`), which a fresh seed does not carry until this build runs;
    without it they stop on `TS2307: Cannot find module '@gears-frontx/react'`
    before they read any of the screen's code. The command builds the shell's
-   own packages; the MFE package keeps its own workspace build script.
-8. **Regenerate manifests** - run `npm run generate:mfe-manifests` so the host's
+   own packages; the MFE package keeps its own workspace build script. It runs
+   after steps 1-4, so the copy, its rename and the install are complete before
+   it starts: a copy that lands during this build is a duplicate workspace and
+   the build exits 1 with `EDUPLICATEWORKSPACE`.
+9. **Regenerate manifests** - run `npm run generate:mfe-manifests` so the host's
    `public/generated-mfe-manifests.json` picks up the new package (the same
    command rewrites the bundled menu icons from the installed `@iconify-json`
    sets); this step is mandatory before the new MFE is discoverable at runtime.
@@ -202,7 +285,7 @@ authority on each step.
    build` in that package) while `dev:all` runs: the manifest gains the new
    hashed asset paths and the next page load finds them, with no restart of
    `dev:all`.
-9. **Verify** - while iterating on the MFE, scope checks to its workspace:
+10. **Verify** - while iterating on the MFE, scope checks to its workspace:
    `npm run type-check --workspace=<package-name>` and
    `npm run test:unit --workspace=<package-name>` (a full `type-check` or
    `test:unit` sweep re-checks the shell and every other MFE on each fix —

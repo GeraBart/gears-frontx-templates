@@ -17,28 +17,48 @@ each step names the concrete command or file template-mfe ships.
    - Name: `{screenset}-mfe` (kebab-case), placed at `src-app/mfe_packages/{screenset}-mfe/`.
    - Port: next free `30N0` slot after the reserved `3001` (`demo-mfe`).
 
-2. **Copy the scaffold and strip its example flag** — together, so the flag cannot
-   outlive the copy. A copy that keeps it registers nothing, and nothing fails to
-   say so.
+2. **Copy the scaffold, rename the copy and strip its example flag**: together,
+   so the flag cannot outlive the copy and the copy never exists under the
+   scaffold's package name. A copy that keeps the flag registers nothing; a copy
+   that keeps the name breaks every npm workspace command at the project root.
    ```bash
    NEW=src-app/mfe_packages/{screenset}-mfe
    cp -r src-app/mfe_packages/_blank-mfe "$NEW"
+   node -e 'const f=process.argv[1],fs=require("fs"),m=JSON.parse(fs.readFileSync(f,"utf8"));m.name="@gears-frontx/{screenset}-mfe";fs.writeFileSync(f,JSON.stringify(m,null,2)+"\n")' "$NEW/package.json"
    node -e 'const f=process.argv[1],fs=require("fs"),m=JSON.parse(fs.readFileSync(f,"utf8"));delete m.templateExample;fs.writeFileSync(f,JSON.stringify(m,null,2)+"\n")' "$NEW/mfe.json"
+   grep -q '"name": "@gears-frontx/{screenset}-mfe"' "$NEW/package.json" && echo "package renamed" || echo "PACKAGE NAME NOT RENAMED"
    grep -q templateExample "$NEW/mfe.json" && echo "FLAG STILL PRESENT - remove it" || echo "flag stripped"
    ```
+   The rename runs directly after the copy: until the name changes, the copy is
+   a second workspace named `@gears-frontx/blank-mfe`, and every npm workspace
+   command at the project root exits 1 with `npm error code EDUPLICATEWORKSPACE`
+   and `package '@gears-frontx/blank-mfe' has conflicts in the following paths`,
+   so no npm command at the project root runs between the copy and the rename.
    `"templateExample": true` is what keeps the scaffold out of the running
    application: a package carrying it is left out by manifest generation, by
    `dev:all`, and by `type-check:mfe`, and its screen never reaches the menu.
 
 3. **Edit package metadata**
    - `src-app/mfe_packages/{screenset}-mfe/package.json`:
-     - `name`: `@gears-frontx/{screenset}-mfe`
      - `dev`: `vite --port {port}`
      - `preview`: `vite preview --port {port}`
    - `src-app/mfe_packages/{screenset}-mfe/vite.config.ts`:
-     - Module Federation `name`: `{screenset}Mfe` (camelCase)
+     - Module Federation `name`: `{screenset}Mfe` (camelCase of the package name)
 
-4. **Rewrite `mfe.json`**
+4. **Link the workspace**
+   ```bash
+   npm install
+   ```
+   Run once at the project root, after the copy and its rename. Until it runs
+   the package is a declared workspace but not a linked one: `npm ls` exits 1
+   with an `UNMET DEPENDENCY <package-name>@file:...` line, a `missing:` line
+   naming the package and `@gears-frontx/frontx-template-shell`, and no link
+   under `node_modules/@gears-frontx/`; `npm ci` exits 1 with
+   `Missing: <package-name>@<version> from lock file`. The scoped checks pass
+   on the unlinked workspace, so they are no evidence of the link. Commit the
+   `package-lock.json` change.
+
+5. **Rewrite `mfe.json`**
    - Replace the manifest ID, every entry ID, and every extension ID using
      template-mfe's ID taxonomy (`gts-id-conventions` guideline; worked examples in
      `gts-id-patterns-reference`).
@@ -46,7 +66,7 @@ each step names the concrete command or file template-mfe ships.
      labels, use the same extension IDs.
    - Update `remoteEntry` to `http://localhost:{port}/assets/remoteEntry.js`.
 
-5. **Implement the screen**
+6. **Implement the screen**
    - Rename/replace `src/screens/home/HomeScreen.tsx` with the real screen.
    - Build the UI from `@gears-frontx/ui-kit` components and semantic tokens —
      the kit is the only component source: no other component library, and no
@@ -79,7 +99,7 @@ each step names the concrete command or file template-mfe ships.
      that misses the URL the service really sends passes it while the screen
      renders empty.
 
-6. **Build the shell's packages before the first package check**
+7. **Build the shell's packages before the first package check**
    Run this once at the project root (the applied shell), before the first
    `type-check`, `test:unit` or `build` of the new MFE:
    ```bash
@@ -93,9 +113,11 @@ each step names the concrete command or file template-mfe ships.
    screen's code. The command builds the shell's own packages only; the MFE
    package keeps its own `build` script. `npm run build:mfes` and
    `npm run dev:all` build the shell's packages themselves, so this explicit
-   step only matters for the package checks run before them.
+   step only matters for the package checks run before them. The copy and its
+   rename (step 2) and the install (step 4) are complete before it runs, so it
+   cannot overlap a copy.
 
-7. **Regenerate manifests**
+8. **Regenerate manifests**
    ```bash
    npm run build:mfes
    npm run generate:mfe-manifests
@@ -104,7 +126,7 @@ each step names the concrete command or file template-mfe ships.
    (`npm run build --workspace=<package-name>`) before regenerating manifests;
    `build:mfes` rebuilds every MFE and belongs in the final gate.
 
-8. **Validate**
+9. **Validate**
    While iterating, scope to the MFE's workspace:
    ```bash
    npm run type-check --workspace=<package-name>
@@ -117,7 +139,7 @@ each step names the concrete command or file template-mfe ships.
    npm run arch:deps
    ```
 
-9. **Run and confirm**
+10. **Run and confirm**
    ```bash
    npm run dev:all
    ```
@@ -138,5 +160,6 @@ each step names the concrete command or file template-mfe ships.
 
 If the addition is abandoned before being committed: delete
 `src-app/mfe_packages/{screenset}-mfe/`, re-run `npm run generate:mfe-manifests` to
-drop it from `public/generated-mfe-manifests.json`, and revert any workspace/script
-edits made in step 3.
+drop it from `public/generated-mfe-manifests.json`, revert any workspace/script
+edits made in step 3, and run `npm install` again so `package-lock.json` drops
+the entry the step 4 install recorded.

@@ -17,31 +17,51 @@ new MFE.
 
 ## Phase 1 — Scaffold serially (orchestrator)
 
-1. For each new MFE, run the `add-mfe-package` skill steps 1-4: copy
-   `_blank-mfe` and strip `templateExample`, assign the port, rename the
-   package identity, assign GTS IDs. Assign all ports from one central list,
-   chosen the way the add-mfe-package skill's port step says (the project's own
-   range first, `3010`, `3020`, ... only as the default), in this phase. Two
-   parallel agents choosing their own ports collide; `dev:all` stops on a port
-   two packages declare, but only after the parallel work is done.
-2. Declare each package's full dependency set now (the scaffold already
-   carries `@gears-frontx/ui-kit` and the framework packages; add anything
-   the screen's plan calls for), then run `npm install` once. The lockfile is
-   a shared file: after this step, no agent installs anything.
-3. Build the shell's packages once, before dispatching: run
-   `npm run build:packages` at the project root (the applied shell). The
+1. **Build the shell's packages before any copy** - run `npm run
+   build:packages` once at the project root (the applied shell). The lead runs
+   it here, and it must finish before any subagent starts its copy: a copy that
+   lands while this build runs is a second workspace named
+   `@gears-frontx/blank-mfe`, and the build exits 1 with
+   `npm error code EDUPLICATEWORKSPACE`. In this workflow the lead makes every
+   copy in step 2, before dispatching, so no subagent can start one. The build
+   reads only the shell's own packages, so running it first costs nothing. The
    per-package `type-check`, `test:unit` and `build` in Phase 2 resolve
    `@gears-frontx/react` and `@gears-frontx/frontx-template-shell` through
    their built output (`dist/`, `dist-lib/`), which a fresh seed does not
    carry, so a package check before this build stops on
-   `TS2307: Cannot find module '@gears-frontx/react'`. The lead runs it here
-   once; subagents do not run it themselves. `npm run build:mfes` and
+   `TS2307: Cannot find module '@gears-frontx/react'`. The lead runs it once;
+   subagents do not run it themselves. `npm run build:mfes` and
    `npm run dev:all` build the shell packages themselves, so this explicit
    step only matters for the package checks run before them - the Phase 2
    scoped checks.
-4. Confirm each scaffold with the skill's flag-strip check before
-   dispatching; a package that kept `templateExample` fails silently and the
-   parallel phase would build a screen nothing will ever load.
+2. **Copy and rename every new MFE, serially** - for each new MFE, run the
+   skill's steps 1-3 and step 5: copy `_blank-mfe`, rename the copied package
+   in the same step, strip `templateExample`, assign the port, rename the
+   federation identity, and assign the GTS IDs. Make each copy and its rename
+   one move: no npm command at the project root runs between the copy and its
+   rename, or the whole tree fails with `EDUPLICATEWORKSPACE`. Keep the copies
+   with the lead for the same reason: a copy that lands beside another agent's
+   scoped npm command is the same duplicate workspace, seen from that command.
+   Assign all ports from one central list, chosen the way the skill's port step
+   says (the project's own range first, `3010`, `3020`, ... only as the
+   default), in this phase. Two parallel agents choosing their own ports
+   collide; `dev:all` stops on a port two packages declare, but only after the
+   parallel work is done.
+3. **Declare each package's full dependency set, then link every workspace with
+   one `npm install`** - the scaffold already carries `@gears-frontx/ui-kit`
+   and the framework packages; add anything the screen's plan calls for, then
+   run `npm install` once at the project root (the skill's step 4). The lead
+   runs it, once, after every copy and rename has landed: the install links
+   each new workspace under `node_modules/@gears-frontx/` and records it in
+   `package-lock.json`, and without it `npm ci` exits 1 with
+   `Missing: <new name>@<version> from lock file`. Never let two agents
+   install at once: npm writes one `node_modules` tree and one lockfile for the
+   whole project, and two concurrent installs can leave a half-linked tree with
+   a lockfile that matches neither. The lockfile is a shared file: after this
+   step, no agent installs anything.
+4. **Confirm each scaffold** with the skill's flag-strip and rename checks
+   before dispatching; a package that kept `templateExample` fails silently and
+   the parallel phase would build a screen nothing will ever load.
 
 ## Phase 2 — Fill in parallel (one agent per MFE)
 
@@ -62,8 +82,8 @@ reads as parallel execution that never happened.
 Each dispatch prompt must carry, explicitly:
 
 - the single package directory the agent owns — the only place it may write;
-- skill steps 5-6 (lifecycle, screen from the installed ui-kit) as its
-  contract, plus the skill's Boundaries section;
+- skill steps 6-7 (lifecycle, screen from the installed ui-kit and the
+  scaffold residue) as its contract, plus the skill's Boundaries section;
 - when a design-contract bundle is installed (any AI bundle shipping a
   `frontx-design` skill; check for
   `.frontx/ai/*/*/skills/frontx-design/`),

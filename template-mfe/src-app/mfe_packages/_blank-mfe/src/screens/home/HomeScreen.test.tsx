@@ -1,4 +1,4 @@
-// The add-mfe-package skill (step 6) lists which cases here go with the example screen and which must keep passing.
+// The add-mfe-package skill (step 7) lists which cases here go with the example screen and which must keep passing.
 import { act, render, screen, within } from '@testing-library/react';
 import {
   FRONTX_SHARED_PROPERTY_LANGUAGE,
