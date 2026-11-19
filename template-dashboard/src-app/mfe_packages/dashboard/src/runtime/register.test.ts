@@ -629,6 +629,30 @@ describe('the served file in parts', () => {
     expect(result.ok && [...result.failed.keys()]).toEqual(pieSlots());
   });
 
+  it('names the first of two parts that brought a type alike in the line of the part left out for it', () => {
+    // The metric part brings the data type, the first pie part brings it again alike, and the second pie part
+    // brings it otherwise: the line names the metric part, whose registration held the type first, not the pie
+    // part that carried it again last.
+    const dataType = { $id: 'gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.test.widget_data.shared.v1~', $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', allOf: [{ $ref: 'gts://gts.frontx.dashboard.widget_data.widget_data.v1~' }] };
+    const changed = { ...dataType, required: ['value'] };
+    const reordered = Object.fromEntries(Object.entries(dataType).reverse());
+    const pie = bundlePart('pie_chart');
+    const metric = bundlePart('metric_card');
+    const rest = others.filter((instance) => !String(instance.id).endsWith('.metric_card.v1'));
+    const loadedFile = loadedParts([
+      DEMO_WITHOUT_BUNDLES,
+      otherPart(rest),
+      { ...metric, types: [...metric.types, dataType] },
+      { ...pie, types: [...pie.types, reordered] },
+      { ...pie, types: [...pie.types, changed] },
+    ]);
+    expect(loadedFile.lines).toEqual([
+      expect.stringMatching(
+        /pie_chart.* is left out: its type gts\.frontx\.dashboard\.widget_data\.widget_data\.v1~frontx\.test\.widget_data\.shared\.v1~ is already defined otherwise by the widget part "gts\.frontx\.mfes\.mfe\.mf_manifest\.v1~frontx\.dashboard\.widgets\.metric_card\.v1"$/,
+      ),
+    ]);
+  });
+
   it('names the part that defined a type first in the line of the part left out for it', () => {
     // An earlier part with no manifest brings the pie widget type: it registers, and the catalog pie part is left
     // out for the type alone. The line names the earlier part the way that part's own console line would name it,
@@ -649,13 +673,23 @@ describe('the served file in parts', () => {
     expect(result.ok && result.failed.get(pieSlots()[0])).toMatch(/is already defined otherwise by the widget part number 3 of the answer \(the served file is number 1\)$/);
   });
 
-  it('names the served file in the line of a part left out for a type the base file defined first', () => {
-    const pieType = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE}`)!;
-    const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, pieType] };
-    const loadedFile = loadedParts([base, { types: [{ ...pieType, description: 'otherwise' }], instances: [] }]);
+  it('names no source in the line of a part left out for a shared-property type the root registered first', () => {
+    // The root registers the theme shared-property type, the base file carries another definition of it, and the
+    // store keeps the root's own: the served file is no source of the type, so a part that brings the base file's
+    // definition is left out with a line that names no source at all.
+    const THEME = 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~';
+    const theme = {
+      $id: `gts://${THEME}`,
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      allOf: [{ $ref: 'gts://gts.frontx.mfes.comm.shared_property.v1~' }],
+      properties: { value: { type: 'string', minLength: 1 } },
+      description: 'otherwise',
+    };
+    const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, theme] };
+    const loadedFile = loadedParts([base, { types: [theme], instances: [] }]);
     expect(loadedFile.lines).toEqual([
       expect.stringMatching(
-        new RegExp(`the widget part number 2 of the answer \\(the served file is number 1\\) is left out: its type .*pie_chart\\.v1~ is already defined otherwise by the served file$`),
+        new RegExp(`the widget part number 2 of the answer \\(the served file is number 1\\) is left out: its type ${THEME.replace(/[.~]/g, '\\$&')} is already defined otherwise$`),
       ),
     ]);
   });
@@ -1072,6 +1106,30 @@ describe('the served file in parts', () => {
       const result = registerDashboard(
         types,
         dashboardOf([{ size: 'small', widget: { ...myWidget('1a2b3c4d-0000-4000-8000-000000000008'), id: `${CHAINED}1a2b3c4d-0000-4000-8000-000000000008` } }]),
+        outcome.ok ? outcome.rejected : undefined,
+      );
+      expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(0, 'cell')]);
+      expect(result.ok && result.failed.get(slotOf(0, 'cell'))).toMatch(PART_LINE);
+    });
+
+    it('fails the cells of a chained product type with the line of the part that left out the parent of a prefix the store has', () => {
+      // The chained id's pie prefix is a type the store holds, so the walk goes through it: that prefix extends the
+      // pie widget type by `$ref`, and the left-out pie part declared the pie type, so the cell fails with the pie
+      // part's line and not with its own reason.
+      const HOLDER = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.test.widget.holder.v1~';
+      const CHAINED = `${HOLDER}frontx.test.widget.holder_plus.v1~`;
+      const holder = widgetType(HOLDER, PIE);
+      const chained = {
+        $id: `gts://${CHAINED}`,
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        'x-gts-traits': { entry: PRODUCT_ENTRY, data_type: PRODUCT_DATA },
+      };
+      const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), productPart(holder, chained), leftOutPiePart()]);
+      expect(outcome.ok).toBe(true);
+      expect(lines).toEqual([expect.stringMatching(PART_LINE)]);
+      const result = registerDashboard(
+        types,
+        dashboardOf([{ size: 'small', widget: { ...myWidget('1a2b3c4d-0000-4000-8000-000000000009'), id: `${CHAINED}1a2b3c4d-0000-4000-8000-000000000009` } }]),
         outcome.ok ? outcome.rejected : undefined,
       );
       expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(0, 'cell')]);

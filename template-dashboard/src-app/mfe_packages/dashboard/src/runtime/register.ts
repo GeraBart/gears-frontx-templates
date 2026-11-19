@@ -121,11 +121,14 @@ function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: Readonl
   }
   try {
     for (const schema of served.types) {
-      types.registerSchema(schema);
-      // Recorded per type as it registers: a later item of the same part can still fail it, and the store keeps
-      // the types that registered, so they keep this source as their first one.
+      // Recorded per type as it registers, and only for a type the store did not hold before the call: a type the
+      // root registered (a shared-property type, say) keeps the store's own content, so a file that carries another
+      // definition of it is no source of the type. A later item of the same part can still fail it, and the store
+      // keeps the types that registered, so they keep this source as their first one.
       const id = idOf(schema);
-      if (!held.sources.has(id)) held.sources.set(id, source);
+      const fresh = !types.getSchema(id);
+      types.registerSchema(schema);
+      if (fresh && !held.sources.has(id)) held.sources.set(id, source);
     }
     for (const instance of instances) types.register(instance);
   } catch (error) {
