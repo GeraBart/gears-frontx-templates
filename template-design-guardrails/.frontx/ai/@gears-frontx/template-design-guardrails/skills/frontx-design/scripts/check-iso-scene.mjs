@@ -12,7 +12,8 @@
  * data in a d= attribute (paths come from the `iso` helpers); a <text>,
  * <image>, <foreignObject> or <img> element; more than 12 shapes (<Box>,
  * <Cylinder>, <Line>, <path> outside the FloorGrid, Box, Cylinder and Line
- * definitions); not exactly one highlighted element (tone="hi" or kind="hi").
+ * definitions); not exactly one highlighted element (tone="hi", kind="hi" or a
+ * className={styles.hi} outside those definitions).
  *
  * The shape count is an optional aid for an honest agent: it counts the
  * skill's own shape components (Box, Cylinder, Line, path) written out one
@@ -130,9 +131,19 @@ export function checkScene(text, file) {
     add(shapes[MAX_SHAPES].index, `${shapes.length} shapes, at most ${MAX_SHAPES}`);
   }
 
-  const highlights = [...code.matchAll(/(?<![\w-])(?:tone|kind)\s*=\s*(?:\{\s*)?(["'])hi\1(?:\s*\})?/g)];
+  // A ring, plane or polyline highlight is a <path className={styles.hi}>, so
+  // count that member access too: in code (not in a string) and outside the
+  // definitions, whose own tone check and styles[kind] are not highlights.
+  const quoted = [...code.matchAll(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g)].map((m) => [m.index, m.index + m[0].length]);
+  const inQuotes = (index) => quoted.some(([start, end]) => index >= start && index < end);
+  const highlights = [
+    ...code.matchAll(/(?<![\w-])(?:tone|kind)\s*=\s*(?:\{\s*)?(["'])hi\1(?:\s*\})?/g),
+    ...[...code.matchAll(/(?<![\w.$])styles\s*\.\s*hi(?![\w$])/g)].filter(
+      (m) => !inQuotes(m.index) && !skip.some(([start, end]) => m.index >= start && m.index < end),
+    ),
+  ].sort((a, b) => a.index - b.index);
   if (highlights.length !== 1) {
-    add(highlights[1]?.index ?? 0, `${highlights.length} highlighted elements (tone="hi" or kind="hi"), exactly 1`);
+    add(highlights[1]?.index ?? 0, `${highlights.length} highlighted elements (tone="hi", kind="hi" or className={styles.hi}), exactly 1`);
   }
   return findings;
 }

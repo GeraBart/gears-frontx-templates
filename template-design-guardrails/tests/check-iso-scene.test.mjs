@@ -85,6 +85,18 @@ describe('check-iso-scene', () => {
     expect(findings.some((line) => /^scene\.tsx:\d+ /.test(line) && message.test(line))).toBe(true);
   });
 
+  it('counts a path with className={styles.hi} as the one highlight', () => {
+    const text = withShapes('      <path className={styles.hi} d={ring(view, 0, 0, 1, 0)} />').replace(' tone="hi"', '');
+    expect(text).not.toContain('tone="hi"');
+    expect(checkScene(text, 'scene.tsx')).toEqual([]);
+  });
+
+  it('reports a second highlight drawn as a path with className={styles.hi}', () => {
+    const findings = checkScene(withShapes('      <path className={styles.hi} d={plane(view, 0, 0, 1, 1, 0)} />'), 'scene.tsx');
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatch(/^scene\.tsx:\d+ 2 highlighted elements/);
+  });
+
   it.each([
     ['an xmlns url on the viewBox line', SCENE.replace('viewBox="0 0 400 320"', 'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 320"')],
     ['a viewBox in single quotes', SCENE.replace('viewBox="0 0 400 320"', "viewBox='0 0 400 320'")],
