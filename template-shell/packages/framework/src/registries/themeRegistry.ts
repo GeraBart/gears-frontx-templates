@@ -73,7 +73,12 @@ export function createThemeRegistry(): ThemeRegistry {
     // declaration there beats one inherited from the document tree - a shell
     // theme value never reached the screen. An outer-tree rule beats a `:host`
     // rule from inside the shadow tree before specificity is compared, so
-    // naming the host element here lets the theme's tokens win on it; at the
+    // naming the host element here lets the theme's tokens win on it. What
+    // wins there reaches the screen's contents only where the kit has no
+    // value of its own: the kit re-declares its colour tokens on the screen
+    // root's light or dark scope, so a theme's colours change the shell and
+    // the screen host, not a screen's own kit surfaces, while the theme's
+    // non-colour tokens and its extra steps inherit into the screen. At the
     // same weight as :root:root, a future outer-tree rule of equal weight
     // targeting the host (a module class on the screen container, say) cannot
     // bring the style-tag-order tie back either.

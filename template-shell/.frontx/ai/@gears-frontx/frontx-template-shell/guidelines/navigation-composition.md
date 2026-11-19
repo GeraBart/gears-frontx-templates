@@ -257,6 +257,17 @@ the host with the gutter as its fallback, so a screen may also set it to any
 other length to widen the gutter. Nothing in the shell needs to change for
 either.
 
+The same host element carries the screen's kit theme scope
+(`data-theme="light"` or `"dark"`), stamped by the screen package's own
+lifecycle, and the screen root carries the same scope inside the shadow root.
+The theme registry's rule names the host from the outer document tree, so the
+shell's active theme wins on the host, and the tokens of the theme that reach
+the screen's contents are the non-colour ones: the kit re-declares its colour
+tokens on the screen root's kit scope, so a project theme's colours change the
+shell and the screen host, not the screen's own kit surfaces, which follow the
+kit's light or dark scope, while the theme's non-colour tokens and its extra
+steps inherit in.
+
 ## Boundaries
 
 - What a directory under `src-app/mfe_packages/` must look like to enter this
