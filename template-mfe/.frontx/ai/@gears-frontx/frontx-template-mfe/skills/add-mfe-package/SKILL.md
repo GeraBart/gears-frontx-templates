@@ -251,16 +251,21 @@ authority on each step.
      `'_blank/home'`.
    - `src/slices/homeSlice.ts`: the `'_blank/home'` slice name and its state key.
    - `src/api/_BlankApiService.ts` and `src/api/_BlankApiService.test.ts`: the
-     `_BlankApiService` file, class and mock-class names
-     (`MockBlankApiService`), the `'/api/blank'` base URL, and the
-     `inst-blank-descriptors` markers around the endpoint descriptors.
+     `_BlankApiService` file and class names, the `'/api/blank'` base URL, and
+     the `inst-blank-descriptors` markers around the endpoint descriptors.
+     Neither file holds a mock class; the mock classes live in the tests that
+     mock the service, below.
    - `src/api/mocks.ts` and `src/api/mocks.test.ts`: `blankMockMap`,
      `GetBlankStatusResponse`, the `'GET /api/blank/status'` mock key, the test
      title that names the blank template, and the query-example message.
    - `src/api/types.ts`: `GetBlankStatusResponse`.
    - `src/init.ts`, `src/screens/home/HomeScreen.tsx` and the tests that mock
-     it: the `_BlankApiService` import, `vi.mock` path, mock class and service
-     lookup, which follow the file rename.
+     it: the `_BlankApiService` import, `vi.mock` path and service lookup,
+     which follow the file rename. Each mock factory names its class itself:
+     `MockBlankApiService` in `src/lifecycle.test.tsx` and
+     `src/screens/home/HomeScreen.test.tsx`, and `BlankApiService` (no `Mock`
+     prefix) in `src/init.test.ts`. Those are the factories' own names, not the
+     service's, so rename each with its file.
 
    Comments that use `blank` as prose (the in-file headers, the shared-module
    duplication notes, the verb to blank a screen) are not identity strings:

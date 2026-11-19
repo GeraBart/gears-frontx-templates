@@ -39,22 +39,39 @@ lands.
 
 ## Add your own MFE
 
-Copy the blank scaffold and adjust it — there is no registry file to edit;
-`generate:mfe-manifests` / `dev:all` (shell scripts) discover packages by
-scanning this directory. Drop the scaffold's example flag in the same step,
-since a copy that keeps the flag is invisible to the shell and nothing fails to
-tell you so:
+Copy the blank scaffold, rename the copy and adjust it. There is no registry
+file to edit; `generate:mfe-manifests` / `dev:all` (shell scripts) discover
+packages by scanning this directory. The copy, the rename and the strip of the
+scaffold's example flag are one move, since a copy that keeps the flag is
+invisible to the shell and nothing fails to tell you so:
 
 ```bash
 NEW=src-app/mfe_packages/my-mfe
 cp -r src-app/mfe_packages/_blank-mfe "$NEW"
+node -e 'const f=process.argv[1],fs=require("fs"),m=JSON.parse(fs.readFileSync(f,"utf8"));m.name="@gears-frontx/my-mfe";fs.writeFileSync(f,JSON.stringify(m,null,2)+"\n")' "$NEW/package.json"
 node -e 'const f=process.argv[1],fs=require("fs"),m=JSON.parse(fs.readFileSync(f,"utf8"));delete m.templateExample;fs.writeFileSync(f,JSON.stringify(m,null,2)+"\n")' "$NEW/mfe.json"
 ```
 
+The rename runs directly after the copy, with no npm command at the project
+root in between. Until the name changes the copy is a second workspace still
+called `@gears-frontx/blank-mfe`, and any npm workspace command there exits 1
+with `EDUPLICATEWORKSPACE`.
+
+Then link the new workspace with one install at the project root:
+
+```bash
+npm install
+```
+
+Only that install creates the link under `node_modules/@gears-frontx/` and
+records the package in `package-lock.json`; a scoped `type-check`, `test:unit`
+or `build` exits 0 on an unlinked workspace, so it proves nothing about the
+link. Commit the `package-lock.json` change with the package.
+
 Then, inside `my-mfe/`:
 
-1. **`package.json`** — rename it (`name`, and the `dev`/`preview` scripts'
-   `vite preview --port <N>` to a port no other package here already uses).
+1. **`package.json`**: point the `dev` and `preview` scripts at a port no other
+   package here already uses (the copy above already set `name`).
 2. **`mfe.json`** — declare your entries and extensions (screen, sidebar, popup,
    or overlay) with GTS IDs following this template's ID conventions guideline.
 3. **`vite.config.ts`** — keep the `frontxMfGts` build plugin wired, and add
@@ -63,6 +80,9 @@ Then, inside `my-mfe/`:
    pinned in `package.json`, as the scaffold has it; an MFE that uses
    `<ExtensionRouter>` or `navigation()` adds `@gears-frontx/routing-tanstack`
    to both, under `dependencies`.
+
+The `add-mfe-package` skill carries the full list, from the port through the
+manifests and the final gate.
 
 Existing packages here for reference: `demo-mfe` (`:3001`, a full worked
 example — Hello World, Profile, Theme, UIKit, Widgets Host), `_blank-mfe`
