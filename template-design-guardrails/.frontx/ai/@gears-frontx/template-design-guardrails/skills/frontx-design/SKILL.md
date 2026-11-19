@@ -69,7 +69,9 @@ A request that spans rows runs them in this order: place, theme, build, verify, 
 - `rules/static-check.json` - data of the static check: native elements and roles with a kit component, literal kinds with the DESIGN.md group of their tokens.
 - `rules/render-check.json` - data of the render runner: the gate of each runtime checker rule id.
 
-`templates/`, blanks to fill: `templates/state-inventory.md` (one row per data region with each state's outcome, widths and themes seen) and `templates/handoff.md` (built, checked with gate id and outcome, not checked, known gaps). `scripts/`, run from the project root: `scripts/check-design-md.mjs` checks the `DESIGN.md` front matter token names and `version` against the installed kit; exit 0 clean, 1 findings, 2 input error.
+`templates/`, blanks to fill: `templates/state-inventory.md` (one row per data region with each state's outcome, widths and themes seen) and `templates/handoff.md` (built, checked with gate id and outcome, not checked, known gaps).
+
+`scripts/`, run from the project root: `scripts/check-design-md.mjs` checks the `DESIGN.md` front matter token names and `version` against the installed kit; exit 0 clean, 1 findings, 2 input error.
 
 Outside this directory:
 - `DESIGN.md` at the project root - kit token names in its front matter (the kit version is its `version`) and the human summary.
