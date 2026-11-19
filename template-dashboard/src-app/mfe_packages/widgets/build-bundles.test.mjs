@@ -217,34 +217,37 @@ describe('build-bundles.mjs', () => {
     }
   }, 120_000);
 
-  it('a full build lists only the bundles it built: a stale part directory stays on disk but off the list', async () => {
+  it('a full build lists only the bundles it built: stale part directories stay on disk and the not-listed line names them sorted', async () => {
     // One input bundle only: the broken bundle's mfe.json sits out of its dir for the run, so the full build
-    // succeeds and writes the list. A part directory an earlier build left in the out dir, and a list that still
-    // names it, are seeded first. The list the build writes names only the bundle it built, and the stale
-    // directory itself stays on disk, since the build removes nothing.
+    // succeeds and writes the list. Part directories an earlier build left in the out dir, and a list that still
+    // names them, are seeded first, eleven of them in a scattered order: the not-listed line names every part
+    // directory the build did not list, sorted, and readdirSync order is the directory's own. APFS returns the
+    // names sorted anyway, so on a developer Mac the assertion holds either way; the check bites on a file system
+    // whose readdir order is not sorted (ext4 on CI), where twelve names sorted by chance have odds of 1/12!. The
+    // list the build writes names only the bundle it built, and the stale directories themselves stay on disk,
+    // since the build removes nothing.
     const broken = path.join(scratch, 'bundles', BROKEN, 'mfe.json');
     const aside = `${broken}.away`;
     renameSync(broken, aside);
     try {
+      const stale = ['zeta_widget', 'mu_widget', 'beta_widget', 'alpha_widget', 'kappa_widget', 'sigma_widget', 'delta_widget', 'omicron_widget', 'iota_widget', 'rho_widget', 'eta_widget'];
       const run = await runBuild({
-        seedWidgetsJson: '["/widgets/stale_widget/widget.gts.json"]\n',
-        seedParts: ['stale_widget'],
+        seedWidgetsJson: `${JSON.stringify(stale.map((name) => `/widgets/${name}/widget.gts.json`))}\n`,
+        seedParts: stale,
       });
       expect(run.code, run.stderr).toBe(0);
       expect(JSON.parse(readFileSync(outPath('widgets.json'), 'utf-8'))).toEqual(['/widgets/ok_widget/widget.gts.json']);
-      expect(existsSync(outPath('stale_widget'))).toBe(true);
-      expect(run.stdout).toContain(`not listed: stale_widget (part directories in ${outPath()} this build did not build)`);
+      expect(existsSync(outPath('zeta_widget'))).toBe(true);
+      expect(run.stdout).toContain(`not listed: alpha_widget, beta_widget, delta_widget, eta_widget, iota_widget, kappa_widget, mu_widget, omicron_widget, rho_widget, sigma_widget, zeta_widget (part directories in ${outPath()} this build did not build)`);
     } finally {
       renameSync(aside, broken);
     }
   }, 120_000);
 
-  it('a full build names the stale part directories sorted, and a clean dist and a named run name none', async () => {
-    // The line names the part directories the build did not list, sorted, so it reads the same on every file
-    // system: the two stale parts are seeded in reverse alphabetical order, and readdirSync order is the
-    // directory's own. Over a clean dist nothing is left to name. A run that names bundles adds to the list it
-    // starts from instead of owning the catalog, so it prints no line: the seeded list leaves the stale part out,
-    // so only the full-build guard can keep the line out, and the run takes the list path, with no fallback line.
+  it('a clean dist and a named run name no stale part directories', async () => {
+    // Over a clean dist nothing is left to name. A run that names bundles adds to the list it starts from instead
+    // of owning the catalog, so it prints no line: the seeded list leaves the stale part out, so only the
+    // full-build guard can keep the line out, and the run takes the list path, with no fallback line.
     const broken = path.join(scratch, 'bundles', BROKEN, 'mfe.json');
     const aside = `${broken}.away`;
     renameSync(broken, aside);
@@ -256,9 +259,6 @@ describe('build-bundles.mjs', () => {
       expect(named.code, named.stderr).toBe(0);
       expect(named.stdout).not.toContain('no dist/widgets.json');
       expect(named.stdout).not.toContain('not listed:');
-      const sorted = await runBuild({ seedParts: ['zeta_widget', 'alpha_widget'] });
-      expect(sorted.code, sorted.stderr).toBe(0);
-      expect(sorted.stdout).toContain(`not listed: alpha_widget, zeta_widget (part directories in ${outPath()} this build did not build)`);
     } finally {
       renameSync(aside, broken);
     }
