@@ -43,9 +43,10 @@ export function registerBundle(types: TypeSystemPlugin): Set<string> {
  * a part declared that did not register. `leftOut` reads the instance map for the widget's entry and the type map
  * for its widget, render and data type, so an id of the one kind that equals an id of the other cannot fail a cell
  * of the other kind. The cells whose widget type names one of the rejected entries, or whose type is one of the
- * rejected type ids, fail with it, and so do the cells of a type that extends by `$ref` a type id the store still
- * lacks because a left-out part declared it: the walk through the `$ref` chain names the part that left the ancestor
- * out. An id the base file or a registered part already brought is never in either map.
+ * rejected type ids, fail with it, and so do the cells of a type that extends, by `$ref` or by a chained id's `~`
+ * prefix, a type id the store still lacks because a left-out part declared it: the walk through the `$ref` chain
+ * and the prefixes names the part that left the ancestor out. An id the base file or a registered part already
+ * brought is never in either map.
  */
 export type Rejected = { readonly instances: ReadonlyMap<string, string>; readonly types: ReadonlyMap<string, string> };
 
@@ -176,8 +177,8 @@ const partName = (ids: string[], index: number) => {
  * dashboards), then one part per widget bundle. A rejected base file fails
  * every dashboard; a rejected widget part is left out with one console line,
  * its dashboards never load, and the root records the manifest and entry ids
- * and the type ids of a left-out part, and fails a cell by its widget type,
- * its entry, its render type or its data type with that part's line.
+ * and the type ids of a left-out part, and fails a cell by its widget type, a
+ * type it extends, its entry, its render type or its data type with that part's line.
  */
 export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundleIds: ReadonlySet<string>): FileOutcome {
   const [base, ...parts] = Array.isArray(file) ? file : [file];
@@ -235,8 +236,9 @@ function leftOut(types: TypeSystemPlugin, widgetId: string, rejected: Rejected):
   const missingType = (id: string) => (types.getSchema(id) ? undefined : rejected.types.get(id));
   // The widget's type id, read once: it cannot throw, and everything below looks the same id up again.
   const typeId = typeOfWidget(widgetId);
-  // The part that declared the widget's type, or one of the types it extends by `$ref`, may be the one left out,
-  // before the type registered: its line, not the registry's, is the reason the cell fails.
+  // The part that declared the widget's type, or one of the types it extends, by `$ref` or by a chained id's `~`
+  // prefix, may be the one left out, before the type registered: its line, not the registry's, is the reason the
+  // cell fails.
   const part = missingType(typeId) ?? missingAncestorLine(types, typeId, rejected);
   if (part) return part;
   try {
