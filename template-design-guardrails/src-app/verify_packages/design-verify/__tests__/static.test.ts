@@ -364,6 +364,38 @@ describe('literal steps behind var()', () => {
     expect(code).toBe(0);
   });
 
+  // A known limit, pinned here so a change to it is a decision and not an
+  // accident: the shared use-site table is built over the scanned style
+  // sheets only, so a var() spent in a script style object never reaches it.
+  // A style-sheet definition whose own name is silent gets its kind from a
+  // use site in another style sheet, never from a script style, and stays
+  // unreported. Following the step into the script style would widen the
+  // check; these tests only record that the check does not do it today.
+  it('known limit: a step declared in a style sheet and spent in a script style is not followed', async () => {
+    const { findings, code } = await check(
+      project({
+        'src/tokens.module.css': '.t { --hero: 64px; --step: 96px; }',
+        'src/Hero.tsx': "export const H = () => <p style={{ fontSize: 'var(--hero)', marginTop: 'var(--step)' }} />;",
+      }),
+    );
+    expect(findings).toEqual([]);
+    expect(code).toBe(0);
+  });
+
+  // The same limit from the script side: a definition declared in a script
+  // style object reads its use sites from its own file alone, so one spent
+  // in a style sheet stays unreported too.
+  it('known limit: a step declared in a script style and spent in a style sheet is not followed', async () => {
+    const { findings, code } = await check(
+      project({
+        'src/Pad.tsx': "export const P = () => <p style={{ '--pad': '24px' }} />;",
+        'src/Box.module.css': '.box { padding: var(--pad); }',
+      }),
+    );
+    expect(findings).toEqual([]);
+    expect(code).toBe(0);
+  });
+
   // A literal a var() carries as its fallback is a literal the source
   // declares and the browser can paint (when the variable is invalid at
   // computed-value time), so it hides from no check a direct literal hides
