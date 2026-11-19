@@ -78,8 +78,9 @@ const idOfInstance = (instance: Record<string, unknown>) => String(instance.id ?
  * The reason a served file or part cannot register, or nothing. A widget part is checked whole against what is held
  * before anything of it registers; past that check, the store keeps what the part registered before a failing item.
  * Only a part that registers whole adds its manifests, entries and dashboards to `held`. Every type id the served
- * file or part registers is recorded in `held.sources` under `source`, its first source: the store keeps those types
- * when the part is left out later, so the first source stays theirs.
+ * file or part registers is recorded in `held.sources` under `source` when the store holds the definition it
+ * registered, its first source: the store keeps those types when the part is left out later, so the first source
+ * stays theirs.
  */
 function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: ReadonlySet<string>, held: Held, isBase: boolean, source: string): string | undefined {
   const served = part as Partial<ServedFile> | null;
@@ -122,14 +123,16 @@ function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: Readonl
   }
   try {
     for (const schema of served.types) {
-      // Recorded per type as it registers, and only for a type the store did not hold before the call: a type the
-      // root registered (a shared-property type, say) keeps the store's own content, so a file that carries another
-      // definition of it is no source of the type. A later item of the same part can still fail it, and the store
-      // keeps the types that registered, so they keep this source as their first one.
+      // Recorded per type once it registers, when `held.sources` has no entry for the id and the schema the store
+      // holds for it equals the registered one in content (the store holds this source's own definition): a type
+      // the root registered (a shared-property type, say) keeps the store's own content, so a file that carries
+      // another definition of it is no source of the type, and a base file re-registering on a retry of a failed
+      // call, whose types the store already holds, names the served file again. The `held.sources` check keeps the
+      // first source: the store keeps the types that registered when a later item of the same part fails, so they
+      // keep this source as their first one.
       const id = idOf(schema);
-      const fresh = !types.getSchema(id);
       types.registerSchema(schema);
-      if (fresh && !held.sources.has(id)) held.sources.set(id, source);
+      if (!held.sources.has(id) && canonical(types.getSchema(id)) === canonical(schema)) held.sources.set(id, source);
     }
     for (const instance of instances) types.register(instance);
   } catch (error) {

@@ -694,6 +694,34 @@ describe('the served file in parts', () => {
     ]);
   });
 
+  it('names the served file the source of a base type the store holds from a failed earlier call', () => {
+    // The first call fails on a base instance the registry rejects: the base types are in the store, and the root
+    // drops the file and calls again on the same store. The second call's base file registers the types the store
+    // already holds, so the store holds their content from this source, and a part that redefines one of them is
+    // left out with a line naming the served file.
+    const types = new GtsPlugin({ isolated: true });
+    const bundleIds = registerBundle(types);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const catalogPie = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE}`)!;
+    const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, catalogPie] };
+    const brokenEntry = { id: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.broken.v1', manifest: 7 };
+    const broken = { ...base, instances: [...base.instances, brokenEntry] };
+    const first = registerServedFile(types, broken, bundleIds);
+    expect(first).toMatchObject({ ok: false, problem: expect.stringMatching(/the registry rejected it: /) });
+    const redefined = { ...catalogPie, description: 'otherwise' };
+    const second = registerServedFile(types, [base, { types: [redefined], instances: [] }], bundleIds);
+    const lines = errors.mock.calls.map(([line]) => String(line));
+    errors.mockRestore();
+    expect(second.ok).toBe(true);
+    expect(lines).toEqual([
+      expect.stringMatching(
+        new RegExp(
+          `the widget part number 2 of the answer \\(the served file is number 1\\) is left out: its type .*pie_chart\\.v1~ is already defined otherwise by the served file$`,
+        ),
+      ),
+    ]);
+  });
+
   it('serves the re-point of a catalog widget type to the product entry: the catalog part off the list, a product part carrying the type, and no failed cell', () => {
     // The re-point the guides describe: the catalog pie bundle stays off the widget list, and a product bundle's part
     // carries the pie widget type with its `entry` trait set to the product's own entry, the catalog render and data
