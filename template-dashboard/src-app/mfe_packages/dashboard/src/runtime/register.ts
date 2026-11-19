@@ -257,7 +257,10 @@ const ANCESTOR_HOPS = 20;
 /**
  * The line of the part that left out the first ancestor of the widget type that the store still lacks, or nothing.
  * The ancestors are the `$ref` members of the type's `allOf`, read the way the render type reads its own `allOf`,
- * and the walk goes on through the ancestors of a parent the store has. A recorded id counts only while the store
+ * and the walk goes on through the ancestors of a parent the store has. A chained id names its parents in the id
+ * itself, the way `effectiveTraits` reads them: for every id the walk visits, the type itself and each ancestor it
+ * reaches, each proper prefix of the id that ends in `~` is checked as an ancestor too, with the same rule as a
+ * `$ref` one, and a prefix the store has is walked through. A recorded id counts only while the store
  * lacks the type (the `missingType` rule of `leftOut`). The smallest hop count seen per id and the hop bound keep a
  * cycle in the `$ref` chain or an unknown parent id from hanging or throwing out of the lookup, and a node the walk
  * reaches again with fewer hops is walked again, so a shared ancestor a long branch first reached near the bound is
@@ -274,6 +277,14 @@ function missingAncestorLine(types: TypeSystemPlugin, typeId: string, rejected: 
     const walk = (id: string, hops: number): string | undefined => {
       if (hops > ANCESTOR_HOPS || (best.get(id) ?? Number.POSITIVE_INFINITY) <= hops) return undefined;
       best.set(id, hops);
+      // The chained id's parents: each proper prefix that ends in `~`. One the store has is walked through; one it
+      // lacks fails the cell only when a left-out part recorded it.
+      const segments = id.split('~').filter(Boolean);
+      for (let n = 1; n < segments.length; n += 1) {
+        const prefix = `${segments.slice(0, n).join('~')}~`;
+        const line = types.getSchema(prefix) ? walk(prefix, hops + 1) : rejected.types.get(prefix);
+        if (line) return line;
+      }
       const schema = types.getSchema(id) as { allOf?: unknown } | undefined;
       if (!schema) return undefined;
       const refs = (Array.isArray(schema.allOf) ? (schema.allOf as { $ref?: unknown }[]) : [])

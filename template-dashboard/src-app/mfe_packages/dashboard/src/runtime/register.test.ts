@@ -1056,6 +1056,28 @@ describe('the served file in parts', () => {
       expect(result.ok && result.failed.get(slotOf(0, 'cell'))).toMatch(PART_LINE);
     });
 
+    it('fails the cells of a chained product type with no $ref parent with the line of the part that left out a prefix of its id', () => {
+      // The product type id chains the pie widget type and its own segment, with no allOf `$ref` to the parent: the
+      // registry walks the prefixes of the id as the parents. The left-out pie part holds the pie prefix, so the
+      // cell fails with that part's line, not with the registry's own parent error.
+      const CHAINED = `${PIE}frontx.test.widget.pie_plus.v1~`;
+      const chained = {
+        $id: `gts://${CHAINED}`,
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        'x-gts-traits': { entry: PRODUCT_ENTRY, data_type: PRODUCT_DATA },
+      };
+      const { types, outcome, lines } = loadedParts([DEMO_WITHOUT_BUNDLES, otherPart(), productPart(chained), leftOutPiePart()]);
+      expect(outcome.ok).toBe(true);
+      expect(lines).toEqual([expect.stringMatching(PART_LINE)]);
+      const result = registerDashboard(
+        types,
+        dashboardOf([{ size: 'small', widget: { ...myWidget('1a2b3c4d-0000-4000-8000-000000000008'), id: `${CHAINED}1a2b3c4d-0000-4000-8000-000000000008` } }]),
+        outcome.ok ? outcome.rejected : undefined,
+      );
+      expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(0, 'cell')]);
+      expect(result.ok && result.failed.get(slotOf(0, 'cell'))).toMatch(PART_LINE);
+    });
+
     it('fails no product cell when a later part registers the parent type a left-out part declared first', () => {
       // The part that registers the parent brings it whole and fails on an unrelated entry of its own, after its
       // types and entries registered: the parent is in the store, so the record of the part that declared it first
