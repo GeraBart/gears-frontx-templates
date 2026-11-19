@@ -12,12 +12,14 @@ import {
   CONTROL_HEIGHT_TOLERANCE_PX,
   CONTROL_TEXT_PX,
   FULL_BLEED_TOLERANCE_PX,
+  HAIRLINE_MAX_PX,
   MIN_CARD_PADDING_PX,
   NON_TEXT_CONTRAST_MIN,
   SCROLL_EDGE_TOLERANCE_PX,
   SECTION_TOUCH_TOLERANCE_PX,
   TINY_TEXT_PX,
   axeResultsToFindings,
+  cardDrawnSides,
   clipInkToScrollers,
   collectHeadingSkipFindings,
   compositeOver,
@@ -39,6 +41,7 @@ import {
   readTextFloors,
   runDesignDefectCheck,
   scrollsSideways,
+  shadowPaintsSides,
   shareVisualRow,
   soleLayoutChild,
   spacingProbeSpec,
@@ -430,6 +433,128 @@ describe('findCardEdgeFlush', () => {
       { side: 'right', insetPx: 0 },
     ]);
     expect(findCardEdgeFlush(content, [{ left: null, right: null }], bothSides)).toEqual([]);
+  });
+});
+
+describe('cardDrawnSides (the LAY-005 card test)', () => {
+  // Computed styles are read off a real CSSStyleDeclaration: the declarations
+  // below are the values the elements report at runtime, not made-up strings.
+  function styleOf(declarations: Record<string, string>): CSSStyleDeclaration {
+    const el = document.createElement('div');
+    for (const [property, value] of Object.entries(declarations)) el.style.setProperty(property, value);
+    return el.style;
+  }
+
+  // The kit Tabs line list (dist chunks/tabs.BqhiMRUP.css): a trackless row
+  // with a transparent surface, no radius of its own and no border. The
+  // house standard draws its underline on the list itself as one inset
+  // bottom hairline (box-shadow: inset 0 -1px 0 var(--line)), so the row's
+  // only drawn edge is that single line: a divider row, not a card.
+  const kitTabLineList = {
+    'background-color': 'rgba(0, 0, 0, 0)',
+    'border-top-left-radius': '0px',
+    'border-top-right-radius': '0px',
+    'border-bottom-left-radius': '0px',
+  };
+
+  it('reads the kit tab line row as a divider, with and without its underline', () => {
+    expect(cardDrawnSides(styleOf(kitTabLineList))).toBeNull();
+    expect(
+      cardDrawnSides(styleOf({ ...kitTabLineList, 'box-shadow': 'inset 0px -1px 0px rgb(16, 32, 48)' })),
+    ).toBeNull();
+    expect(
+      cardDrawnSides(styleOf({ ...kitTabLineList, 'box-shadow': 'inset 0px 1px 0px rgb(16, 32, 48)' })),
+    ).toBeNull();
+    // The same underline drawn outside the box (an outset hairline) is the
+    // one horizontal line still.
+    expect(cardDrawnSides(styleOf({ ...kitTabLineList, 'box-shadow': 'rgb(16, 32, 48) 0px -1px 0px' }))).toBeNull();
+  });
+
+  it('reads a real card with zero padding as a card', () => {
+    // An elevation shadow surrounds the box.
+    expect(cardDrawnSides(styleOf({ 'box-shadow': 'rgb(0, 0, 0) 0px 4px 12px 0px' }))).toEqual({
+      left: true,
+      right: true,
+    });
+    // An inset ring draws all four sides (computed order: inset last).
+    expect(cardDrawnSides(styleOf({ 'box-shadow': 'rgb(16, 32, 48) 0px 0px 0px 1px inset' }))).toEqual({
+      left: true,
+      right: true,
+    });
+    // Rounded corners over a painted surface.
+    expect(
+      cardDrawnSides(styleOf({ 'background-color': 'rgb(255, 255, 255)', 'border-top-left-radius': '8px' })),
+    ).toEqual({ left: true, right: true });
+    // A drawn side border on its own.
+    expect(
+      cardDrawnSides(styleOf({ 'border-left-width': '1px', 'border-left-style': 'solid' })),
+    ).toEqual({ left: true, right: false });
+  });
+
+  it('does not let the underline exempt a shadow that also draws the sides', () => {
+    expect(
+      cardDrawnSides(
+        styleOf({
+          'box-shadow': 'inset 0px -1px 0px rgb(200, 200, 200), rgb(16, 32, 48) 0px 0px 0px 1px inset',
+        }),
+      ),
+    ).toEqual({ left: true, right: true });
+  });
+});
+
+describe('shadowPaintsSides (the divider exemption)', () => {
+  const line = 'rgb(16, 32, 48)';
+
+  it('reads empty and none as painting nothing', () => {
+    expect(shadowPaintsSides('')).toBe(false);
+    expect(shadowPaintsSides('none')).toBe(false);
+  });
+
+  it('reads a single top or bottom hairline as no sides, inset or outset', () => {
+    expect(shadowPaintsSides(`inset 0px 1px 0px ${line}`)).toBe(false);
+    expect(shadowPaintsSides(`inset 0px -1px 0px ${line}`)).toBe(false);
+    // Outside the box a zero-x, zero-blur, zero-spread layer is clipped to
+    // the one strip the offset leaves visible: the same single line.
+    expect(shadowPaintsSides(`${line} 0px 1px 0px`)).toBe(false);
+    expect(shadowPaintsSides(`${line} 0px -1px 0px`)).toBe(false);
+  });
+
+  it('keeps the exemption within the hairline thickness', () => {
+    expect(shadowPaintsSides(`inset 0px ${HAIRLINE_MAX_PX}px 0px ${line}`)).toBe(false);
+    expect(shadowPaintsSides(`${line} 0px ${HAIRLINE_MAX_PX}px 0px`)).toBe(false);
+    // A deeper layer paints a band, a surface: not a line.
+    expect(shadowPaintsSides(`inset 0px -${HAIRLINE_MAX_PX + 1}px 0px ${line}`)).toBe(true);
+    expect(shadowPaintsSides(`inset 0px -48px 0px ${line}`)).toBe(true);
+    expect(shadowPaintsSides(`${line} 0px ${HAIRLINE_MAX_PX + 1}px 0px`)).toBe(true);
+  });
+
+  it('reads a blur, a spread or a horizontal offset as sides', () => {
+    expect(shadowPaintsSides(`inset 1px 1px 0px ${line}`)).toBe(true);
+    expect(shadowPaintsSides(`inset 0px 1px 1px ${line}`)).toBe(true);
+    expect(shadowPaintsSides(`inset 0px 0px 0px 1px ${line}`)).toBe(true);
+  });
+
+  it('counts an unreadable layer as a boundary', () => {
+    // A colour with no readable geometry and a lone length parse to null.
+    expect(shadowPaintsSides(line)).toBe(true);
+    expect(shadowPaintsSides('1px')).toBe(true);
+    expect(shadowPaintsSides(`${line} 0px -1px 0px, nonsense`)).toBe(true);
+  });
+
+  it('does not cut a layer inside rgb() or color()', () => {
+    // Both layers are hairlines; a naive comma split would read the colour
+    // fragments as unreadable layers and report the sides.
+    expect(shadowPaintsSides(`rgb(255, 0, 0) 0px 1px 0px, ${line} 0px -1px 0px`)).toBe(false);
+    expect(shadowPaintsSides('color(srgb 0.1 0.2 0.3) 0px -1px 0px')).toBe(false);
+  });
+
+  it('reads inset first or last', () => {
+    expect(shadowPaintsSides(`inset 0px -1px 0px ${line}`)).toBe(false);
+    expect(shadowPaintsSides(`${line} 0px -1px 0px inset`)).toBe(false);
+  });
+
+  it('lets one ring among the layers draw the sides', () => {
+    expect(shadowPaintsSides(`inset 0px -1px 0px ${line}, ${line} 0px 0px 0px 1px inset`)).toBe(true);
   });
 });
 

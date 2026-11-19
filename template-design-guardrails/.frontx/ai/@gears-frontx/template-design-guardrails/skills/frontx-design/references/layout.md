@@ -16,7 +16,11 @@ The numbers (spacing scale, fallback grid, regions, responsive order) are in
 - A box that draws its own edge (a card, a bordered or shadowed row) pads
   every side it draws: 4 px floor, 12 to 24 px normal. Content never sits
   flush against a drawn edge. The one exemption is a full-bleed media card;
-  its non-media content is still padded (LAY-005).
+  its non-media content is still padded (LAY-005). A row whose only drawn
+  edge is a single top or bottom hairline, inset or outset, at most 2 px
+  thick - a divider row, or a tab list underlined over the content line -
+  draws no side and is not a card. A deeper shadow band reads as a painted
+  surface and the row pads like a card.
 - Spacing comes from CSS Module rules on `--space-*` tokens (SYS-004). Check
   it in the render, not by reading class names.
 - No negative margins to fix structural alignment; no adjacent gaps that

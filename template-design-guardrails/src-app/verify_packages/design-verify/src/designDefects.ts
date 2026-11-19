@@ -354,6 +354,14 @@ export const MIN_CARD_HEIGHT_PX = 24;
 /** Slack for "media fills the card" width comparisons. */
 export const FULL_BLEED_TOLERANCE_PX = 2;
 
+/**
+ * Thickest top or bottom line a shadow layer may paint and still read as a
+ * divider (a separator or an underline) rather than a card surface. Past
+ * this the layer covers a band of the box and reads as a painted
+ * background - see shadowPaintsSides.
+ */
+export const HAIRLINE_MAX_PX = 2;
+
 /** Horizontal extent of one piece of visible content inside a card. */
 export interface InkEdge {
   left: number;
@@ -811,16 +819,91 @@ const MEDIA_TAGS = new Set(['IMG', 'PICTURE', 'VIDEO', 'CANVAS', 'SVG']);
 const CONTROL_TAGS = new Set(['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA']);
 const CONTROL_ROLES = new Set(['button', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'option', 'slider']);
 
+/** One box-shadow layer's geometry; the colour plays no part in the shape. */
+interface BoxShadowLayer {
+  inset: boolean;
+  offsetX: number;
+  offsetY: number;
+  blur: number;
+  spread: number;
+}
+
+/**
+ * Splits a computed box-shadow into its comma-separated layers. A colour may
+ * carry commas of its own inside parentheses (rgb(), color()), so the split
+ * tracks paren depth and cuts only on top-level commas.
+ */
+function splitBoxShadowLayers(value: string): string[] {
+  const layers: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of value) {
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (ch === ',' && depth === 0) {
+      layers.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim() !== '') layers.push(current.trim());
+  return layers.filter((layer) => layer !== '');
+}
+
+/**
+ * Parses one computed box-shadow layer's geometry. Computed styles serialise
+ * lengths in px and place `inset` first or last and the colour anywhere, so
+ * tokens are read by shape, not position: `inset`, px lengths, anything else
+ * is colour. Returns null when the layer carries no readable geometry.
+ */
+function parseBoxShadowLayer(layer: string): BoxShadowLayer | null {
+  const lengths: number[] = [];
+  let inset = false;
+  for (const token of layer.split(/\s+/)) {
+    if (token === 'inset') {
+      inset = true;
+    } else if (/^[+-]?[\d.]+px$/.test(token)) {
+      lengths.push(Number.parseFloat(token));
+    }
+  }
+  if (lengths.length < 2) return null;
+  return { inset, offsetX: lengths[0], offsetY: lengths[1], blur: lengths[2] ?? 0, spread: lengths[3] ?? 0 };
+}
+
+/**
+ * True when any shadow layer paints a left or right edge. A layer with no
+ * horizontal offset, no blur and no spread, inset or outset, crosses only
+ * one horizontal edge: a single hairline along the top or the bottom, at
+ * most HAIRLINE_MAX_PX thick - the divider row's separator and the tab row's
+ * underline - not a card boundary. An inset layer thicker than that (the
+ * fill-painting band) covers the box like a background, a blur or a spread
+ * reaches the sides, and an unreadable layer counts as a boundary.
+ * Exported for unit tests.
+ */
+export function shadowPaintsSides(boxShadow: string): boolean {
+  if (boxShadow === '' || boxShadow === 'none') return false;
+  return splitBoxShadowLayers(boxShadow).some((layer) => {
+    const shadow = parseBoxShadowLayer(layer);
+    if (shadow === null) return true;
+    const hairline =
+      shadow.offsetX === 0 && shadow.blur === 0 && shadow.spread === 0 && Math.abs(shadow.offsetY) <= HAIRLINE_MAX_PX;
+    return !hairline;
+  });
+}
+
 /**
  * Which edges this element draws as a visible card boundary. A left/right
- * border, or the full "card look" (box shadow, or rounded corners over a
- * painted background), makes flush content read as missing padding. Elements
- * drawing only horizontal separators (border-top/bottom, e.g. divided list
- * rows) draw no vertical edge and are exempt. Returns null when nothing
- * card-like is drawn.
+ * border, or the full "card look" (a shadow that paints the sides, or
+ * rounded corners over a painted background), makes flush content read as
+ * missing padding. Elements drawing only horizontal separators
+ * (border-top/bottom, e.g. divided list rows, or a single top or bottom
+ * hairline, inset or outset, at most HAIRLINE_MAX_PX thick, such as the tab
+ * row the house standard underlines) draw no vertical edge and are exempt.
+ * Returns null when nothing card-like is drawn.
  */
-function cardDrawnSides(style: CSSStyleDeclaration): { left: boolean; right: boolean } | null {
-  const shadowed = style.boxShadow !== '' && style.boxShadow !== 'none';
+export function cardDrawnSides(style: CSSStyleDeclaration): { left: boolean; right: boolean } | null {
+  const shadowed = shadowPaintsSides(style.boxShadow);
   const rounded =
     parsePx(style.borderTopLeftRadius) > 0 ||
     parsePx(style.borderTopRightRadius) > 0 ||
