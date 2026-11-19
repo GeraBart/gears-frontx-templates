@@ -1,10 +1,12 @@
 //
 // Proves the leg-running logic of scripts/test-unit.ts: every leg runs even
-// when an earlier one failed, and the overall exit is non-zero only when some
-// leg failed. The runner is injected, so no real Vitest or npm is spawned.
+// when an earlier one failed, the overall exit is non-zero only when some
+// leg failed, and the command line's arguments reach every leg. The runner
+// is injected, so no real Vitest or npm is spawned.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { TEST_UNIT_LEGS, runTestUnitLegs } from '../scripts/test-unit.js';
+import { legsWithArgs, TEST_UNIT_LEGS, runTestUnitLegs } from '../scripts/test-unit.js';
 
 describe('runTestUnitLegs', () => {
   it('runs legs two and three after the first leg fails, and exits non-zero', async () => {
@@ -54,5 +56,49 @@ describe('runTestUnitLegs', () => {
       'vitest --run --config src-app/vitest.config.ts --passWithNoTests=false',
       'npm run test:unit --workspaces --if-present',
     ]);
+  });
+});
+
+describe('legsWithArgs', () => {
+  it('appends the arguments to every leg, after -- on the npm leg', () => {
+    expect(legsWithArgs(TEST_UNIT_LEGS, ['--reporter=dot', 'src-app/__tests__/app.test.tsx'])).toEqual([
+      'vitest --run --passWithNoTests=false --reporter=dot src-app/__tests__/app.test.tsx',
+      'vitest --run --config src-app/vitest.config.ts --passWithNoTests=false --reporter=dot src-app/__tests__/app.test.tsx',
+      'npm run test:unit --workspaces --if-present -- --reporter=dot src-app/__tests__/app.test.tsx',
+    ]);
+  });
+
+  it('keeps the legs verbatim when no arguments are given', () => {
+    expect(legsWithArgs(TEST_UNIT_LEGS, [])).toEqual([...TEST_UNIT_LEGS]);
+  });
+
+  it('single-quotes an argument the shell would otherwise split', () => {
+    expect(legsWithArgs(['vitest --run'], ['my file.test.ts'])).toEqual(["vitest --run 'my file.test.ts'"]);
+  });
+
+  it('leaves the arguments on every leg the runner is handed', async () => {
+    const ranLegs: string[] = [];
+    await runTestUnitLegs(
+      legsWithArgs(TEST_UNIT_LEGS, ['--reporter=dot']),
+      async (leg) => {
+        ranLegs.push(leg);
+        return 0;
+      },
+      () => undefined,
+    );
+    expect(ranLegs).toHaveLength(TEST_UNIT_LEGS.length);
+    expect(ranLegs.every((leg) => leg.endsWith('--reporter=dot'))).toBe(true);
+  });
+});
+
+describe('the test:unit script wiring', () => {
+  // `npm run test:unit -- <args>` only reaches the legs through the script:
+  // a package.json that runs the legs itself as an && chain would drop both
+  // the run-every-leg behaviour and the arguments.
+  it('package.json runs test:unit through scripts/test-unit.ts', () => {
+    const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(manifest.scripts['test:unit']).toContain('scripts/test-unit.ts');
   });
 });
