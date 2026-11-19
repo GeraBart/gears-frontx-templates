@@ -337,7 +337,7 @@ declare at this revision; re-deriving them costs a red gate cycle each.
 ```tsx
 import React, { useState } from 'react';  // the default import is what puts React.FormEvent in scope
 import { apiRegistry, useApiMutation, useApiQuery, useAppSelector } from '@gears-frontx/react';
-import { Input } from '@gears-frontx/ui-kit';  // the kit field the design check maps a text input to
+import { Field, FieldLabel, Input } from '@gears-frontx/ui-kit';  // the kit field and its label: what the design check maps a text input and a label to
 import { Button } from '../../components/ui/button';  // the package's own components, not an ecosystem import
 import { Card, CardContent } from '../../components/ui/card';
 import { BillingApiService } from '../../api/BillingApiService';
@@ -382,14 +382,16 @@ export const HomeScreen = () => {
     <Card>
       <CardContent className={styles.content}>
         <form onSubmit={onSubmit}>
-          <label className={styles.label} htmlFor="name">Name</label>
-          <Input
-            id="name"
-            required
-            value={name}
-            onValueChange={setName}
-            data-testid="screen-name-input"
-          />
+          <Field>
+            <FieldLabel htmlFor="name">Name</FieldLabel>
+            <Input
+              id="name"
+              required
+              value={name}
+              onValueChange={setName}
+              data-testid="screen-name-input"
+            />
+          </Field>
           <Button type="submit" disabled={isPending} data-testid="screen-submit">Save</Button>
         </form>
         <p data-testid="screen-status">{status ?? data?.message}</p>
@@ -399,7 +401,7 @@ export const HomeScreen = () => {
 };
 ```
 
-The two classes the skeleton names live in the screen's own `HomeScreen.module.css`, on the
+The one class the skeleton names lives in the screen's own `HomeScreen.module.css`, on the
 same kit tokens the shipped `_blank-mfe` module uses; a copied screen declares every class
 it names:
 
@@ -408,11 +410,6 @@ it names:
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-}
-
-.label {
-  font-size: var(--text-label-size);
-  font-weight: var(--text-label-weight);
 }
 ```
 
