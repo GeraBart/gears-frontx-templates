@@ -18,9 +18,11 @@ published versions of its FrontX dependencies (`@gears-frontx/react`,
 alongside its ordinary third-party ones, and installs them all from the
 registry — there are no `file:` paths to dangle.
 What an applied shell actually supplies is the **runtime host**: the
-`src-app/app/` shell that mounts these MFEs, and — at build/dev time — the
-`frontxMfGts` plugin loaded from `@gears-frontx/frontx-template-shell/build/mf-gts`.
-Without an applied shell there is no host to mount into and no plugin to load,
+`src-app/app/` shell that mounts these MFEs. The `vitePluginMfeGts` plugin a
+package builds with is not shell-supplied — each package declares
+`@gears-frontx/vite-plugin-mfe-gts` as its own dependency and loads it from
+there.
+Without an applied shell there is no host to mount into,
 even though `npm install` alone would succeed.
 
 ```bash
@@ -74,12 +76,20 @@ Then, inside `my-mfe/`:
    package here already uses (the copy above already set `name`).
 2. **`mfe.json`** — declare your entries and extensions (screen, sidebar, popup,
    or overlay) with GTS IDs following this template's ID conventions guideline.
-3. **`vite.config.ts`** — keep the `frontxMfGts` build plugin wired, and add
-   your lifecycle modules to the Module Federation `exposes` map so the shell
-   can load them at runtime. Keep `@gears-frontx/routing` in `sharedDeps` and
+3. **`vite.config.ts`** — keep the `vitePluginMfeGts` build plugin wired, and add
+   your lifecycle modules to its `exposes` map (or `mfe.json`'s `exposes`) so
+   the shell can load them at runtime. Module Federation itself is the
+   plugin's: the federation name derives from `package.json`'s `name`,
+   `remoteEntry.js`, `shared: {}` and the manifest are fixed, and the
+   `build.target`/`modulePreload`/`minify`/`cssCodeSplit` settings are
+   enforced — wiring `federation()` by hand is a build error. Sharing is
+   by default: every package in
+   `dependencies` (and non-optional `peerDependencies`) is shared — emitted as
+   content-addressed units and a graph file — so keep `@gears-frontx/routing`
    pinned in `package.json`, as the scaffold has it; an MFE that uses
    `<ExtensionRouter>` or `navigation()` adds `@gears-frontx/routing-tanstack`
-   to both, under `dependencies`.
+   there too, under `dependencies`. Opt out per package with `share.exclude`
+   in `mfe.json` (never by hand-editing an externals list — there is none).
 
 The `add-mfe-package` skill carries the full list, from the port through the
 manifests and the final gate.
