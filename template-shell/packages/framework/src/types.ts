@@ -101,20 +101,6 @@ export interface FrontXActions {
   setLanguage: (payload: SetLanguagePayload) => void;
 
   // ==========================================================================
-  // Layout actions (from layout plugin)
-  // ==========================================================================
-  showPopup: (payload: ShowPopupPayload) => void;
-  hidePopup: () => void;
-  showOverlay: (payload: { id: string }) => void;
-  hideOverlay: () => void;
-  toggleMenuCollapsed: (payload: { collapsed: boolean }) => void;
-  toggleSidebarCollapsed: (payload: { collapsed: boolean }) => void;
-  setHeaderVisible: (payload: boolean) => void;
-  setFooterVisible: (payload: boolean) => void;
-  setMenuCollapsed: (payload: boolean) => void;
-  setSidebarCollapsed: (payload: boolean) => void;
-
-  // ==========================================================================
   // Mock actions (from mock plugin)
   // ==========================================================================
   toggleMockMode: (enabled: boolean) => void;
@@ -239,7 +225,7 @@ export type PluginFactory<TConfig = unknown> = (config?: TConfig) => FrontXPlugi
  * ```typescript
  * const app = createFrontX()
  *   .use(themes())
- *   .use(layout())
+ *   .use(i18n())
  *   .build();
  * ```
  */
@@ -401,7 +387,7 @@ type MfeRegistrySlot = FrontXAppGuarantees extends { mfeRegistry: true }
  *
  * @example
  * ```typescript
- * const app = createFrontX().useAll(full({ microfrontends })).build();
+ * const app = createFrontX().useAll(full()).use(microfrontends({ typeSystem })).build();
  *
  * // Access store
  * const state = app.store.getState();
@@ -500,16 +486,6 @@ export type ThemesConfig = Record<string, never>;
 // ============================================================================
 
 /**
- * Show Popup Payload
- */
-export interface ShowPopupPayload {
-  id: string;
-  title?: string;
-  content?: () => Promise<{ default: React.ComponentType }>;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
-}
-
-/**
  * Change Theme Payload
  */
 export interface ChangeThemePayload {
@@ -517,26 +493,8 @@ export interface ChangeThemePayload {
 }
 
 /**
- * Theme Propagation Failed Payload
- * Emitted when parent theme applies but MFE propagation fails.
- */
-export interface ThemePropagationFailedPayload {
-  themeId: string;
-  error: unknown;
-}
-
-/**
  * Set Language Payload
  */
 export interface SetLanguagePayload {
   language: string;
-}
-
-/**
- * Language Propagation Failed Payload
- * Emitted when parent language applies but MFE propagation fails.
- */
-export interface LanguagePropagationFailedPayload {
-  language: string;
-  error: unknown;
 }

@@ -15,7 +15,7 @@
  * its own screen-domain declaration.
  */
 
-import type { JSONSchema } from '@gears-frontx/react';
+import type { JSONSchema } from '@gears-frontx/gts-plugin';
 
 import setLanguageActionSchema from './gts/frontx.screensets/schemas/chrome/set_language.v1.json';
 import setMenuCollapsedActionSchema from './gts/frontx.screensets/schemas/chrome/set_menu_collapsed.v1.json';
