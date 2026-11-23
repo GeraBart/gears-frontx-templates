@@ -459,6 +459,8 @@ Requested as a concrete check for `cpt-frontx-workspace-templates-fr-screen-doma
 }
 ```
 
+The block is the authored `mfe.json`. `manifest.remoteEntry` is an authoring input and the entry carries no `exposeAssets`; the build completes the file and serves a manifest of exactly `id`, `metaData` (`publicPath`, `sharedBase?`), `units?` and `lists?`, and entries that add `exposeAssets` (`js.sync`, `css.sync`, `css.async`) to the fields written here, with `manifest` naming a registered manifest by id. The runtime trusts each declared `contentHash` as the sharing key.
+
 One field in this shape is new: the top-level `labelDictionaries`, which points at the MFE's served `labels/de.json`, an instance of the dictionary type (§3.3); English needs no dictionary, it is `presentation.label`. `entries[].actions` is empty because this screen handles no action. A screen that sends `set_language` (§1.2) lists it in its entry's `domainActions`, as the demo-mfe settings entry does; the runtime's contract check refuses such an entry for a domain that does not list the action, and the shell's screen domain lists it and handles it. Every other field is unchanged: `domain` is the existing screen extension domain identifier; `requiredProperties` names the same two shared properties (`theme`, `language`) every screen entry in this repository already declares; the top-level `route` and `presentation.label`, `.icon`, `.order` are the same four fields the screen extensions already in this repository carry. Beyond that field and its dictionary file, what is new is convention layered on top, stated as obligations rather than schema (§2.3):
 
 | Member | Reserved order band | Declared route |

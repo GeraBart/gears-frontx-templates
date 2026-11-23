@@ -43,7 +43,10 @@ each step names the concrete command or file template-mfe ships.
      - `dev`: `vite --port {port}`
      - `preview`: `vite preview --port {port}`
    - `src-app/mfe_packages/{screenset}-mfe/vite.config.ts`:
-     - Module Federation `name`: `{screenset}Mfe` (camelCase of the package name)
+     - No federation `name` to set — `vitePluginMfeGts` derives it from
+       `package.json`'s `name` (`@gears-frontx/{screenset}-mfe` → `{screenset}Mfe`).
+       Only the `exposes` map passed to `vitePluginMfeGts({ exposes })` is
+       the MFE's own.
 
 4. **Link the workspace**
    ```bash

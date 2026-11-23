@@ -37,18 +37,18 @@ import those names directly and the override resolves straight to that
 source. It does the same for direct imports of `packages/api`,
 `packages/gts-plugin`, and `packages/mfes`. **It does not** reach edits to
 those same three packages through `@gears-frontx/frontx-template-shell`'s own
-pre-built `dist-lib/build/mf-gts` — `template-shell/package.json` pins
-`gts-plugin`/`mfes`/`api` to their own published versions with no local
-override of its own, so whatever `frontxMfGts` bundles at `template-shell`'s
-build time reflects those registry versions, not edits made here, until
-`template-shell` is rebuilt. The same not-part-of-the-template status applies
+`@gears-frontx/vite-plugin-mfe-gts` and `@gears-frontx/unit-producer` —
+`template-shell/package.json` pins `gts-plugin`/`mfes`/`api` to their own
+published versions with no local override of its own, so whatever
+`vitePluginMfeGts` produces at `template-shell`'s build time reflects those
+registry versions, not edits made here, until `template-shell` is rebuilt. The same not-part-of-the-template status applies
 to `frontx-template.json` and this README — a template directory holds
 shipped payload *and* authoring machinery, and the manifest's boundaries are
 what separate the two.
 
 Bootstrap order for working in this monorepo. Installing the harness alone is
-**not** sufficient: an MFE's `vite.config.ts` loads `frontxMfGts`, which reaches
-into the shell's own subpackages, and each of those resolves through a `dist/`
+**not** sufficient: an MFE's `vite.config.ts` loads `vitePluginMfeGts`, which
+reaches into shared-package code, and each of those resolves through a `dist/`
 that does not exist until built.
 
 ```bash
@@ -99,8 +99,8 @@ npm run build:packages      # once, before a scoped MFE package check
 
 - `src-app/mfe_packages/*` — one directory per MFE package, each with its own
   `package.json` (port in `dev`/`preview` via `--port <N>`), `mfe.json` manifest,
-  and `vite.config.ts` wired for Module Federation + the shell's `frontxMfGts`
-  build plugin. See the shell's `mfe-package-contract` AI guideline for the full
+  and `vite.config.ts` wired for Module Federation + `vitePluginMfeGts`
+  (from `@gears-frontx/vite-plugin-mfe-gts`). See the shell's `mfe-package-contract` AI guideline for the full
   contract every package here conforms to.
 - An AI-extension bundle (`.frontx/ai/@gears-frontx/frontx-template-mfe/`) with
   the `add-mfe-package` skill, its workflow, a GTS ID conventions guideline, and

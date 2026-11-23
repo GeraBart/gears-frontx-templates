@@ -241,6 +241,71 @@ A screen that reads the shell's own files by an absolute address (the
 `demo-mfe` widgets host fetches `/generated-mfe-manifests.json`) works only at
 the root of a domain until screens can learn the shell's address.
 
+## Tuning the boot for slow connections
+
+The build shares the packages your shell imports between the shell and its
+screens (`vitePluginShell` in `vite.config.ts`). The shell fetches the shared
+files its boot evaluates straight away; what only a lazily loaded chunk imports
+is not fetched ahead of the boot. Three levers let a company shorten the boot
+further, most useful for users on a high-latency HTTP/1.1 connection, where
+every extra request costs a round trip.
+
+**`include`: a lighter shell.** `include` names the packages to share; the
+packages they depend on at runtime are shared with them, and the build report
+lists the whole set. Leave it unset to share every package the build graph
+imports (the default), or name the few packages you want shared so the shell
+loads fewer shared files. `include` and `exclude` are mutually exclusive:
+setting both fails the build, so replace the `exclude` list this template
+ships in `vite.config.ts` when you switch to `include`.
+
+```ts
+vitePluginShell({ include: ['react', 'react-dom'] });
+```
+
+The cache fill starts when the fill chunk has loaded, which is after the shell
+entry has run (document order) and after the MFE handler has published the realm
+cache; it does not wait for window load. It fetches at low priority with cache
+`'force-cache'`, so the boot's HTTP-cache copies serve it when `dist/` is served
+with cacheable headers. Fill and MFE loads join each other's in-flight entries,
+whichever publishes first, so a unit is downloaded once, and an MFE waits only
+for the units it needs, never the whole fill.
+
+**`include: []`: a fully native shell.** An empty list shares nothing with the
+shell. The shell then boots from its own `dist/` files only, like any Vite
+application, with no import map and no cache fill, and the screens
+still share their dependencies among themselves.
+
+```ts
+vitePluginShell({ include: [] });
+```
+
+**`load_ext` in an extension's init actions: early loading.** An extension
+declares lifecycle hooks, and the `init` stage runs when the shell registers the
+extension. An `init` actions chain that runs `load_ext` with an extension as the
+subject (itself, or another extension) loads that extension and its shared
+files before anyone opens it, so the first open finds them in the cache. An
+`init` chain that runs `mount_ext` on itself mounts the extension at startup.
+
+```json
+{
+  "stage": "gts.frontx.mfes.lifecycle.stage.v1~frontx.mfes.lifecycle.init.v1",
+  "actions_chain": {
+    "action": {
+      "type": "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~",
+      "target": "<domain id>",
+      "payload": { "subject": "<extension id>" }
+    }
+  }
+}
+```
+
+**High-latency HTTP/1.1.** A browser opens a handful of connections per origin
+on HTTP/1.1, so a long list of shared files queues behind them. Serve the build
+over HTTP/2 where you can. Where you cannot, combine the levers: shrink the
+shared set with `include` so the shell has fewer files to fetch, and load the
+startup extensions early with `load_ext` so their files are fetched while the
+shell renders instead of when the user opens them.
+
 ## Tech stack
 
 - **React** + **TypeScript** + **Vite** with **Module Federation** for MFEs
