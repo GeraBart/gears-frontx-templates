@@ -1,0 +1,39 @@
+{
+  "variant": "old",
+  "profile": {
+    "name": "chrome-devtools-fast-4g",
+    "cpuThrottlingRate": 4,
+    "latency": 150,
+    "downloadThroughput": 1125000,
+    "uploadThroughput": 187500
+  },
+  "runs": 10,
+  "noiseRatio": 0.15,
+  "medianBoot": 1787,
+  "medianMfe": 3029,
+  "minBoot": 1784,
+  "minMfe": 3008,
+  "bootBreakdowns": [
+    {
+      "requestCount": 17,
+      "sequentialFetchRounds": 6,
+      "unitFetchRounds": 0,
+      "totalBytes": 1218927,
+      "stages": {
+        "document": {
+          "count": 1,
+          "bytes": 1932,
+          "transferMs": 169,
+          "spanMs": 169
+        },
+        "static": {
+          "count": 16,
+          "bytes": 1216995,
+          "transferMs": 5606,
+          "spanMs": 1464
+        }
+      }
+    }
+  ],
+  "measuredAt": "2026-11-09T07:59:48.296Z"
+}

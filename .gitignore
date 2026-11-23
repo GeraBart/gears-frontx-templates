@@ -594,3 +594,8 @@ __pycache__/
 .windsurf/workflows/cf.md
 .cf-studio/config/kits/sdlc/
 # END Constructor Studio
+.devin/agents/
+.cf-studio/config/
+.change-impact/
+test-results/
+e2e/results/

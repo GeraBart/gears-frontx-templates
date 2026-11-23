@@ -1,0 +1,17 @@
+{
+  "protocol": "http1",
+  "boot": {
+    "perOrigin": {
+      "shell:4173": 212
+    },
+    "total": 212
+  },
+  "mfeLoad": {
+    "perOrigin": {
+      "fixture:3099": 27,
+      "shell:4173": 1
+    },
+    "total": 28
+  },
+  "measuredAt": "2026-11-11T04:58:29.426Z"
+}

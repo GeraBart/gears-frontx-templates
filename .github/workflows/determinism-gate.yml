@@ -1,0 +1,88 @@
+name: Determinism Gate
+
+# The two-tier determinism gate: verifies FrontX builds are deterministic in
+# emitted bytes and lists across build environments for the same
+# producer version and inputs.
+#
+# - `fix` tier: cold vs warm, serial vs parallel, shell + one MFE,
+#   hash comparison only. Runs on pull requests touching the template
+#   packages (`template-shell/packages/**`, `template-mfe/packages/**`).
+# - `full` tier: all four comparisons (cold vs warm, serial vs
+#   parallel, two checkout folders, npm install vs workspace link) on
+#   the shell and every MFE, hashing every shared file, every list and
+#   the build report. Runs on `workflow_dispatch` and on pushes to the
+#   integration branch touching `template-shell/packages/**` or
+#   `template-mfe/packages/**`.
+#
+# The workflow invokes `scripts/determinism-gate.mjs` (which reuses
+# `scripts/verify-dev.mjs` for builds) and uploads the JSON result
+# artifact. No existing gate is weakened.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'template-shell/packages/**'
+      - 'template-mfe/packages/**'
+      - '.github/workflows/determinism-gate.yml'
+  push:
+    branches: [ main, feature/** ]
+    paths:
+      - 'template-shell/packages/**'
+      - 'template-mfe/packages/**'
+      - '.github/workflows/determinism-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  determinism-gate:
+    name: Determinism Gate
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '25.x'
+        cache: 'npm'
+
+    - name: Enable Corepack
+      run: corepack enable
+
+    - name: Install workspace
+      run: npm install
+
+    # `fix` on PRs touching template packages; `full` on
+    # `workflow_dispatch` and pushes to the integration branch
+    # touching `template-shell/packages/**` or
+    # `template-mfe/packages/**`. The script reuses verify-dev.mjs
+    # for builds, each comparison as its own bounded
+    # 15-minute sub-step reported individually.
+    - name: Select tier
+      id: tier
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "tier=fix" >> "$GITHUB_OUTPUT"
+        else
+          echo "tier=full" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Run determinism gate
+      run: |
+        set -euo pipefail
+        node scripts/determinism-gate.mjs --tier=${{ steps.tier.outputs.tier }}
+
+    - name: Upload determinism-gate JSON
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: determinism-gate-${{ steps.tier.outputs.tier }}-${{ github.run_id }}
+        path: e2e/results/determinism-gate-*.json
+        if-no-files-found: warn
