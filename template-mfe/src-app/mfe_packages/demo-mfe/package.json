@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "@gears-frontx/frontx-template-shell": "0.1.0-alpha.9",
-    "@gears-frontx/routing": "0.4.0",
+    "@gears-frontx/routing": "0.4.1",
     "@gears-frontx/vite-plugin-mfe-gts": "0.1.0-alpha.2",
     "@module-federation/vite": "1.20.5",
     "@testing-library/react": "16.3.2",
