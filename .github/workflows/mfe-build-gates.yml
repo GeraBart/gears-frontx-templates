@@ -233,9 +233,14 @@ jobs:
         npm install
         npm run build:packages
         FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 npx vite build
+        # The harness is installed once, at its root, as that tree's README
+        # bootstrap does. An `npm install` run from inside one workspace member
+        # reaches the same root, but on some npm versions it leaves out
+        # the `file:` link to the shell that each MFE's vite.config.ts imports.
+        (cd ../template-mfe && npm install)
         for dir in ../template-mfe/src-app/mfe_packages/*/; do
           if [ -f "$dir/mfe.json" ]; then
-            (cd "$dir" && npm install && npx vite build)
+            (cd "$dir" && npx vite build)
           fi
         done
 
