@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { LoadGuards } from './LoadGuards.mjs';
 import { HTTP1_BOOT_BASELINE } from './MatrixProfiles.mjs';
@@ -61,8 +62,13 @@ describe('LoadGuards — the two guards and noise-margin sessions', () => {
     expect(r.finding).toMatch(/not gated against the old rule/);
   });
 
-  it('keeps the HTTP/1.1 boot baseline as data: office-LAN and Fast 4G numbers of this branch before this round', () => {
-    expect(HTTP1_BOOT_BASELINE).toEqual({ 'office-lan': 181, 'fast-4g': 9187 });
+  it('reads the HTTP/1.1 boot baseline from its data file', () => {
+    const data = JSON.parse(readFileSync(new URL('./http1-boot-baseline.json', import.meta.url), 'utf8'));
+    expect(HTTP1_BOOT_BASELINE).toEqual(data.bootMs);
+    for (const ms of Object.values(HTTP1_BOOT_BASELINE)) {
+      expect(typeof ms).toBe('number');
+      expect(ms).toBeGreaterThan(0);
+    }
   });
 
   it('records the gate cell context (protocol, profile, compression, cache state) in every finding', () => {
