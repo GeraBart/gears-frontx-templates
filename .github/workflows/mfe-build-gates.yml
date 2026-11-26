@@ -145,6 +145,9 @@ jobs:
         done
         # The shell dist is a size-metric input: the page's unique download
         # bytes include the shell bundle (boot chunk + its units).
+        # The shell fetches public/generated-menu-icons.json at run time and
+        # only this generator writes it; a bare `vite build` does not run it.
+        npx tsx scripts/generate-menu-icons.ts
         echo "==> vite build (shell)"
         npx vite build
 
@@ -196,6 +199,9 @@ jobs:
         cd template-shell
         npm ci
         npm run build:packages
+        # The shell fetches public/generated-menu-icons.json at run time and
+        # only this generator writes it; a bare `vite build` does not run it.
+        npx tsx scripts/generate-menu-icons.ts
         npx vite build
 
     # The fixtures' Vite configs load vite-plugin-mfe-gts from its built
