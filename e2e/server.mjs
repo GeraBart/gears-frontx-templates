@@ -80,9 +80,24 @@ const unitFetchCounts = new Map();
 function bumpCount(counts, label) {
   counts.set(label, (counts.get(label) ?? 0) + 1);
 }
-function isUnitFetch(req) {
+/**
+ * The request's URL path, or `null` when the request target does not
+ * parse as a URL (`GET //` has an empty host and throws).
+ *
+ * @param {{ url?: string }} req
+ * @returns {string | null}
+ */
+export function pathOf(req) {
+  try {
+    return new URL(req.url ?? '/', 'http://x').pathname;
+  } catch {
+    return null;
+  }
+}
+export function isUnitFetch(req) {
   if (req.headers['sec-fetch-dest'] !== 'empty') return false;
-  const path = new URL(req.url, 'http://x').pathname;
+  const path = pathOf(req);
+  if (path === null) return false;
   return path.includes('/shared/') && path.endsWith('.js');
 }
 function countHandler(label, handler) {
@@ -304,8 +319,16 @@ function serveCompressed(res, bodies, acceptEncoding, headers) {
   send(res, 200, body, responseHeaders);
 }
 
-function serveFile(distDir, urlPath, res, extraHeaders) {
-  const clean = normalize(decodeURIComponent(urlPath)).replace(/^([/\\])+/, '');
+export function serveFile(distDir, urlPath, res, extraHeaders) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath);
+  } catch {
+    // A malformed `%` escape is a bad request, not a reason to take the
+    // server down mid-run.
+    return send(res, 400, 'bad request');
+  }
+  const clean = normalize(decoded).replace(/^([/\\])+/, '');
   if (clean.startsWith('..')) return send(res, 403, 'forbidden');
   let file = join(distDir, clean);
   if (!existsSync(file) || !statSync(file).isFile()) {
@@ -396,7 +419,8 @@ export function startServers() {
   };
 
   const shellHandler = (csp) => (req, res) => {
-    const path = new URL(req.url, 'http://x').pathname;
+    const path = pathOf(req);
+    if (path === null) return send(res, 400, 'bad request target');
     const acceptEncoding = /** @type {string} */ (req.headers['accept-encoding'] ?? '');
     if (path === '/__e2e/requests') {
       return requestCountsEndpoint(req, res);
@@ -435,7 +459,8 @@ export function startServers() {
     const port = Number(new URL(f.remoteEntry).port);
     servers.push(
       listen(`fixture:${port}`, (req, res) => {
-        const path = new URL(req.url, 'http://x').pathname;
+        const path = pathOf(req);
+        if (path === null) return send(res, 400, 'bad request target');
         if (req.method === 'OPTIONS') {
           return send(res, 204, '', {
             'access-control-allow-origin': '*',

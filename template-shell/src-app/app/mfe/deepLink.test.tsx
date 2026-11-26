@@ -27,7 +27,7 @@ import {
   languageSchema,
   screenLabelsSchema,
   FRONTX_MFE_ENTRY_MF,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../../src/index';
 import { MfeScreenContainer } from './MfeScreenContainer';
 import { screenState } from './screenState';
 import { gtsPlugin, FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';

@@ -21,7 +21,7 @@ import { UnitProducer } from '../UnitProducer';
  * `dev:template:link`) is unitized from its real directory. esbuild
  * reports metafile inputs under the symlink target, so a package dir
  * taken from the symlink path matched no input and degraded every
- * linked package to the "SCC analysis found no package modules"
+ * linked package to the "no package modules found"
  * whole-package fallback.
  */
 

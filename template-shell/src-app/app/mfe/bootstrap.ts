@@ -18,7 +18,7 @@
  * nested app's own bootstrap included) registers the same content.
  */
 
-import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '../../../src/index';
 import type { JSONSchema } from '@gears-frontx/gts-plugin';
 import type { FrontXApp } from '@gears-frontx/react';
 import type {
@@ -76,14 +76,16 @@ interface MfeManifestConfig {
 
 /**
  * What one bootstrap run knows while it walks the packages: which packages
- * and extensions it disabled, which package each disabled entry and domain
- * belonged to, and the domains the packages declare.
+ * and extensions it disabled, which package registered each entry and
+ * domain, and which ids belong to a disabled package.
  */
 interface BootstrapRun {
   /** Ids of the packages and extensions the run disabled, in order. */
   readonly disabled: string[];
   /** Entry or domain id of a disabled package, to that package's manifest id. */
   readonly disabledOwners: Map<string, string>;
+  /** Entry or domain id to the manifest id of the package that registered it first. */
+  readonly registeredBy: Map<string, string>;
 }
 
 /**
@@ -103,7 +105,7 @@ function registerAllSchemas(
   run: BootstrapRun,
 ): MfeManifestConfig[] {
   return manifests.filter((config) =>
-    disablingOnFailure(config, run, () => {
+    disablingOnFailure(registry, config, run, () => {
       for (const schema of config.schemas ?? []) {
         if (schema.$id) registry.typeSystem.registerSchema(schema);
       }
@@ -119,7 +121,12 @@ function registerAllSchemas(
  *
  * @returns true when the step completed
  */
-function disablingOnFailure(config: MfeManifestConfig, run: BootstrapRun, step: () => void): boolean {
+function disablingOnFailure(
+  registry: MfeRegistry,
+  config: MfeManifestConfig,
+  run: BootstrapRun,
+  step: () => void,
+): boolean {
   try {
     step();
     return true;
@@ -127,9 +134,17 @@ function disablingOnFailure(config: MfeManifestConfig, run: BootstrapRun, step: 
     const packageId = config?.manifest?.id ?? 'unknown';
     console.error(`[MFE Bootstrap] Disabling the MFE package '${packageId}':`, error);
     run.disabled.push(packageId);
-    // What the package declared stays unusable for every later extension.
-    for (const entry of config?.entries ?? []) run.disabledOwners.set(entry.id, packageId);
-    for (const domain of config?.domains ?? []) run.disabledOwners.set(domain.id, packageId);
+    // What the package declared stays unusable for every later extension,
+    // except an id that belongs to someone else: a host domain, or an entry
+    // or domain another package registered. A package that registers the id
+    // after this one failed takes it over (`claim`), so the manifests' order
+    // never decides whether its extensions run.
+    const declared = [...(config?.entries ?? []), ...(config?.domains ?? [])].map((item) => item.id);
+    for (const id of declared) {
+      const owner = run.registeredBy.get(id);
+      if (hostOwnsDomain(registry, id) || (owner !== undefined && owner !== packageId)) continue;
+      run.disabledOwners.set(id, packageId);
+    }
     return false;
   }
 }
@@ -160,7 +175,13 @@ function hostOwnsDomain(registry: MfeRegistry, domainId: string): boolean {
 function registerMfePackageEntities(
   registry: MfeRegistry,
   config: MfeManifestConfig,
+  run: BootstrapRun,
 ): void {
+  const packageId = config.manifest.id;
+  const claim = (id: string): void => {
+    if (!run.registeredBy.has(id)) run.registeredBy.set(id, packageId);
+    run.disabledOwners.delete(id);
+  };
   // register() validates each instance against its schema and throws on
   // failure; the caller disables the package whose instance threw. Each entry names its manifest by
   // id, so the manifest is registered first and entries are registered opaquely —
@@ -175,9 +196,11 @@ function registerMfePackageEntities(
   for (const domain of config.domains ?? []) {
     console.info(`[MFE Bootstrap] Registering domain ${domain.id}`);
     registry.typeSystem.register(domain);
+    claim(domain.id);
   }
   for (const entry of config.entries) {
     registry.typeSystem.register(entry);
+    claim(entry.id);
   }
 }
 
@@ -314,9 +337,9 @@ export async function bootstrapMFE(app: FrontXApp, domains: readonly DomainRegis
   // registers first.
   // A package whose schemas, manifest, domains or entries the type system
   // rejects is disabled alone and takes no part in the later passes.
-  const run: BootstrapRun = { disabled: [], disabledOwners: new Map() };
+  const run: BootstrapRun = { disabled: [], disabledOwners: new Map(), registeredBy: new Map() };
   const enabled = registerAllSchemas(registry, manifests, run).filter((config) =>
-    disablingOnFailure(config, run, () => registerMfePackageEntities(registry, config)),
+    disablingOnFailure(registry, config, run, () => registerMfePackageEntities(registry, config, run)),
   );
   for (const config of enabled) {
     await registerMfePackageExtensions(registry, config, run);

@@ -4,8 +4,8 @@
  * (`ecosystem_package_build_output`): each source module is its own entry
  * point, and every relative import of another source module stays an
  * external relative module import, rewritten to the emitted `.js` file.
- * The unit producer's SCC unitization can then split the package along
- * its real module graph instead of meeting one opaque bundle.
+ * The unit producer's entry-point chunking can then split the package
+ * along its real module graph instead of meeting one opaque bundle.
  *
  *  - A relative import resolving to a JavaScript/TypeScript module under
  *    `sourceDir` stays external as `./<path>.js`, relative to the

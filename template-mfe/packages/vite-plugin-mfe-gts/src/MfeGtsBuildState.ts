@@ -23,12 +23,14 @@ import type { CapturedChunk, ImportingChunk } from './types';
 export class MfeGtsBuildState {
   /** The MFE package root (`configResolved`). */
   packageRoot = '';
-  /** The configured build outDir (`configResolved`). */
+  /** The build outDir, resolved from Vite's root (`configResolved`). */
   distDirPath = 'dist';
   /** The resolved shared set (`config`). */
   sharedDeps: string[] = [];
   /** The build-graph sharing rule (`config`), when anything can be shared. */
   sharing?: BuildGraphSharing;
+  /** Whether `configResolved` installs the sharing rule as `external`. */
+  externalizesShared = false;
   /** The `include`/`exclude` selection the shared set was derived with. */
   selection?: SharedSetSelection;
   /** Root names of the bare packages the bundler aliases point at. */
@@ -95,6 +97,7 @@ export class MfeGtsBuildState {
     this.chunkCssOnlyImports.clear();
     this.cssOnlyChunkNames.clear();
     this.capturedChunks.clear();
+    this.opaqueImports.length = 0;
     this.entryFileByExpose.clear();
     this.outputFailed = false;
   }

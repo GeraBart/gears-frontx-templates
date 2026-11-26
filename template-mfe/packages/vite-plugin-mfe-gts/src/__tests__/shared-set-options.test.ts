@@ -46,14 +46,17 @@ function configure(
   root: string,
   options?: Parameters<typeof vitePluginMfeGts>[0]
 ): { external: ExternalFn | undefined } {
-  const plugin = vitePluginMfeGts(options).find(
+  const plugin = vitePluginMfeGts({ ...options, root }).find(
     (p): p is Plugin => (p as Plugin).name === 'gears-frontx-vite-plugin-mfe-gts'
   )!;
-  const hook = plugin.config as (c: object, env: object) => {
-    build: { rollupOptions?: { external?: ExternalFn } };
+  (plugin.config as (c: object, env: object) => unknown).call({}, {}, { command: 'build' });
+  const resolved = {
+    root,
+    command: 'build',
+    build: { outDir: 'dist', rollupOptions: {} as { external?: ExternalFn } },
   };
-  const result = hook.call({}, { root }, { command: 'build' });
-  return { external: result.build.rollupOptions?.external };
+  (plugin.configResolved as (c: object) => void).call({}, resolved);
+  return { external: resolved.build.rollupOptions.external };
 }
 
 const SOURCE = '/mfe/src/index.tsx';

@@ -14,8 +14,7 @@
  * `TypeSystemPlugin` contract. No entry reaches `@gears-frontx/gts-plugin`,
  * there is no `/gts` subpath, and no source file imports a concrete type
  * system or the application template or carries a GTS-notation ID — the GTS
- * type system, its IDs and the domain declarations belong to the template
- * (`@gears-frontx/frontx-template-shell`).
+ * type system, its IDs and the domain declarations belong to the shell's `src/` directory.
  *
  * The package's own tests hold to the same rule: they run against a
  * test-local stand-in type system, so no test source imports or mocks either
@@ -48,12 +47,13 @@ const packageDir = path.resolve(
 const FRAMEWORK_MFE = '@gears-frontx/framework/mfe';
 const MFES = '@gears-frontx/mfes';
 const GTS_PLUGIN = '@gears-frontx/gts-plugin';
-const TEMPLATE = '@gears-frontx/frontx-template-shell';
+/** The shell's own `src/` modules (GTS vocabulary, layout domain, mock plugins). */
+const TEMPLATE_SRC = path.resolve(packageDir, '..', '..', 'src');
 
 /** Specifiers of the MFE side (`/mfe` and what it re-exports). */
 const MFE_SIDE = [FRAMEWORK_MFE, MFES];
-/** Specifiers of a concrete type system or the template that connects one. */
-const GTS_SIDE = [GTS_PLUGIN, TEMPLATE];
+/** Specifiers of a concrete type system. */
+const GTS_SIDE = [GTS_PLUGIN];
 
 /** A GTS-notation ID (`gts.<vendor>.<package>…`) anywhere in a file. */
 const GTS_ID = /\bgts\.[a-z0-9_]+\./;
@@ -197,6 +197,13 @@ function resolvePackage(fromFile: string, specifier: string): string {
     }
     directory = parent;
   }
+}
+
+/** True when a relative `specifier` written in `file` lands in the shell's `src/`. */
+function reachesTemplateSource(file: string, specifier: string): boolean {
+  if (!specifier.startsWith('.')) return false;
+  const target = path.resolve(path.dirname(file), specifier);
+  return target === TEMPLATE_SRC || target.startsWith(`${TEMPLATE_SRC}${path.sep}`);
 }
 
 /** True when `specifier` is, or is a subpath of, one of `roots`. */
@@ -615,7 +622,10 @@ describe('@gears-frontx/framework barrel split', () => {
         .filter((file) => /\.tsx?$/.test(file))
         .flatMap((file) =>
           allSpecifiers(file)
-            .filter((specifier) => isUnder(specifier, GTS_SIDE))
+            .filter(
+              (specifier) =>
+                isUnder(specifier, GTS_SIDE) || reachesTemplateSource(file, specifier),
+            )
             .map((specifier) => `${path.relative(packageDir, file)} -> ${specifier}`),
         );
       expect(offenders).toEqual([]);
@@ -633,7 +643,9 @@ describe('@gears-frontx/framework barrel split', () => {
       expect(files.length).toBeGreaterThan(0);
       const offenders = files.flatMap((file) =>
         stringLiterals(file)
-          .filter((literal) => isUnder(literal, GTS_SIDE))
+          .filter(
+            (literal) => isUnder(literal, GTS_SIDE) || reachesTemplateSource(file, literal),
+          )
           .map((literal) => `${path.relative(packageDir, file)} -> ${literal}`),
       );
       expect(offenders).toEqual([]);

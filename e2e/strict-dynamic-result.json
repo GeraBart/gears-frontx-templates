@@ -1,9 +1,0 @@
-{
-  "cspHeader": "default-src 'self'; script-src 'nonce-e2e' 'strict-dynamic' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:*; worker-src 'self' blob:",
-  "nonceApplied": true,
-  "strictDynamicApplied": true,
-  "noncelessInlineBlocked": true,
-  "importAttempted": true,
-  "verdict": "blob-import:ok",
-  "measuredAt": "2026-11-11T04:53:54.149Z"
-}

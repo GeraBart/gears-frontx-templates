@@ -21,6 +21,10 @@ Three scanners read this directory: manifest generation
 `dev:all` and `build:mfes`), and `type-check:mfe`. Every rule below holds in all
 three, on one shared predicate per rule rather than a copy each.
 
+- A package never imports shell code. Like an independent repository, it
+  declares the shell contract ids it uses itself (shared-property ids, domain
+  ids, the GTS schemas it registers) in its own source, and carries its own
+  copy of any helper it needs, such as a mock plugin.
 - `<name>` must not start with `.` and must not be `shared` — all three exclude
   these (`shared` is reserved for cross-MFE helper code the isolation boundary
   still applies to; it is never itself an MFE).
@@ -77,10 +81,11 @@ three, on one shared predicate per rule rather than a copy each.
    only its `exposes` map — passed to `vitePluginMfeGts({ exposes })` or
    carried as `exposes` in `mfe.json`. Building without
    `vitePluginMfeGts()` fails manifest generation with an explicit error
-   naming the missing plugin. The shared set is derived — share-by-default
-   over the package's `dependencies` plus non-optional `peerDependencies`
-   (never devDependencies), with a `share.exclude` opt-out — and the plugin
-   externalizes it by root package name; there is no `sharedDeps` constant
+   naming the missing plugin. The shared set is derived from the build
+   graph — every bare package the code imports, whichever `package.json`
+   section declares it, plus the runtime dependencies of `dependencies` and
+   non-optional `peerDependencies`, with a `share.exclude` opt-out — and the
+   plugin externalizes it by root package name; there is no `sharedDeps` constant
    and no `rollupOptions.external` to keep in sync. Every shared package
    the MFE imports is declared in its own `package.json` at an exact
    version, so it resolves from the package's own root without relying on
@@ -116,31 +121,37 @@ three, on one shared predicate per rule rather than a copy each.
 ## Shared dependencies
 
 The shared set is derived, not listed: `vitePluginMfeGts()` shares every
-package in the MFE's `dependencies` and non-optional `peerDependencies` by
-default (`share.exclude` opts out, rejected when a shared package depends on
-the excluded one). Rollup leaves their imports bare through the plugin's
-`external` predicate, and in `closeBundle` `@gears-frontx/unit-producer`
-splits each shared package into content-addressed **units** under
-`dist/shared/` — one unit per strongly connected component of the package's
-ESM module graph, one per entry point for CommonJS, the whole package as a
-single unit when splitting fails (the reason is recorded in the graph file
-and the build report). Each exposed module gets a **fetch list**
+bare package the MFE's code imports, whichever `package.json` section
+declares it, plus the runtime dependencies of its `dependencies` and
+non-optional `peerDependencies` (`share.exclude` opts out, rejected when a
+shared package depends on the excluded one). Rollup leaves their imports
+bare through the plugin's `external` predicate. In `closeBundle`
+`@gears-frontx/unit-producer` splits each shared package into
+content-addressed **units** under `dist/shared/` by entry-point chunking: one
+chunk per entry point (its `exports` subpaths and the modules a public barrel
+re-exports), with the internals two entry points share in shared internal
+chunks. The split is computed from the package's own complete entry set, so
+every consumer gets the same bytes. Each exposed module gets a **fetch list**
 naming the units (and own chunks) it needs; the enriched manifest holds each
 unit once in `units` and every list once in `lists`, keyed by exposed module
-and, for a lazy target's list, by the target's chunk location.
-Unit bytes depend only on `package@version` — byte-identical
-builds dedupe across MFEs and the host by content hash.
+and, for a lazy target's list, by the target's chunk location; a shared
+package the code imports dynamically by bare specifier is keyed by that bare
+specifier, the key the runtime looks a bare `__frontx_lazy` argument up under.
+Within one producer version, unit bytes depend only on `package@version` —
+byte-identical builds dedupe across MFEs and the host by content hash. The
+specification is `cpt-template-shell-feature-unit-producer-output`; template-mfe's
+build plugin owns the assembly of the lists.
 
 Consumer-side, the plugin rewrites the MFE's named imports from a shared
 package's barrel to the defining modules (only for packages declaring
-side-effect freedom; explicit side-effect imports are never rewritten), so a
-the fetch list names just the units that define the used bindings. A rewrite
+side-effect freedom; explicit side-effect imports are never rewritten), so the
+fetch list names just the units that define the used bindings. A rewrite
 no produced unit answers falls back to the barrel in the emitted chunks;
 the build report lists every kept barrel with its reason.
 
-A package can leave the shared set only through `share.exclude` (in the
-plugin options or `mfe.json`'s `share.exclude`) — and only when no shared
-package depends on it. There is no per-import opt-out and no externals list
+In `mfe.json`, `share.exclude` is the way a package leaves the shared set — and
+only when no shared package depends on it (the plugin's `exclude` and `include`
+options do the same from `vite.config.ts`). There is no per-import opt-out and no externals list
 to edit.
 
 ## CSS delivery into shadow roots
@@ -194,7 +205,7 @@ what the package owns:
    only from `node_modules` stylesheets (UI-kit component styles) included:
    the screen is styled at its own kit version, so its kit rules must arrive
    with it rather than rely on the host's. A shared package (the UI kit is
-   one, share-by-default) is not bundled into the MFE's chunks — its modules
+   one: every bare package the code imports is shared) is not bundled into the MFE's chunks — its modules
    are shared units, where a stylesheet import loads nothing — so
    `vitePluginMfeGts()` imports the stylesheets a shared module's static
    import graph loads right where the MFE's code imports that module, in the

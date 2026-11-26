@@ -1,5 +1,6 @@
-# Publishes the six publishable template-shell workspace subpackages
-# (template-shell/packages/*), version-gated, in dependency order.
+# Publishes the publishable workspace packages of template-shell
+# (template-shell/packages/*) and template-mfe (template-mfe/packages/*),
+# version-gated, in dependency order.
 # `template-shell` itself is `"private": true` - a full app template meant to
 # be seeded, not installed as a dependency - so it is never published; the
 # `detect-template` job below skips any manifest with `private: true` before
@@ -126,7 +127,7 @@ jobs:
 
   publish-template:
     # Job id kept as `publish-template` (other jobs reference it via `needs`);
-    # the display name says what actually gets published - the six workspace
+    # the display name says what actually gets published - the workspace
     # subpackages, never the private `template-shell` root itself.
     name: Publish template subpackages
     needs: [detect-template]
@@ -153,7 +154,6 @@ jobs:
         working-directory: template-shell
         run: |
           npm ci
-          npm run build:package
           npm run build:packages
 
       # template-mfe's publishable workspaces (template-mfe/packages/*) build

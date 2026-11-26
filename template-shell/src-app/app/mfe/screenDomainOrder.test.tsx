@@ -56,7 +56,7 @@ async function buildApp() {
   const react = await import('@gears-frontx/react');
   const { microfrontends } = await import('@gears-frontx/react/mfe');
   const { gtsPlugin } = await import('@gears-frontx/gts-plugin');
-  const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema, screenDomain } = await import('@gears-frontx/frontx-template-shell');
+  const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema, screenDomain } = await import('../../../src/index');
   gtsPlugin.registerSchema(themeSchema);
   gtsPlugin.registerSchema(languageCodeSchema);
   gtsPlugin.registerSchema(languageSchema);
@@ -91,7 +91,7 @@ describe('the screen domain and the manifest walk', () => {
     // The screen type is on the type system, only the domain is missing. A
     // GTS instance reference must find its entity, so the walk disables the
     // screen instead of recording it, and the shell boots.
-    const { extensionScreenSchema } = await import('@gears-frontx/frontx-template-shell');
+    const { extensionScreenSchema } = await import('../../../src/index');
     gtsPlugin.registerSchema(extensionScreenSchema);
 
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);

@@ -82,7 +82,7 @@ vi.mock('@gears-frontx/react/mfe', () => ({
   },
 }));
 
-vi.mock('@gears-frontx/frontx-template-shell', () => ({
+vi.mock('./shellContract', () => ({
   FRONTX_SCREEN_DOMAIN: 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1',
 }));
 

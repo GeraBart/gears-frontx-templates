@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '../../shellContract';
 
 /*
  * The screen module pays its whole Vite transform on first import, and the

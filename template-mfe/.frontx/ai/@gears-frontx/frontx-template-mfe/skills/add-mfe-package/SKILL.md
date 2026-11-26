@@ -107,10 +107,11 @@ opens from the menu.
    the package name set in step 1. `vitePluginMfeGts` owns federation, so the
    copied `vite.config.ts` carries no `name`/`filename`/`shared`/`manifest`, only
    the `exposes` map passed to `vitePluginMfeGts({ exposes })`. Keep
-   `@gears-frontx/routing` declared in `package.json` (the scaffold keeps it
-   bundled via `devDependencies`; moving it to `dependencies` would share it), and
-   add `@gears-frontx/routing-tanstack` under `dependencies` only when the MFE uses
-   `<ExtensionRouter>` or `navigation()`.
+   `@gears-frontx/routing` declared in `package.json` at its exact pin. Every bare
+   package the code imports is shared, whichever `package.json` section declares
+   it; in `mfe.json`, `share.exclude` is the only way to keep a package in the
+   MFE's own chunks (the plugin's `include` option also narrows the set). Add `@gears-frontx/routing-tanstack` under `dependencies`
+   only when the MFE uses `<ExtensionRouter>` or `navigation()`.
 4. **Link the new workspace** - run `npm install` once at the project root (the
    applied shell), after the copy and its rename:
 
@@ -121,8 +122,8 @@ opens from the menu.
    The rename makes the package a workspace of the shell, but nothing links it
    under `node_modules/@gears-frontx/` or records it in `package-lock.json`
    until an install runs. Without that install, `npm ls` exits 1 with an
-   `UNMET DEPENDENCY <new name>@file:...` line and a `missing: <new name>,
-   required by @gears-frontx/frontx-template-shell` line, and no link appears
+   `UNMET DEPENDENCY <new name>@file:...` line and a `missing: <new name>` line,
+   and no link appears
    under `node_modules/@gears-frontx/`. `npm ci` exits 1 with:
 
    > npm ci can only install packages when your package.json and
@@ -283,9 +284,8 @@ opens from the menu.
 8. **Build the shell's packages before the first package check** - run
    `npm run build:packages` once at the project root (the applied shell)
    before the initial `type-check`, `test:unit` or `build` of the new MFE. The
-   package checks resolve `@gears-frontx/react` and
-   `@gears-frontx/frontx-template-shell` through their built output (`dist/`,
-   `dist-lib/`), which a fresh seed does not carry until this build runs;
+   package checks resolve `@gears-frontx/react` through its built output
+   (`dist/`), which a fresh seed does not carry until this build runs;
    without it they stop on `TS2307: Cannot find module '@gears-frontx/react'`
    before they read any of the screen's code. The command builds the shell's
    own packages; the MFE package keeps its own workspace build script. It runs

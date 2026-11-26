@@ -18,9 +18,9 @@
 import { describe, expect, it } from 'vitest';
 import { createFrontX } from '@gears-frontx/react';
 import { microfrontends } from '@gears-frontx/react/mfe';
-import { FRONTX_SCREEN_DOMAIN } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SCREEN_DOMAIN } from '../../../src/index';
 import { gtsPlugin } from '@gears-frontx/gts-plugin';
-import { languageSchema, themeSchema } from '@gears-frontx/frontx-template-shell';
+import { languageSchema, themeSchema } from '../../../src/index';
 
 import { CHROME_ACTION_SCHEMAS, CHROME_SET_LANGUAGE } from './chrome-actions';
 import { registerScreenDomain } from './screenDomain';

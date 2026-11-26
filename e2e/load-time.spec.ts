@@ -3,49 +3,58 @@ import { test, expect, type CDPSession, type Page } from '@playwright/test';
 const scheme = process.env.E2E_PROTOCOL === 'h2' ? 'https' : 'http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { menuItemTestId, BLANK_HOME_EXTENSION_ID } from './extensionIds.mjs';
+import { menuItemTestId, BLANK_HOME_EXTENSION_ID, HELLO_WORLD_EXTENSION_ID } from './extensionIds.mjs';
 import { SHELL_PORT } from './ports.mjs';
+import { HTTP1_BOOT_BASELINE, NOISE_MARGIN } from '../scripts/load-matrix/MatrixProfiles.mjs';
+import { waitForMountedScreen } from './mountedScreen';
 
 /**
- * Relative timing gate (load_gates (3)): boot and MFE load-to-mount are
- * measured on the pinned throttled CDP profile for BOTH the new rule and
- * the old rule built from the same inputs — the old-rule worktree of
- * templates `main` eb10640 — and the new rule must not regress beyond a
- * documented noise margin. There is no absolute millisecond budget.
+ * Timing gate (load_gates (3)): boot and MFE load-to-mount are measured
+ * on the pinned throttled CDP profile. There is no absolute millisecond
+ * budget; each number is judged against a measured reference plus the
+ * documented noise margin.
+ *
+ * - HTTP/1.1 shell boot (Fast 4G and office-LAN) is judged against this
+ *   branch's stored HTTP/1.1 baseline (`HTTP1_BOOT_BASELINE`,
+ *   `scripts/load-matrix/http1-boot-baseline.json`), never against the
+ *   old rule.
+ * - MFE load-to-mount on the default cell (Fast 4G + 4x CPU over
+ *   HTTP/1.1) is judged against the old rule built from the same inputs:
+ *   the old-rule worktree of templates `main` eb10640.
  *
  * Run shape: the spec runs once per variant — `E2E_VARIANT=new`
  * (default, this build's dists) and `E2E_VARIANT=old` with
  * `E2E_SERVE_ROOT=<old-rule worktree>` serving the old-rule dists on the
- * same ports. Each variant writes `e2e/load-time-results-<variant>.json`
- * (medians of `RUNS` measured runs). The `new` run reads the `old`
- * results file and fails when a median regresses beyond the noise
- * margin; when the file is absent the gate fails closed — the
+ * same ports. Each variant writes
+ * `e2e/results/load-time-results-<variant>.json` (medians of `RUNS`
+ * measured runs). The `new` run reads the `old` results file for the MFE
+ * comparison; when the file is absent the gate fails closed — the
  * comparison is mandatory, never skipped.
  *
  * Noise margin (documented, owner-resolved): a measured median may
- * exceed the old-rule median by NOISE_RATIO (15%) without failing —
+ * exceed its reference median by NOISE_MARGIN (15%) without failing —
  * run-to-run variance of the throttled profile on repeated local runs
- * is inside ~10%, so 15% covers noise while still catching a real
- * regression. No absolute budget exists anywhere in this gate.
+ * stays inside it, while a real regression does not.
  *
  * Pinned throttle profile (documented, do not retune without re-pinning):
  * Chrome DevTools "Fast 4G" network preset — ≈9 Mbps down, ≈1.5 Mbps up,
  * 150 ms RTT — plus 4x CPU slowdown. MFE load is timed from the mount
- * action (menu click) to the MFE mounted/rendered in the screen
- * container, not to the first remote-entry response.
+ * action (menu click, issued after the default screen has mounted) to the
+ * MFE mounted/rendered in the screen container, not to the first
+ * remote-entry response.
  */
 
 const SHELL = `${scheme}://localhost:${SHELL_PORT}`;
 const RUNS = Number(process.env.LOAD_GATE_RUNS ?? 30);
-const NOISE_RATIO = 0.15;
 const VARIANT = process.env.E2E_VARIANT ?? 'new';
-const RESULTS_FILE = path.resolve(
-  'e2e',
+const RESULTS_DIR = path.resolve('e2e', 'results');
+const RESULTS_FILE = path.join(
+  RESULTS_DIR,
   `load-time-results-${VARIANT}` +
     `${process.env.E2E_PROFILE ? `-${process.env.E2E_PROFILE}` : ''}` +
     `${scheme === 'https' ? '-h2' : ''}.json`,
 );
-const OLD_RESULTS_FILE = path.resolve('e2e', 'load-time-results-old.json');
+const OLD_RESULTS_FILE = path.join(RESULTS_DIR, 'load-time-results-old.json');
 
 // Chrome DevTools "Fast 4G" preset: ~9 Mbps download, ~1.5 Mbps upload,
 // 150 ms RTT, plus the decided 4x CPU slowdown. `E2E_PROFILE=office-lan`
@@ -194,21 +203,6 @@ function bootBreakdown(requests: Map<string, NetRequest>): BootBreakdown {
   };
 }
 
-async function waitForMountedScreen(page: Page, timeout = MOUNT_TIMEOUT) {
-  await page.waitForFunction(
-    () => {
-      const hosts = document.querySelectorAll('[data-mfe-screen-container] [data-extension-id]');
-      for (const h of hosts) {
-        const root = (h as HTMLElement).shadowRoot ?? h;
-        if (root.childElementCount > 0) return true;
-      }
-      return false;
-    },
-    undefined,
-    { timeout },
-  );
-}
-
 async function measureBoot(page: Page): Promise<number> {
   const t0 = Date.now();
   await page.goto(`${SHELL}/`, { waitUntil: 'commit' });
@@ -220,9 +214,14 @@ async function measureBoot(page: Page): Promise<number> {
 }
 
 async function measureMfeLoad(page: Page): Promise<number> {
+  // The shell mounts the default screen (the menu's first item, Hello World)
+  // after boot; the timer starts only once it has, so the sample covers the
+  // clicked MFE's load alone. The old-rule shell mounts no screen at boot, so
+  // it has no default mount to wait for.
+  if (VARIANT !== 'old') await waitForMountedScreen(page, HELLO_WORLD_EXTENSION_ID, MOUNT_TIMEOUT);
   const t0 = Date.now();
   await page.getByTestId(menuItemTestId(BLANK_HOME_EXTENSION_ID)).click();
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, BLANK_HOME_EXTENSION_ID, MOUNT_TIMEOUT);
   return Date.now() - t0;
 }
 
@@ -231,7 +230,7 @@ function median(values: number[]): number {
   return sorted[Math.floor((sorted.length - 1) / 2)];
 }
 
-test(`relative timing gate (${VARIANT}): boot and MFE load-to-mount medians vs the old rule`, async ({
+test(`timing gate (${VARIANT}): HTTP/1.1 boot vs its baseline, MFE load-to-mount vs the old rule`, async ({
   browser,
 }) => {
   test.setTimeout(Math.max(1_800_000, RUNS * 40_000));
@@ -258,7 +257,7 @@ test(`relative timing gate (${VARIANT}): boot and MFE load-to-mount medians vs t
     variant: VARIANT,
     profile: PROFILE,
     runs: RUNS,
-    noiseRatio: NOISE_RATIO,
+    noiseMargin: NOISE_MARGIN,
     medianBoot: median(bootSamples),
     medianMfe: median(mfeSamples),
     minBoot: Math.min(...bootSamples),
@@ -266,32 +265,33 @@ test(`relative timing gate (${VARIANT}): boot and MFE load-to-mount medians vs t
     bootBreakdowns,
     measuredAt: new Date().toISOString(),
   };
+  fs.mkdirSync(RESULTS_DIR, { recursive: true });
   fs.writeFileSync(RESULTS_FILE, JSON.stringify(result, null, 2));
   console.log(`[${VARIANT}] median boot=${result.medianBoot}ms median mfe=${result.medianMfe}ms`);
 
   if (VARIANT === 'old') return; // the old run only records the baseline.
-  // Non-default cells (office-lan profile, h2 protocol) are matrix
-  // measurements only — the regression gate itself is pinned to the
-  // default Fast 4G + 4x CPU cell over HTTP/1.1, whose old-rule baseline
-  // exists. Other cells record numbers for the report, never gate.
-  if (PROFILE_NAME !== 'fast-4g' || scheme === 'https') return;
+  if (scheme === 'https') return; // HTTP/2 cells are judged by the load matrix.
 
-  // The gate: new-rule medians must not regress beyond the documented
-  // noise margin. The old-rule file is mandatory — its absence fails
-  // closed (the comparison is the gate; it is never skipped).
+  // HTTP/1.1 boot: no regression from this branch's stored baseline.
+  const bootBaseline = HTTP1_BOOT_BASELINE[PROFILE_NAME];
+  const bootAllowed = Math.ceil(bootBaseline * (1 + NOISE_MARGIN));
+  expect(
+    result.medianBoot,
+    `HTTP/1.1 ${PROFILE_NAME} boot median ${result.medianBoot}ms regressed beyond the ${NOISE_MARGIN * 100}% noise margin vs the stored baseline ${bootBaseline}ms (allowed ${bootAllowed}ms)`,
+  ).toBeLessThanOrEqual(bootAllowed);
+
+  // MFE load-to-mount: judged against the old rule on the default cell,
+  // whose old-rule baseline exists. The old-rule file is mandatory — its
+  // absence fails closed (the comparison is the gate; it is never skipped).
+  if (PROFILE_NAME !== 'fast-4g') return;
   expect(
     fs.existsSync(OLD_RESULTS_FILE),
     `old-rule results missing at ${OLD_RESULTS_FILE} — run E2E_VARIANT=old E2E_SERVE_ROOT=<old-rule worktree> first`,
   ).toBe(true);
   const old = JSON.parse(fs.readFileSync(OLD_RESULTS_FILE, 'utf-8'));
-  for (const [label, now, before] of [
-    ['boot', result.medianBoot, old.medianBoot],
-    ['mfe load-to-mount', result.medianMfe, old.medianMfe],
-  ] as const) {
-    const allowed = Math.ceil(before * (1 + NOISE_RATIO));
-    expect(
-      now,
-      `${label} median ${now}ms regressed beyond the ${NOISE_RATIO * 100}% noise margin vs the old rule's ${before}ms (allowed ${allowed}ms)`,
-    ).toBeLessThanOrEqual(allowed);
-  }
+  const mfeAllowed = Math.ceil(old.medianMfe * (1 + NOISE_MARGIN));
+  expect(
+    result.medianMfe,
+    `mfe load-to-mount median ${result.medianMfe}ms regressed beyond the ${NOISE_MARGIN * 100}% noise margin vs the old rule's ${old.medianMfe}ms (allowed ${mfeAllowed}ms)`,
+  ).toBeLessThanOrEqual(mfeAllowed);
 });

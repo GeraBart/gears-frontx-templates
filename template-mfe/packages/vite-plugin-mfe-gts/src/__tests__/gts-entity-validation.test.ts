@@ -6,7 +6,7 @@
  * type system accepts (its type `gts.a~` is unknown).
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GtsEntityValidator } from '../GtsEntityValidator';
 
 const validator = (): GtsEntityValidator => new GtsEntityValidator();
@@ -96,3 +96,37 @@ describe('GtsEntityValidator', () => {
     ).toThrow(/manifest 'gts\.a~my\.entry\.v1'/);
   });
 });
+
+describe('GtsEntityValidator — references the build-time store cannot resolve', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('warns and does not fail on an entity whose type or referenced entities are registered only at load time', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const entry = {
+      id: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~acme.test.mfe.hello.v1',
+      requiredProperties: ['gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~'],
+      actions: [],
+      domainActions: [],
+      manifest: 'gts.frontx.mfes.mfe.mf_manifest.v1~acme.test.mfe.manifest.v1',
+      exposedModule: './lifecycle',
+    };
+    // A screen extension's derived type is registered by the host, not
+    // by the type system's own schemas.
+    const extension = {
+      id: 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~acme.test.screens.hello.v1',
+      domain: 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1',
+      entry: entry.id,
+    };
+    expect(() =>
+      validator().assertValid({ entries: [entry], extensions: [extension] })
+    ).not.toThrow();
+    const warnings = warn.mock.calls.map((call) => String(call[0]));
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toMatch(/is not registered at build time/);
+    expect(warnings[0]).toMatch(/entry '.*acme\.test\.mfe\.hello\.v1'.*could not be resolved at build time/);
+    expect(warnings[1]).toMatch(/extension '.*acme\.test\.screens\.hello\.v1'.*could not be resolved at build time/);
+  });
+});
+

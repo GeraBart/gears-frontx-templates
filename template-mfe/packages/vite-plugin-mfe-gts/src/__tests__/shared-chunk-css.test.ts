@@ -43,7 +43,7 @@
  * renderChunk and the attribution (`FIXTURE_IMPORT_EDIT`) guard that the
  * attribution follows the final imports rather than the recorded ones. An
  * expose that imports a component of a shared package (`fixture-shared-kit`,
- * share-by-default) whose component modules import their own stylesheets
+ * in the shared set) whose component modules import their own stylesheets
  * gets exactly the used components' stylesheets listed, the lazily used one
  * as async. The last cases fail builds whose code loads through
  * `__frontx_lazy` a file the bundle does not have: a chunk another plugin
@@ -53,26 +53,25 @@
  * `MFE_VITE_NO_TEST_ENV_CHECK=true`, the federation plugin's documented
  * opt-out of turning itself off under a test runner. Assertions read what
  * the shell consumes: `entries[].exposeAssets` in `dist/mfe-manifest.json`,
- * and for exposes with no entry, `mf-manifest.json`. The stand-in packages
- * (`sonner`, `fixture-shared-kit`) are written into the fixture's own
- * `node_modules` before the builds and removed after them.
+ * and for exposes with no entry, `mf-manifest.json`. The builds run in a
+ * private copy of the fixture, with its own producer cache; the stand-in
+ * packages (`sonner`, `fixture-shared-kit`) are written into the copy's
+ * `node_modules`, and the copy is removed after the tests.
  */
 
-import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
-import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-const fixtureDir = fileURLToPath(new URL('./fixtures/shared-chunk-css/', import.meta.url));
-const viteBin = path.join(
-  path.dirname(createRequire(import.meta.url).resolve('vite/package.json')),
-  'bin',
-  'vite.js'
-);
-const standInModules = path.join(fixtureDir, 'node_modules');
+import { readJson } from './helpers/files';
+import { copyFixture, installPackage, type FixtureRun } from './helpers/fixtureRun';
+import { buildEnv, runViteBuild, viteBin } from './helpers/vite';
+
+/** The private copy of the fixture the tests build in. */
+let fixture: FixtureRun;
+let fixtureDir = '';
 
 interface CssLists {
   sync: string[];
@@ -86,53 +85,36 @@ const outDirs: string[] = [];
 /** Watch children started by the running test, for `afterEach` to kill. */
 const watchChildren = new Set<ChildProcess>();
 
-/** Writes a file, creating its directory. */
-function put(file: string, content: string): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, content);
-}
-
 beforeAll(() => {
+  fixture = copyFixture('shared-chunk-css');
+  fixtureDir = fixture.dir;
   // `sonner`: a node_modules stylesheet the fixture's own code imports.
-  put(
-    path.join(standInModules, 'sonner', 'package.json'),
-    JSON.stringify({ name: 'sonner', version: '0.0.0-fixture' })
-  );
-  put(
-    path.join(standInModules, 'sonner', 'dist', 'styles.css'),
-    '[data-sonner-toaster] {\n  position: fixed;\n}\n'
-  );
+  installPackage(fixture, 'sonner', { version: '0.0.0-fixture', type: undefined }, {
+    'dist/styles.css': '[data-sonner-toaster] {\n  position: fixed;\n}\n',
+  });
   // `fixture-shared-kit`: a shared package whose component modules import
   // their own stylesheets, behind a side-effect-free barrel.
-  const kit = path.join(standInModules, 'fixture-shared-kit');
-  put(
-    path.join(kit, 'package.json'),
-    JSON.stringify({
-      name: 'fixture-shared-kit',
-      version: '1.0.0',
-      type: 'module',
-      sideEffects: ['**/*.css'],
-      exports: { '.': './dist/index.js', './*': './dist/*' },
-    })
-  );
   const components = ['button', 'badge', 'card'];
-  put(
-    path.join(kit, 'dist', 'index.js'),
-    components
+  const kitFiles: Record<string, string> = {
+    'dist/index.js': components
       .map((c) => `export { Kit${c[0].toUpperCase()}${c.slice(1)} } from './${c}.js';\n`)
-      .join('')
-  );
+      .join(''),
+  };
   for (const c of components) {
-    put(
-      path.join(kit, 'dist', `${c}.js`),
-      `import './${c}.css';\n\nexport function Kit${c[0].toUpperCase()}${c.slice(1)}() {\n  return 'kit-${c}';\n}\n`
-    );
-    put(path.join(kit, 'dist', `${c}.css`), `.kit-${c} {\n  color: rgb(7, 8, 9);\n}\n`);
+    kitFiles[`dist/${c}.js`] =
+      `import './${c}.css';\n\nexport function Kit${c[0].toUpperCase()}${c.slice(1)}() {\n  return 'kit-${c}';\n}\n`;
+    kitFiles[`dist/${c}.css`] = `.kit-${c} {\n  color: rgb(7, 8, 9);\n}\n`;
   }
+  installPackage(
+    fixture,
+    'fixture-shared-kit',
+    { sideEffects: ['**/*.css'], exports: { '.': './dist/index.js', './*': './dist/*' } },
+    kitFiles
+  );
 });
 
 afterAll(() => {
-  fs.rmSync(standInModules, { recursive: true, force: true });
+  fixture?.remove();
 });
 
 afterEach(async () => {
@@ -165,20 +147,15 @@ function buildFixture(
 ): string {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shared-chunk-css-'));
   outDirs.push(outDir);
-  const env: Record<string, string | undefined> = {
-    ...process.env,
-    FIXTURE_EXPOSES: exposes,
-    FIXTURE_CSS_CODE_SPLIT: String(cssCodeSplit),
-    ...extraEnv,
-  };
-  delete env.NODE_ENV;
-  delete env.VITEST;
-  env.MFE_VITE_NO_TEST_ENV_CHECK = 'true';
-  const result = spawnSync(process.execPath, [viteBin, 'build', '--outDir', outDir, '--logLevel', logLevel], {
+  const result = runViteBuild({
     cwd: fixtureDir,
-    env,
-    stdio: 'pipe',
-    timeout: 120_000,
+    args: ['--outDir', outDir, '--logLevel', logLevel],
+    env: {
+      ...fixture.env,
+      FIXTURE_EXPOSES: exposes,
+      FIXTURE_CSS_CODE_SPLIT: String(cssCodeSplit),
+      ...extraEnv,
+    },
   });
   if (result.error || result.status !== 0) {
     throw Object.assign(
@@ -236,10 +213,6 @@ function dynamicImportCalls(code: string): Array<{ callee: string; target: strin
   return [...code.matchAll(call)].map((m) => ({ callee: m[1], target: m[3] }));
 }
 
-function readJson<T>(file: string): T {
-  return JSON.parse(fs.readFileSync(file, 'utf-8')) as T;
-}
-
 /** The built CSS files whose content includes `marker`, as manifest paths. */
 function cssFilesWith(outDir: string, marker: string): string[] {
   const assetsDir = path.join(outDir, 'assets');
@@ -284,14 +257,11 @@ function startWatchBuild(
   failed: () => boolean;
   tail: () => string;
 } {
-  const env: Record<string, string | undefined> = {
-    ...process.env,
+  const env = buildEnv({
+    ...fixture.env,
     FIXTURE_EXPOSES: options.exposes ?? 'a,b,u,v',
     ...(options.extraEnv ?? {}),
-  };
-  delete env.NODE_ENV;
-  delete env.VITEST;
-  env.MFE_VITE_NO_TEST_ENV_CHECK = 'true';
+  });
   const child = spawn(process.execPath, [viteBin, 'build', '--watch', '--outDir', outDir], {
     cwd: fixtureDir,
     env,
@@ -393,6 +363,20 @@ function tryReadEnrichedEntries(
     return readJson<{ entries: Array<{ exposedModule: string; exposeAssets: { css: CssLists } }> }>(
       path.join(outDir, 'mfe-manifest.json')
     ).entries;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The modification stamp of `file`, or undefined while it is missing. The
+ * plugin writes the enriched manifest and the build report in its own
+ * closeBundle, so a new stamp is that rebuild's proof the file was written
+ * again; "built in" only says Rollup finished.
+ */
+function stampOf(file: string): number | undefined {
+  try {
+    return fs.statSync(file).mtimeMs;
   } catch {
     return undefined;
   }
@@ -602,12 +586,9 @@ describe('vitePluginMfeGts shared-chunk CSS attribution', () => {
     const firstOutDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shared-chunk-css-reuse-'));
     const secondOutDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shared-chunk-css-reuse-'));
     outDirs.push(firstOutDir, secondOutDir);
-    const env: Record<string, string | undefined> = { ...process.env, FIXTURE_EXPOSES: 'a,b,u,v' };
-    delete env.NODE_ENV;
-    delete env.VITEST;
+    const env = buildEnv({ ...fixture.env, FIXTURE_EXPOSES: 'a,b,u,v' });
     delete env.FIXTURE_HIDE_CSS_POST;
     delete env.FIXTURE_LATE_CSS_APPENDER;
-    env.MFE_VITE_NO_TEST_ENV_CHECK = 'true';
     let stderr = '';
     let failed = false;
     try {
@@ -659,6 +640,8 @@ describe('vitePluginMfeGts shared-chunk CSS attribution', () => {
       // it, and the enriched mfe-manifest.json (written last, after the
       // guard) is never written again.
       const touched = path.join(fixtureDir, 'src', 'lifecycle-b.js');
+      const manifestFile = path.join(outDir, 'mfe-manifest.json');
+      const firstStamp = stampOf(manifestFile);
       let lastTouch = Date.now();
       const retouch = (): void => {
         lastTouch = Date.now();
@@ -667,17 +650,20 @@ describe('vitePluginMfeGts shared-chunk CSS attribution', () => {
       };
       retouch();
       await waitFor(
-        'the rebuild to finish',
+        'the rebuild to start',
         () => {
           if (watch.buildsStarted() <= 1 && Date.now() - lastTouch >= 3_000) retouch();
-          return watch.buildsSeen() > 1 || watch.failed();
+          return watch.buildsStarted() > 1 || watch.failed();
         },
         deadline,
         watch.tail
       );
       await waitFor(
         'the rebuilt enriched manifest',
-        () => tryReadEnrichedEntries(outDir) !== undefined || watch.failed(),
+        () => {
+          const stamp = stampOf(manifestFile);
+          return (stamp !== undefined && stamp !== firstStamp) || watch.failed();
+        },
         deadline,
         watch.tail
       );
@@ -690,6 +676,67 @@ describe('vitePluginMfeGts shared-chunk CSS attribution', () => {
       await waitFor('the rebuilt manifest', () => manifestExposes() !== undefined, deadline, watch.tail);
       expect(exposeCss({ exposes: manifestExposes() ?? [] }, './lifecycle-u')).toEqual({ sync: [], async: [] });
       expect(exposeCss({ exposes: manifestExposes() ?? [] }, './lifecycle-v')).toEqual({ sync: [], async: [] });
+    } finally {
+      await stopWatchBuild(watch.child);
+    }
+  }, WATCH_TEST_TIMEOUT_MS);
+
+  it('records the consumer barrel rewrites of a watch rebuild whose rewritten module stayed unchanged', async () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shared-chunk-css-watch-ledger-'));
+    outDirs.push(outDir);
+    const kitRewrites = (): number | undefined => {
+      try {
+        const report = readJson<{ consumerBarrels: Array<{ name: string; rewrites: number }> }>(
+          path.join(outDir, 'mfe-build-report.json')
+        );
+        return report.consumerBarrels.find((b) => b.name === 'fixture-shared-kit')?.rewrites ?? 0;
+      } catch {
+        return undefined;
+      }
+    };
+    // lifecycle-z imports a component from the kit's barrel: the rewrite
+    // moves it to the defining module.
+    const watch = startWatchBuild(outDir, { exposes: 'a,b,z' });
+    try {
+      const deadline = Date.now() + WATCH_TEST_TIMEOUT_MS - WATCH_WAIT_MARGIN_MS;
+      await waitFor('the first build report', () => kitRewrites() !== undefined || watch.failed(), deadline, watch.tail);
+      expect(watch.failed(), watch.tail()).toBe(false);
+      expect(kitRewrites(), watch.tail()).toBeGreaterThan(0);
+
+      // Touch an unrelated source: lifecycle-z is served from Rollup's
+      // transform cache on the rebuild.
+      const touched = path.join(fixtureDir, 'src', 'lifecycle-b.js');
+      const reportFile = path.join(outDir, 'mfe-build-report.json');
+      const firstStamp = stampOf(reportFile);
+      let lastTouch = Date.now();
+      const retouch = (): void => {
+        lastTouch = Date.now();
+        const now = new Date();
+        fs.utimesSync(touched, now, now);
+      };
+      retouch();
+      await waitFor(
+        'the rebuild to start',
+        () => {
+          if (watch.buildsStarted() <= 1 && Date.now() - lastTouch >= 3_000) retouch();
+          return watch.buildsStarted() > 1 || watch.failed();
+        },
+        deadline,
+        watch.tail
+      );
+      // The report of the first build is still on disk until the rebuild's
+      // closeBundle writes its own: read it only once that happened.
+      await waitFor(
+        'the rebuilt report',
+        () => {
+          const stamp = stampOf(reportFile);
+          return (stamp !== undefined && stamp !== firstStamp) || watch.failed();
+        },
+        deadline,
+        watch.tail
+      );
+      expect(watch.failed(), watch.tail()).toBe(false);
+      expect(kitRewrites(), watch.tail()).toBeGreaterThan(0);
     } finally {
       await stopWatchBuild(watch.child);
     }

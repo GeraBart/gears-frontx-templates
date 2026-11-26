@@ -1,5 +1,5 @@
 /**
- * `ProducerBuildSettings` — the fixed settings every unit, pack and
+ * `ProducerBuildSettings` — the fixed settings every chunk and
  * entry build runs under, so a unit's hashed bytes depend only on the
  * package's `package@version` and module set — never on the consuming
  * build's config (byte identity).

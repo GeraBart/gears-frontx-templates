@@ -1,12 +1,12 @@
 /**
  * `HostSharedSetResolver` — resolves the host's shared set through
- * `SharedSetResolver` from `@gears-frontx/unit-producer`: share-by-default
- * from the host's `dependencies` and non-optional `peerDependencies`,
- * never `devDependencies`, with the mutually exclusive `exclude` /
- * `include` options (the packages the build graph imports beyond that
- * seed are added by `BuildGraphSharing` while bundling), read from the
- * producing package's own `package.json`: the set is derived, never
- * listed.
+ * `SharedSetResolver` from `@gears-frontx/unit-producer`. It describes the
+ * declared seed — the host's `dependencies` plus its non-optional
+ * `peerDependencies`, never its `devDependencies` — which the build graph
+ * extends with every bare package the build imports (`BuildGraphSharing`).
+ * The mutually exclusive `exclude` / `include` options apply to it, read
+ * from the producing package's own `package.json`: the set is derived,
+ * never listed.
  */
 
 import {

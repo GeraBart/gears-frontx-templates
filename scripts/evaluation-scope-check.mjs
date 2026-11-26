@@ -6,7 +6,7 @@
  * is code a load of that fixture can evaluate.
  *
  * Two fixture classes, derived structurally from each fixture's own
- * declared `dependencies` (the share-by-default set the plugin resolves):
+ * declared `dependencies` (the shared set over the build graph the plugin resolves):
  *
  *   - child fixture: no `@gears-frontx/mfes` declared. A child must reach
  *     NO mfes item answering a registry, loader (`MfeHandler` /

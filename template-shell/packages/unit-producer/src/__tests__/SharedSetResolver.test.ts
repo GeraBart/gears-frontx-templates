@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SharedSetResolver } from '../SharedSetResolver';
 
 /**
- * Scenario: SharedSetResolver — share-by-default derivation and closure
+ * Scenario: SharedSetResolver — shared-set derivation and closure
  * enforcement over synthetic `node_modules` trees.
  */
 

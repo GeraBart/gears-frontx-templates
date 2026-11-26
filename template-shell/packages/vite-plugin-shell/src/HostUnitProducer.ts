@@ -5,7 +5,8 @@
  * directory (`outputDir`, the deployed units base), and applies the
  * consumer barrel fallback: a package the host's own barrel rewrite
  * moved imports off, which no chunk answers, is rewritten back to the
- * barrel in the emitted chunks.
+ * barrel in the emitted chunks, and the units and lists are produced for
+ * the specifiers the chunks import after that.
  *
  * `produce` returns `undefined` when the shared set is empty: nothing is
  * built or written then.
@@ -15,6 +16,7 @@ import {
   BuildStageTimer,
   ConsumerBarrelFallback,
   defaultProducerCacheDir,
+  FallbackReproduction,
   UnitProducer,
   type ConsumerBarrelRewriteLedger,
   type ProducedSharedPackage,
@@ -53,6 +55,12 @@ export interface HostUnitProducerOptions {
   include?: readonly string[];
   /** Bare specifiers the host's own chunks import. */
   consumerSpecifiers?: readonly string[];
+  /**
+   * The shared specifiers the host's chunks import dynamically: the
+   * second production keeps them even when no chunk imports them
+   * statically after the barrel fallback.
+   */
+  dynamicSpecifiers?: readonly string[];
   /** What the consumer barrel rewrite did to the host's modules. */
   barrelLedger?: ConsumerBarrelRewriteLedger;
   /** The emitted host chunks (file under `distDir`, bare imports). */
@@ -84,35 +92,60 @@ export class HostUnitProducer {
     onError: (message: string) => never
   ): Promise<HostUnitProduction | undefined> {
     const stageTimer = this.options.stageTimer;
-    const producer = new UnitProducer({
+    const hostChunks = this.options.hostChunks ?? [];
+    const ledger = this.options.barrelLedger;
+    const consumerSpecifiers = this.options.consumerSpecifiers ?? [];
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-host-production:p1:inst-produce-host-units
+    let fingerprints: UnitProducer['contentFingerprints'] | undefined;
+    const { produced, cache } = await FallbackReproduction.run({
+      // @cpt-begin:cpt-template-shell-algo-unit-producer-output-host-production:p1:inst-share-content-fingerprints
+      producerFor: (specifiers) => {
+        const producer = this.producerFor(specifiers, fingerprints);
+        fingerprints = producer.contentFingerprints;
+        return producer;
+      },
+      // @cpt-end:cpt-template-shell-algo-unit-producer-output-host-production:p1:inst-share-content-fingerprints
+      outputDir: this.options.outputDir,
+      consumerSpecifiers,
+      dynamicSpecifiers: new Set(this.options.dynamicSpecifiers ?? []),
+      importedNow: () => new Set(hostChunks.flatMap((c) => c.imports)),
+      // A barrel rewrite no chunk answers goes back to the barrel.
+      applyFallback: (units) => {
+        // Nothing was produced: nothing is built or written, and no
+        // chunk is turned back.
+        if (ledger === undefined || units.length === 0) return;
+        ConsumerBarrelFallback.apply({
+          produced: units,
+          ledger,
+          outDir: this.options.distDir,
+          chunks: hostChunks,
+        });
+      },
+      onError,
+    });
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-host-production:p1:inst-produce-host-units
+    if (produced.length === 0) return undefined;
+    return {
+      produced,
+      cache,
+      stageTimings: stageTimer !== undefined ? stageTimer.toRecord() : (new BuildStageTimer()).toRecord(),
+    };
+  }
+
+  private producerFor(
+    consumerSpecifiers: readonly string[],
+    contentFingerprints?: UnitProducer['contentFingerprints']
+  ): UnitProducer {
+    return new UnitProducer({
       packageRoot: this.options.packageRoot,
       outputDir: this.options.outputDir,
       exclude: this.options.exclude,
       include: this.options.include,
-      consumerSpecifiers: this.options.consumerSpecifiers,
-      stageTimer,
+      consumerSpecifiers,
+      stageTimer: this.options.stageTimer,
       cacheDir:
         this.options.cacheDir ??
         defaultProducerCacheDir(this.options.packageRoot),
-    });
-    const produced = await producer.produce(onError);
-    if (produced.length === 0) return undefined;
-
-    // A barrel rewrite no chunk answers goes back to the barrel.
-    const ledger = this.options.barrelLedger;
-    if (ledger !== undefined) {
-      ConsumerBarrelFallback.apply({
-        produced,
-        ledger,
-        outDir: this.options.distDir,
-        chunks: this.options.hostChunks ?? [],
-      });
-    }
-
-    return {
-      produced,
-      cache: producer.cacheOutcomes(),
-      stageTimings: stageTimer !== undefined ? stageTimer.toRecord() : (new BuildStageTimer()).toRecord(),
-    };
+    }, contentFingerprints);
   }
 }

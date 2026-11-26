@@ -76,8 +76,8 @@ export class GtsEntityValidator {
           message.includes('Schema not found')
         ) {
           console.warn(
-            `[vite-plugin-mfe-gts] ${kind} '${id}' registered; its ` +
-              `x-gts-type-ref targets could not be resolved at build ` +
+            `[vite-plugin-mfe-gts] ${kind} '${id}' is not registered at build ` +
+              `time; its x-gts-type-ref targets could not be resolved at build ` +
               `time: ${message.split('\n')[1]?.trim() ?? message}`
           );
           continue;

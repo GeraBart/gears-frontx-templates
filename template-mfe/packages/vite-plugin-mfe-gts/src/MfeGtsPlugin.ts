@@ -40,6 +40,8 @@ import {
   ConsumerBarrelResolver,
   ConsumerBarrelRewriteTransform,
   defaultProducerCacheDir,
+  ExternalChain,
+  FallbackReproduction,
   PackageJsonResolver,
   RuntimeEntryDetector,
   SharedSetResolver,
@@ -57,13 +59,16 @@ import { EmptyCssRecorder } from './EmptyCssRecorder';
 import { FederationChunkFilter } from './FederationChunkFilter';
 import { GtsEntityValidator } from './GtsEntityValidator';
 import { LazyImportTransformer } from './LazyImportTransformer';
+import { LineEditSourceMap, type LineEditMap } from './LineEditSourceMap';
 import { MfeBuildReport } from './MfeBuildReport';
 import { MfeGtsBuildState } from './MfeGtsBuildState';
 import { MfeManifestEnricher } from './MfeManifestEnricher';
+import { SharedImportCheck } from './SharedImportCheck';
 import { ExposeListComposer } from './ExposeListComposer';
 import { SpecifiersDeriver } from './SpecifiersDeriver';
 import type { SharedDepFetchList, SharedDepUnit } from '@gears-frontx/mfes/unit-format';
 import type {
+  CapturedChunk,
   FederationExpose,
   FederationManifest,
   MfeJson,
@@ -89,8 +94,10 @@ export interface VitePluginMfeGtsOptions {
    */
   exposes?: Record<string, string>;
   /**
-   * The package root `package.json` and `mfe.json` are read from.
-   * Defaults to `process.cwd()` — where a Vite config file runs.
+   * The package root: `package.json`, `mfe.json`, the shared set, the
+   * exposes and the producer all resolve from it, whatever Vite's own
+   * `root` is. Defaults to `process.cwd()` — where a Vite config file
+   * runs.
    */
   root?: string;
   /**
@@ -102,8 +109,8 @@ export interface VitePluginMfeGtsOptions {
    */
   ownedFederationPlugins?: ReadonlySet<unknown>;
   /**
-   * Directory under the build output dir where shared units, packs and
-   * graph files are emitted. Default `'shared'`.
+   * Directory under the build output dir where shared units and fetch
+   * lists are emitted. Default `'shared'`.
    */
   sharedOutDir?: string;
   /**
@@ -128,9 +135,12 @@ type EnrichedResult = ReturnType<MfeManifestEnricher['enrich']>;
 
 export class MfeGtsPlugin {
   private readonly options: VitePluginMfeGtsOptions;
+  /** The package root, resolved once (`VitePluginMfeGtsOptions.root`). */
+  private readonly root: string;
 
   constructor(options?: VitePluginMfeGtsOptions) {
     this.options = options ?? {};
+    this.root = path.resolve(this.options.root ?? process.cwd());
     if ('chunkGrouping' in (this.options as object)) {
       throw new Error(
         '[vite-plugin-mfe-gts] "chunkGrouping" is not an option — shared packages use ' +
@@ -160,20 +170,16 @@ export class MfeGtsPlugin {
       },
 
       // Federation ownership and the build settings remote loading
-      // requires come first; then the shared set (share-by-default over
-      // the runtime closure, never a name list) is externalized by root
-      // package name so subpaths externalize too — asset specifiers
-      // (`pkg/x.css?inline`) stay with Vite.
+      // requires come first; then the shared set over the build
+      // graph (never a name list) is resolved. Its
+      // `external` predicate is installed on the resolved config
+      // (`configResolved`), where it wraps whatever `external` the
+      // config ended up with.
       config(config, env) {
         plugin.assertFederationOwnership(config);
         const enforced = plugin.enforceBuildSettings(config, env);
-        const sharing = plugin.configureSharing(config, state);
-        return {
-          build: {
-            ...enforced,
-            ...(sharing === null ? {} : sharing.build),
-          },
-        };
+        plugin.configureSharing(config, state);
+        return { build: enforced };
       },
 
       // ── Consumer barrel rewrite, shared-package stylesheets ──────
@@ -207,6 +213,23 @@ export class MfeGtsPlugin {
       configResolved(config) {
         recorder.place(config);
         plugin.captureConfig(config, state);
+        plugin.applyResolvedBuildSettings(config, state);
+      },
+
+      // A watch rebuild serves unchanged modules from Rollup's transform
+      // cache without running `transform`, but the barrel ledger starts
+      // empty for every build: the MFE's own modules are transformed
+      // again so the ledger records every rewrite the rebuilt output
+      // carries. `pre`, because the first plugin to answer decides, and
+      // no answer for other modules leaves the decision to the rest.
+      shouldTransformCachedModule: {
+        order: 'pre',
+        handler({ id }) {
+          return state.barrelTransform !== undefined &&
+            ConsumerBarrelRewriteTransform.isConsumerModule(id)
+            ? true
+            : null;
+        },
       },
 
       // The exposed modules' entry chunks are emitted once per build,
@@ -228,16 +251,12 @@ export class MfeGtsPlugin {
   }
 
   /**
-   * `config` hook: resolves the share-by-default shared set and returns
-   * the Rollup `external` predicate matching it by root package name,
-   * chained behind any `external` the config already carried. No shared
-   * package means nothing to do.
+   * `config` hook: resolves the shared set over the build graph and records
+   * the sharing rule `configResolved` externalizes by root package name.
+   * No shared package means nothing to externalize.
    */
-  private configureSharing(
-    config: UserConfig,
-    state: MfeGtsBuildState
-  ): { build: { rollupOptions: { external: (source: string, importer: string | undefined, isResolved: boolean) => boolean } } } | null {
-    const root = config.root ?? process.cwd();
+  private configureSharing(config: UserConfig, state: MfeGtsBuildState): void {
+    const root = this.root;
     // One effective selection feeds the resolver, the `external`
     // decision and the producer: the `exclude` option and `mfe.json`'s
     // `share.exclude` union into it; `include` with either fails.
@@ -265,7 +284,7 @@ export class MfeGtsPlugin {
     if (!resolved.ok) throw new Error(resolved.message);
     state.sharedDeps = resolved.sharedDeps;
     state.aliasTargets = new AliasMap(config.resolve?.alias).targetRoots();
-    // Share-by-default over the build graph: the declared closure, so a
+    // The shared set over the build graph: the declared closure, so a
     // package the producer may deliver to a shared package is never also
     // inlined into the MFE's chunks, plus every bare package the code
     // imports (workspace-linked and aliased ones included).
@@ -277,7 +296,7 @@ export class MfeGtsPlugin {
     });
     state.sharing = sharing;
     if (state.selection.mode === 'include' && state.sharedDeps.length === 0) {
-      return null;
+      return;
     }
     state.barrelTransform = new ConsumerBarrelRewriteTransform({
       resolver: new ConsumerBarrelResolver({
@@ -296,21 +315,7 @@ export class MfeGtsPlugin {
         !alias.rewrites(specifier) &&
         sharing.sharesRoot(SharedSetResolver.extractRootPackageName(specifier)),
     });
-    const previous = config.build?.rollupOptions?.external;
-    const external = (
-      source: string,
-      importer: string | undefined,
-      isResolved: boolean
-    ): boolean => {
-      if (sharing.external(source, importer)) return true;
-      if (Array.isArray(previous)) return previous.includes(source);
-      if (typeof previous === 'function') {
-        return previous(source, importer, isResolved) === true;
-      }
-      if (previous instanceof RegExp) return previous.test(source);
-      return false;
-    };
-    return { build: { rollupOptions: { external } } };
+    state.externalizesShared = true;
   }
 
   /**
@@ -365,7 +370,10 @@ export class MfeGtsPlugin {
    * The build settings a loadable remote requires: `esnext` target, no
    * module preload polyfill, minification, per-expose CSS splitting.
    * The plugin's values win; a user override is warned about because a
-   * different value would break loading, then ignored.
+   * different value would break loading, then ignored. Vite merges an
+   * array `build.target` with a plugin's value instead of replacing it,
+   * so the target is also set in place here and again on the resolved
+   * config.
    */
   private enforceBuildSettings(
     config: UserConfig,
@@ -374,8 +382,12 @@ export class MfeGtsPlugin {
     if (env?.command === 'build') {
       const build = config.build ?? {};
       const overridden: string[] = [];
-      if (build.target !== undefined && build.target !== 'esnext') {
-        overridden.push(`build.target ${JSON.stringify(build.target)}`);
+      const target = build.target;
+      const isEsnext =
+        target === 'esnext' ||
+        (Array.isArray(target) && target.length === 1 && target[0] === 'esnext');
+      if (target !== undefined && !isEsnext) {
+        overridden.push(`build.target ${JSON.stringify(target)}`);
       }
       if (build.modulePreload !== undefined && build.modulePreload !== false) {
         overridden.push('build.modulePreload');
@@ -394,6 +406,9 @@ export class MfeGtsPlugin {
         );
       }
     }
+    if (config.build !== undefined && config.build.target !== undefined) {
+      config.build.target = 'esnext';
+    }
     return {
       target: 'esnext',
       modulePreload: false,
@@ -405,13 +420,15 @@ export class MfeGtsPlugin {
   /**
    * `transform` handler, builds only: the consumer barrel rewrite on the
    * MFE's own modules, then the stylesheets of every shared module the
-   * (rewritten) module imports, imported ahead of it.
+   * (rewritten) module imports, imported ahead of it. Both edit whole
+   * import statements, so the returned map keeps every other line on its
+   * original position.
    */
   private async transformModule(
     code: string,
     id: string,
     state: MfeGtsBuildState
-  ): Promise<{ code: string; map: null } | null> {
+  ): Promise<{ code: string; map: LineEditMap } | null> {
     if (state.command !== 'build') return null;
     let current: string | null = null;
     if (
@@ -422,7 +439,9 @@ export class MfeGtsPlugin {
     }
     const styled = await state.stylesheetImports?.inject(current ?? code, id);
     if (styled != null) current = styled.code;
-    return current === null ? null : { code: current, map: null };
+    return current === null
+      ? null
+      : { code: current, map: LineEditSourceMap.of(code, current, id) };
   }
 
   /**
@@ -478,9 +497,9 @@ export class MfeGtsPlugin {
         cssOnlyImports.add(target);
         return true;
       },
-      (entry) => {
-        state.opaqueImports.push(entry);
-      }
+      // Opaque imports are reported from the final chunks
+      // (`captureOutputGraph`): this name and line are preliminary.
+      'leave'
     );
     if (result === null) return null;
     console.log(
@@ -552,11 +571,44 @@ export class MfeGtsPlugin {
     }
   }
 
-  /** `configResolved` hook. */
+  /**
+   * `configResolved` hook. Package files resolve from the plugin's root;
+   * the output directory resolves the way Vite resolves it, from Vite's
+   * own `root`.
+   */
   private captureConfig(config: ResolvedConfig, state: MfeGtsBuildState): void {
-    state.packageRoot = config.root;
-    state.distDirPath = config.build?.outDir ?? 'dist';
+    state.packageRoot = this.root;
+    state.distDirPath = path.resolve(config.root, config.build?.outDir ?? 'dist');
     state.command = config.command;
+  }
+
+  /**
+   * `configResolved` hook: on the resolved build options — the
+   * top-level ones and each environment's — the target is `esnext` and
+   * the `external` option is replaced by one predicate that externalizes
+   * the shared set by root package name, so subpaths externalize too and
+   * asset specifiers (`pkg/x.css?inline`) stay with Vite, and otherwise
+   * answers as the option it replaces would: a string, a regular
+   * expression, an array of them or a function. Merging a function into
+   * an array `external` instead would leave the function uncalled.
+   */
+  private applyResolvedBuildSettings(
+    config: ResolvedConfig,
+    state: MfeGtsBuildState
+  ): void {
+    if (config.command === 'build') {
+      for (const build of [
+        config.build,
+        ...Object.values(config.environments ?? {}).map((env) => env.build),
+      ]) {
+        if (build !== undefined) build.target = 'esnext';
+      }
+    }
+    const sharing = state.sharing;
+    if (!state.externalizesShared || sharing === undefined) return;
+    ExternalChain.install(config, (source, importer) =>
+      sharing.external(source, importer)
+    );
   }
 
   /** `generateBundle` hook: verify and capture every emitted chunk. */
@@ -586,6 +638,31 @@ export class MfeGtsPlugin {
       );
       this.transformKeptLazyChunks(ctx, fileName, output, bundle, state);
       this.captureChunkLinkage(fileName, output, imports, state);
+      this.captureOpaqueImports(ctx, fileName, output, state);
+    }
+  }
+
+  /**
+   * Records every fully opaque `import(expr)` of a final chunk — its
+   * final file name and its line in the emitted code — once per call
+   * site. Federation's own control chunks are not the MFE's code.
+   */
+  private captureOpaqueImports(
+    ctx: PluginContext,
+    fileName: string,
+    output: OutputChunk,
+    state: MfeGtsBuildState
+  ): void {
+    if (FederationChunkFilter.isFederationControlChunk(output.moduleIds)) return;
+    for (const entry of LazyImportTransformer.opaqueImports(
+      output.code,
+      (input) => ctx.parse(input),
+      fileName
+    )) {
+      const seen = state.opaqueImports.some(
+        (o) => o.file === entry.file && o.line === entry.line && o.expression === entry.expression
+      );
+      if (!seen) state.opaqueImports.push(entry);
     }
   }
 
@@ -715,10 +792,14 @@ export class MfeGtsPlugin {
       );
     }
     if (output.code.includes('__frontx_lazy')) {
+      // A bare specifier of a shared package is no file of the bundle:
+      // its target is the shared unit answering it, loaded through the
+      // list held under that specifier.
       const missing = LazyImportTransformer.lazyCallSpecifiers(
         ctx.parse(output.code)
       ).filter(
         (specifier) =>
+          state.sharing?.matches(specifier) !== true &&
           bundle[
             path.posix.join(path.posix.dirname(fileName), specifier)
           ] === undefined
@@ -783,9 +864,7 @@ export class MfeGtsPlugin {
         bundle[
           path.posix.join(path.posix.dirname(fileName), specifier)
         ] === undefined,
-      (entry) => {
-        state.opaqueImports.push(entry);
-      }
+      'leave'
     );
     if (kept !== null) {
       output.code = kept.code;
@@ -878,26 +957,37 @@ export class MfeGtsPlugin {
     const sharedOutDir = this.options.sharedOutDir ?? 'shared';
     const sharedDir = path.join(distDir, sharedOutDir);
     const sharedBase = `./${sharedOutDir}/`;
-    const produced = await this.produceSharedUnits(
-      ctx,
-      state,
-      sharedDir
-    );
-
     // ── Consumer barrel fallback: a rewrite no produced unit answers
     // goes back to the barrel in the written chunks and their
-    // captured imports, before roots are derived from them.
-    const barrelFallback = ConsumerBarrelFallback.apply({
-      produced,
-      ledger: state.barrelLedger,
-      outDir: distDir,
-      chunks: state.capturedChunks.values(),
-    });
+    // captured imports, before roots are derived from them; the units and
+    // lists are produced again for what the chunks import after it.
+    const { produced, barrelFallback } = await this.produceSharedUnits(
+      ctx,
+      state,
+      sharedDir,
+      distDir
+    );
     for (const [target, reason] of barrelFallback) {
       console.log(
         `[vite-plugin-mfe-gts] barrel kept for "${target}": ${reason}`
       );
     }
+
+    // ── Guard: every name the MFE imports from a shared specifier is one
+    // the unit answering it exports.
+    // @cpt-begin:cpt-template-mfe-flow-mfe-fetch-list-assembly-assemble:p1:inst-verify-shared-imports
+    const importMismatches = SharedImportCheck.findMismatches({
+      importers: state.capturedImports.values(),
+      produced,
+      // @cpt-begin:cpt-template-mfe-flow-mfe-fetch-list-assembly-assemble:p1:inst-read-reverted-imports
+      reverted: new Set(barrelFallback.keys()),
+      origin: (specifier, name) => state.barrelLedger.origin(specifier, name),
+      // @cpt-end:cpt-template-mfe-flow-mfe-fetch-list-assembly-assemble:p1:inst-read-reverted-imports
+    });
+    if (importMismatches.length > 0) {
+      ctx.error({ message: SharedImportCheck.formatError(importMismatches) });
+    }
+    // @cpt-end:cpt-template-mfe-flow-mfe-fetch-list-assembly-assemble:p1:inst-verify-shared-imports
 
     // ── Fetch lists: one list per expose (merged over the
     // specifiers its chunk closure reaches) plus a nested list per
@@ -1088,33 +1178,68 @@ export class MfeGtsPlugin {
   private async produceSharedUnits(
     ctx: PluginContext,
     state: MfeGtsBuildState,
-    sharedDir: string
-  ): Promise<ProducedSharedPackage[]> {
-    const consumerSpecifiers = [
-      ...new Set(
-        [...state.capturedChunks.values()].flatMap((chunk) => chunk.imports)
-      ),
-    ].filter(
-      (spec) =>
-        state.capturedChunks.get(spec) === undefined &&
-        state.sharing?.matches(spec) === true
-    );
-    if (state.sharing === undefined) return [];
-    const producer = new UnitProducer({
-      packageRoot: state.packageRoot,
-      outputDir: sharedDir,
-      exclude: state.selection?.exclude,
-      include: state.selection?.include,
-      consumerSpecifiers,
-      stageTimer: state.stageTimer,
-      cacheDir:
-        this.options.cacheDir ?? defaultProducerCacheDir(state.packageRoot),
-    });
+    sharedDir: string,
+    distDir: string
+  ): Promise<{
+    produced: ProducedSharedPackage[];
+    barrelFallback: Map<string, string>;
+  }> {
+    const sharing = state.sharing;
+    if (sharing === undefined) return { produced: [], barrelFallback: new Map() };
+    const isConsumerSpecifier = (spec: string): boolean =>
+      state.capturedChunks.get(spec) === undefined && sharing.matches(spec);
+    const specifiersOf = (pick: (chunk: CapturedChunk) => string[]): Set<string> =>
+      new Set(
+        [...state.capturedChunks.values()]
+          .flatMap(pick)
+          .filter(isConsumerSpecifier)
+      );
+    const dynamicSpecifiers = specifiersOf((chunk) => chunk.dynamicImports);
+    let barrelFallback = new Map<string, string>();
     // @cpt-begin:cpt-template-mfe-flow-mfe-fetch-list-assembly-assemble:p1:inst-call-producer
-    const produced = await producer.produce((message) => ctx.error({ message }));
+    let fingerprints: UnitProducer['contentFingerprints'] | undefined;
+    const { produced, cache } = await FallbackReproduction.run({
+      producerFor: (consumerSpecifiers) => {
+        const producer = new UnitProducer(
+          {
+            packageRoot: state.packageRoot,
+            outputDir: sharedDir,
+            exclude: state.selection?.exclude,
+            include: state.selection?.include,
+            consumerSpecifiers,
+            stageTimer: state.stageTimer,
+            cacheDir:
+              this.options.cacheDir ?? defaultProducerCacheDir(state.packageRoot),
+          },
+          fingerprints
+        );
+        fingerprints = producer.contentFingerprints;
+        return producer;
+      },
+      outputDir: sharedDir,
+      consumerSpecifiers: [
+        ...new Set([
+          ...specifiersOf((chunk) => chunk.imports),
+          ...dynamicSpecifiers,
+        ]),
+      ],
+      dynamicSpecifiers,
+      importedNow: () => specifiersOf((chunk) => chunk.imports),
+      // @cpt-begin:cpt-template-mfe-flow-mfe-fetch-list-assembly-assemble:p1:inst-reproduce-after-fallback
+      applyFallback: (units) => {
+        barrelFallback = ConsumerBarrelFallback.apply({
+          produced: units,
+          ledger: state.barrelLedger,
+          outDir: distDir,
+          chunks: state.capturedChunks.values(),
+        });
+      },
+      // @cpt-end:cpt-template-mfe-flow-mfe-fetch-list-assembly-assemble:p1:inst-reproduce-after-fallback
+      onError: (message) => ctx.error({ message }),
+    });
     // @cpt-end:cpt-template-mfe-flow-mfe-fetch-list-assembly-assemble:p1:inst-call-producer
-    state.cacheSummary = producer.cacheOutcomes();
-    return produced;
+    state.cacheSummary = cache;
+    return { produced, barrelFallback };
   }
 
   /**

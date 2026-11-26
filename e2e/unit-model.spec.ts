@@ -11,6 +11,7 @@ import {
   menuItemTestId,
 } from './extensionIds.mjs';
 import { SHELL_PORT, fixturePorts } from './ports.mjs';
+import { waitForMountedScreen } from './mountedScreen';
 
 const scheme = process.env.E2E_PROTOCOL === 'h2' ? 'https' : 'http';
 
@@ -91,30 +92,6 @@ async function bootShell(page: Page) {
 }
 
 /**
- * Mount-settled signal: the screen domain's container hooks stamp each
- * mounted screen's element with `data-extension-id` inside the
- * `[data-mfe-screen-container]` slot, and the MFE renders into that
- * element or its shadow root. Settled = such an element exists and has
- * rendered content.
- */
-async function waitForMountedScreen(page: Page, timeout = 30_000) {
-  await page.waitForFunction(
-    () => {
-      const hosts = document.querySelectorAll(
-        '[data-mfe-screen-container] [data-extension-id]',
-      );
-      for (const h of hosts) {
-        const root = (h as HTMLElement).shadowRoot ?? h;
-        if (root.childElementCount > 0) return true;
-      }
-      return false;
-    },
-    undefined,
-    { timeout },
-  );
-}
-
-/**
  * A signature for the currently mounted screen — its extension id plus
  * its rendered text — so a re-mount can wait for the OLD screen to be
  * replaced, not just for any screen to exist.
@@ -190,16 +167,14 @@ test('realm cache: a unit the shell fetched is reused by an MFE with no second f
   await mount(page, BLANK_HOME_EXTENSION_ID);
   // Wait on the mount-settled signal (the screen rendered) — not a
   // fixed sleep — so every fetch the mount triggered is accounted for.
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, BLANK_HOME_EXTENSION_ID);
 
   const mfeRequests = requests.slice(before);
   // No unit the shell already delivered is fetched again — the realm
   // content-identity cache answers it, whichever origin asked. Compare
   // by unit path (package@version/unit.hash.js), not package name: the
   // MFE legitimately fetches units of a shell-fetched package that the
-  // shell itself never reached. The per-origin `.graph`/`.part-N` index
-  // JSON is location-bound metadata each consumer origin must still
-  // read for itself, so it is excluded here.
+  // shell itself never reached. Only `.js` units are compared.
   const refetched = mfeRequests.filter((u) => {
     if (!u.endsWith('.js')) return false;
     return shellUnitPaths.has(u.slice(u.indexOf('/shared/')));
@@ -218,7 +193,7 @@ test('blob minting is end-to-end: an MFE screen mounts from minted unit blobs', 
   await expect
     .poll(() => mintedCount(page), { timeout: 30_000 })
     .toBeGreaterThan(before);
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, BLANK_HOME_EXTENSION_ID);
 });
 
 test('lazy chunk loading: mounting a screen fetches its lazy chunks on demand', async ({
@@ -242,7 +217,7 @@ test('re-mount: navigating away and back remounts the MFE screen', async ({ page
   await instrument(page);
   await bootShell(page);
   await mount(page, BLANK_HOME_EXTENSION_ID);
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, BLANK_HOME_EXTENSION_ID);
   const first = await mountedScreenSignature(page);
   expect(first).not.toBe('');
 

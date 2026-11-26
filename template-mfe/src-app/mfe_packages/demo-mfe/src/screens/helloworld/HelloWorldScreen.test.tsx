@@ -17,7 +17,7 @@ import {
   FRONTX_SCREEN_DOMAIN,
   FRONTX_SHARED_PROPERTY_LANGUAGE,
   FRONTX_SHARED_PROPERTY_THEME,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../shellContract';
 import { FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
 
 /*

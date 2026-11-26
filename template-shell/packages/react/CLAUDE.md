@@ -397,41 +397,26 @@ function LayoutScreen() {
   return (
     <ExtensionDomainSlot
       registry={registry}
-      domainId="screen"
-      extensionId="home"
+      // the host type system's screen domain id
+      domainId={SCREEN_DOMAIN_ID}
       loadingComponent={<Loading />}
     />
   );
 }
 ```
 
-`ExtensionDomainSlot` is the preferred host-side renderer for screen MFEs. It
-owns mount/unmount and loading/error UI while host bootstrap handles domain
-registration and shared property setup before slot-driven `mount_ext`.
+`ExtensionDomainSlot` is the preferred host-side renderer for a domain. It
+renders one root element, attaches the domain's mounter to it
+(`registry.getMounter(domainId).attach(element)`) and detaches it on cleanup,
+which unmounts every extension mounted in the domain; the host bootstrap
+registers the domain and publishes its shared properties before any
+`mount_ext`. `SCREEN_DOMAIN_ID` stands for the domain id the host's own type
+system declares.
 The host `QueryClient` is reused by MFE React trees through
 `queryCacheShared()`, not by embedding a `QueryClient` on `MfeMountContext`
 or expecting host React context inside Shadow DOM.
 
-When the domain's `ContainerProvider` must point at the same DOM node rendered
-by the slot, pass `containerRef` to `ExtensionDomainSlot` and share that ref
-with `RefContainerProvider`.
-
-#### RefContainerProvider
-
-Provide container references for MFE mounting:
-
-```tsx
-import { RefContainerProvider } from '@gears-frontx/react';
-
-function Layout() {
-  return (
-    <RefContainerProvider>
-      <ScreenContainer />
-      <SidebarContainer />
-    </RefContainerProvider>
-  );
-}
-```
+`onAttached(root)` and `onDetached()` report the attach and the detach.
 
 ### Components
 
@@ -477,7 +462,6 @@ runtime, so a leaf MFE that only uses the React bindings never loads it. It carr
   types: the application owns its layout and types the actions its own
   plugins contribute by augmenting `FrontXActions`
 - All registries and factory functions
-- MFE domain, type and shared-property ID constants (plain strings)
 
 This allows users to import everything from `@gears-frontx/react` and its subpaths without needing `@gears-frontx/framework` directly.
 
@@ -487,7 +471,6 @@ This allows users to import everything from `@gears-frontx/react` and its subpat
 - `FrontXProvider` - Main context provider
 - `MfeProvider` - MFE context provider (`@gears-frontx/react/mfe`)
 - `ExtensionDomainSlot` - Domain slot renderer (`@gears-frontx/react/mfe`)
-- `RefContainerProvider` - Container reference provider
 
 ### Hooks
 - `useFrontX` - Access app instance
@@ -522,56 +505,24 @@ This allows users to import everything from `@gears-frontx/react` and its subpat
 - `UseTranslationReturn`, `UseThemeReturn`
 - All types from @gears-frontx/framework (including `EndpointDescriptor`, `MutationDescriptor`, `StreamDescriptor`, `StreamStatus`)
 
-## Migration from Legacy API
+## Navigating Between Screens
 
-The `useNavigation` hook has been removed. Use MFE hooks and actions instead:
+A component asks for a screen through the app's actions. `mountExtension`
+dispatches an actions chain through the acceptance-only registry surface and
+returns nothing to await:
 
-### Removed Hook
-- `useNavigation()` (replaced by MFE actions and hooks)
-
-### Migration Examples
-
-**OLD**: Navigate using hook
-```tsx
-import { useNavigation } from '@gears-frontx/react';
-
-function MyComponent() {
-  const { navigateToScreen } = useNavigation();
-
-  return (
-    <button onClick={() => navigateToScreen('demo', 'home')}>
-      Go Home
-    </button>
-  );
-}
-```
-
-**NEW**: Mount extension using app actions
 ```tsx
 import { useFrontX } from '@gears-frontx/react';
 
 function MyComponent() {
   const app = useFrontX();
-  const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleNavigate = () => {
-    if (containerRef.current) {
-      // Fire-and-forget: dispatches an actions chain through the
-      // acceptance-only registry surface and returns nothing to await.
-      app.actions.mountExtension('home');
-    }
-  };
-
-  return (
-    <>
-      <button onClick={handleNavigate}>Go Home</button>
-      <div ref={containerRef} />
-    </>
-  );
+  return <button onClick={() => app.actions.mountExtension('home')}>Go Home</button>;
 }
 ```
 
-**NEW (Preferred for host screen slots)**: Use ExtensionDomainSlot
+A host screen slot renders the domain's extensions with `ExtensionDomainSlot`:
+
 ```tsx
 import { ExtensionDomainSlot } from '@gears-frontx/react/mfe';
 
@@ -579,12 +530,11 @@ function MyComponent() {
   return (
     <ExtensionDomainSlot
       registry={app.mfeRegistry}
-      domainId="screen"
-      extensionId="home"
+      domainId={SCREEN_DOMAIN_ID}
       loadingComponent={<Loading />}
     />
   );
 }
 ```
 
-See the MFE migration guide in the project documentation for detailed migration steps.
+See the MFE guide in the project documentation for the full flow.

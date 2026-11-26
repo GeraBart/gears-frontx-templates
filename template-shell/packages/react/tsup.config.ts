@@ -6,7 +6,9 @@ import { defineConfig } from 'tsup';
 import { SharedPackageTsupConfig } from '../../scripts/lib/SharedPackageTsupConfig';
 
 // ESM preserves modules (one file per source module) so the unit producer
-// can split the package; CJS stays bundled per entry.
+// can split the package; CJS stays bundled per entry. Code splitting keeps
+// `dist/mfe.cjs` and `dist/index.cjs` on one FrontXContext, provider and
+// query client (the ESM output shares modules by construction).
 export default defineConfig((overrides) =>
   new SharedPackageTsupConfig({
     entry: {
@@ -15,6 +17,7 @@ export default defineConfig((overrides) =>
       testing: 'src/testing.ts',
       types: 'src/types.ts',
     },
+    cjsSplitting: true,
     packageDir: path.dirname(fileURLToPath(import.meta.url)),
     cleanOutDir: overrides.clean !== false,
     external: [

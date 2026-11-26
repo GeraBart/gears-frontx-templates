@@ -117,32 +117,61 @@ describe('LazyImportTransformer pattern imports', () => {
 
   it('rewrites a bounded pattern to __frontx_lazy( keeping the computed path argument', () => {
     const code = 'const p = import(`./locales/${n}.js`);';
-    const opaque: unknown[] = [];
+    const parse = template('./locales/', '.js', code);
     const result = LazyImportTransformer.transformChunk(
       code,
-      template('./locales/', '.js', code),
+      parse,
       neverError,
       'entry.js',
       undefined,
-      (entry) => opaque.push(entry)
+      'leave'
     );
     expect(result!.code).toBe('const p = __frontx_lazy(`./locales/${n}.js`);');
-    expect(opaque).toEqual([]);
+    expect(LazyImportTransformer.opaqueImports(code, parse, 'entry.js')).toEqual([]);
   });
 
   it('keeps a template with no fixed text opaque and native', () => {
     const code = 'const p = import(`${n}`);';
-    const opaque: unknown[] = [];
+    const parse = template('', '', code);
     const result = LazyImportTransformer.transformChunk(
       code,
-      template('', '', code),
+      parse,
       neverError,
       'entry.js',
       undefined,
-      (entry) => opaque.push(entry)
+      'leave'
     );
     expect(result).toBeNull();
-    expect(opaque).toHaveLength(1);
+    expect(LazyImportTransformer.opaqueImports(code, parse, 'entry.js')).toEqual([
+      { file: 'entry.js', line: 1, expression: code.slice(code.indexOf('`'), code.length - 1) },
+    ]);
+  });
+
+  it('fails the build on an opaque import unless asked to leave it', () => {
+    const code = 'const p = import(`${n}`);';
+    expect(() =>
+      LazyImportTransformer.transformChunk(
+        code,
+        template('', '', code),
+        (message) => {
+          throw new Error(message);
+        },
+        'entry.js'
+      )
+    ).toThrow(/Non-statically-resolvable dynamic import in compiled chunk 'entry\.js'/);
+  });
+
+  it('fails when the emitted chunk cannot be parsed, instead of reporting no opaque import', () => {
+    const code = 'const p = import(n);';
+    expect(() =>
+      LazyImportTransformer.opaqueImports(
+        code,
+        () => {
+          throw new Error('Unexpected token');
+        },
+        'assets/entry.js'
+      )
+    ).toThrow(/cannot parse emitted chunk 'assets\/entry\.js'.*Unexpected token/);
   });
 });
 

@@ -162,11 +162,13 @@ describe('LoadMatrixRunner — JSON step records', () => {
         expect(desc.env.E2E_PROTOCOL).toBe(cells[i].protocol === 'h2' ? 'h2' : '');
         expect(desc.env.LOAD_GATE_RUNS).toBe(String(30));
       }
-      // The JSON status is 'pass' (all exit codes 0).
+      // Every exit code is 0, but no old-rule variant was measured, so the
+      // guards against the old rule were not judged: 'incomplete', not 'pass'.
       const jsonPath = path.join(resultsDir, 'load-gate-cells-2026-11-12T05-01-00-000Z.json');
       const jsonArg = writeFile.mock.calls.find((c) => c[0] === jsonPath);
       const json = JSON.parse(jsonArg[1]);
-      expect(json.status).toBe('pass');
+      expect(json.status).toBe('incomplete');
+      expect(json.reason).toMatch(/old-rule variant not measured/);
       expect(json.steps).toHaveLength(cells.length);
       // Each step's JSON shape is exactly {step, command, exitCode, durationMs, log}.
       const keys = Object.keys(json.steps[0]).sort();
@@ -174,7 +176,7 @@ describe('LoadMatrixRunner — JSON step records', () => {
       expect(json.summary.total).toBe(cells.length);
       expect(json.summary.passed).toBe(cells.length);
       expect(json.summary.failed).toBe(0);
-      expect(out.status).toBe('pass');
+      expect(out.status).toBe('incomplete');
       expect(out.jsonPath).toBe(jsonPath);
     } finally {
       rmSync(resultsDir, { recursive: true, force: true });
@@ -574,7 +576,8 @@ describe('LoadMatrixRunner — HTTP/1.1 boot verdicts', () => {
       ['new-http1-office-lan-none-cold-shell+1', true],
       ['new-http1-fast-4g-none-cold-shell+1', true],
     ]);
-    expect(status).toBe('pass');
+    // No old-rule variant was measured, so the run is not a pass.
+    expect(status).toBe('incomplete');
   });
 
   it('fails the run when an HTTP/1.1 boot cell regressed beyond the noise margin, or has no measurement', async () => {

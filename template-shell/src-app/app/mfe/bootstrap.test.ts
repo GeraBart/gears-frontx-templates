@@ -101,7 +101,7 @@ let app: FrontXApp;
 // The screen domain needs a valid `route`: the injected router rejects a
 // routed domain that declares none, and `bootstrapMFE` would then throw before
 // ever reaching the manifest fetch these cases exercise.
-vi.mock('@gears-frontx/frontx-template-shell', async (importOriginal) => {
+vi.mock('../../../src/index', async (importOriginal) => {
   const real = await importOriginal<Record<string, never>>();
   return {
     ...real,
@@ -177,7 +177,7 @@ describe('bootstrapMFE (host-app)', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
-    const { extensionScreenSchema } = await import('@gears-frontx/frontx-template-shell');
+    const { extensionScreenSchema } = await import('../../../src/index');
     await bootstrapMFE(app);
 
     expect(registerDomain).toHaveBeenCalledTimes(1);
@@ -276,7 +276,7 @@ describe('bootstrapMFE (host-app)', () => {
       CHROME_SET_MENU_COLLAPSED,
       CHROME_SET_THEME,
     } = await import('./chrome-actions');
-    const { languageCodeSchema } = await import('@gears-frontx/frontx-template-shell');
+    const { languageCodeSchema } = await import('../../../src/index');
     await bootstrapMFE(app);
 
     const [screenDeclaration] = registerDomain.mock.calls[0];
@@ -717,6 +717,59 @@ describe('bootstrapMFE (host-app)', () => {
     );
   });
 
+  it('keeps a host domain and an entry another package registered usable when a package naming them is disabled', async () => {
+    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
+    registerInstance.mockImplementation((instance: { id: string }) => {
+      if (instance.id === 'entry.broken') throw new Error('rejected entry');
+    });
+    const shared = { id: 'ext.shared', domain: 'screen-domain', entry: 'entry.shared' };
+    serve(
+      JSON.stringify([
+        { manifest: { id: 'manifest.good' }, entries: [{ id: 'entry.shared' }], extensions: [shared] },
+        {
+          manifest: { id: 'manifest.broken' },
+          domains: [{ id: 'screen-domain' }],
+          entries: [{ id: 'entry.shared' }, { id: 'entry.broken' }],
+          extensions: [],
+        },
+      ]),
+      { status: 200 },
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+
+    expect(registerExtension).toHaveBeenCalledWith(shared);
+  });
+
+  it('registers a later package\'s extension on an entry a disabled earlier package only declared', async () => {
+    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
+    registerInstance.mockImplementation((instance: { id: string }) => {
+      if (instance.id === 'entry.broken') throw new Error('rejected entry');
+    });
+    const shared = { id: 'ext.shared', domain: 'screen-domain', entry: 'entry.shared' };
+    serve(
+      JSON.stringify([
+        {
+          manifest: { id: 'manifest.broken' },
+          entries: [{ id: 'entry.broken' }, { id: 'entry.shared' }],
+          extensions: [],
+        },
+        { manifest: { id: 'manifest.good' }, entries: [{ id: 'entry.shared' }], extensions: [shared] },
+      ]),
+      { status: 200 },
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+
+    expect(registerExtension).toHaveBeenCalledWith(shared);
+  });
+
   it('hands the menu only the packages that were not disabled', async () => {
     getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
     registerInstance.mockImplementation((instance: { id: string }) => {
@@ -845,7 +898,7 @@ describe('bootstrapMFE (host-app)', () => {
 
     it('changes the language a set_language action names through the host i18n plugin, and the language shared property follows', async () => {
       const { CHROME_SET_LANGUAGE } = await import('./chrome-actions');
-      const { FRONTX_SHARED_PROPERTY_LANGUAGE } = await import('@gears-frontx/frontx-template-shell');
+      const { FRONTX_SHARED_PROPERTY_LANGUAGE } = await import('../../../src/index');
       // The real host app is the only witness for both halves of this case.
       // The handler forwards the code to `app.actions.setLanguage`, the action
       // the i18n plugin provides, and the event that action emits is what the
@@ -952,15 +1005,15 @@ describe('bootstrapMFE (host-app)', () => {
       // case makes both calls in the mediator's order against the real type
       // system: the schema's `$ref` to the language code type refuses the
       // payload, so the handler never reaches the i18n plugin.
-      const actual = await vi.importActual<typeof import('@gears-frontx/frontx-template-shell')>(
-        '@gears-frontx/frontx-template-shell',
+      const actual = await vi.importActual<typeof import('../../../src/index')>(
+        '../../../src/index',
       );
       const {
         themeSchema,
         languageCodeSchema,
         languageSchema,
         extensionScreenSchema,
-      } = await import('@gears-frontx/frontx-template-shell');
+      } = await import('../../../src/index');
       const { CHROME_ACTION_SCHEMAS, CHROME_SET_LANGUAGE } = await import('./chrome-actions');
       const setLanguage = vi.fn();
       const handlers = await chromeHandlersFor({ setLanguage });
@@ -972,8 +1025,7 @@ describe('bootstrapMFE (host-app)', () => {
       vi.mocked(typeSystem.registerSchema).mockRestore();
 
       // The real screen domain instance is what the schema's `target` ref
-      // resolves against; the file's `@gears-frontx/frontx-template-shell`
-      // mock replaces the export, so take the actual one.
+      // resolves against; the file's `src/index` mock replaces the export, so take the actual one.
       for (const schema of [
         themeSchema,
         languageCodeSchema,
@@ -1013,15 +1065,15 @@ describe('bootstrapMFE (host-app)', () => {
       // the SDK's codes and `'xx'` is not, so unlike the case above this
       // dispatch passes the type system and reaches the handler: the guard in
       // the handler is what refuses it, and the plugin is never called.
-      const actual = await vi.importActual<typeof import('@gears-frontx/frontx-template-shell')>(
-        '@gears-frontx/frontx-template-shell',
+      const actual = await vi.importActual<typeof import('../../../src/index')>(
+        '../../../src/index',
       );
       const {
         themeSchema,
         languageCodeSchema,
         languageSchema,
         extensionScreenSchema,
-      } = await import('@gears-frontx/frontx-template-shell');
+      } = await import('../../../src/index');
       const { CHROME_ACTION_SCHEMAS, CHROME_SET_LANGUAGE } = await import('./chrome-actions');
       const setLanguage = vi.fn();
       const handlers = await chromeHandlersFor({ setLanguage });

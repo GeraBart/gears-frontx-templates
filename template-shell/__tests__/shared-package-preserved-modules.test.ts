@@ -3,7 +3,7 @@
  * (`framework`, `react`, `state`, `i18n`, `auth`) —
  * `ecosystem_package_build_output`: one ESM output file per source module,
  * internal imports kept as relative module imports, so the unit producer's
- * SCC unitization can split the package. Public entry points and `exports`
+ * entry-point chunking can split the package. Public entry points and `exports`
  * maps are unchanged; CJS output stays bundled.
  *
  * The plugin is exercised on a fixture tree; each package's real ESM

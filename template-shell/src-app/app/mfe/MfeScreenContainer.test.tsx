@@ -34,7 +34,7 @@ vi.mock('@gears-frontx/react', async (importOriginal) => ({
   }),
 }));
 
-vi.mock('@gears-frontx/frontx-template-shell', async (importOriginal) => ({
+vi.mock('../../../src/index', async (importOriginal) => ({
   ...(await importOriginal<Record<string, never>>()),
   FRONTX_SCREEN_DOMAIN,
   screenDomain: mockScreenDomain,

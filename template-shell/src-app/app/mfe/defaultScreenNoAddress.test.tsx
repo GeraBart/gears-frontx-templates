@@ -105,7 +105,7 @@ async function buildApp() {
   const mfe = await import('@gears-frontx/react/mfe');
   const { gtsPlugin } = await import('@gears-frontx/gts-plugin');
   const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema, FRONTX_MFE_ENTRY_MF } =
-    await import('@gears-frontx/frontx-template-shell');
+    await import('../../../src/index');
   // The application schemas `main.tsx` registers before it builds the app;
   // the screen extension type is the screen container's to register.
   gtsPlugin.registerSchema(themeSchema);

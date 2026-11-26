@@ -1,7 +1,7 @@
 /**
  * `BuildReport` — formats one line of the per-MFE build report for a
- * shared dep: unit mode, barrel mode, reachable
- * (unit) vs total (pack) bytes, and the fallback reason.
+ * shared dep: unit mode, barrel mode, emitted
+ * chunk bytes, and the fallback reason.
  */
 
 export class BuildReport {
@@ -31,7 +31,7 @@ export class BuildReport {
 
   /**
    * Warns that a CommonJS package is always delivered whole: importing
-   * any of its bindings pulls its whole pack — units can never narrow
+   * any of its bindings pulls the whole package — chunks can never narrow
    * it — so a fat CJS barrel (a `lodash`-style index) costs every
    * consumer the package's full bytes.
    */

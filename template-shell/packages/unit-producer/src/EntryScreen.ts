@@ -124,7 +124,7 @@ export class EntryScreen {
           runtimeRequires: [],
           failure: {
             specifier,
-            reason: `"${specifier}" is not declared by "${dep.name}" and cannot be located from ${dep.resolveDir} (${reached})`,
+            reason: `"${specifier}" is not declared by "${dep.name}" and cannot be located from the install location of "${dep.name}" (${reached})`,
           },
         };
       }

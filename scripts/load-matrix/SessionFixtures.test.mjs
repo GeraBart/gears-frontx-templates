@@ -35,6 +35,14 @@ describe('SessionFixtures — session-fixture selection', () => {
     expect(ids).toEqual(['ext.hello', 'ext.profile', 'ext.theme', 'ext.uikit', 'ext.blank']);
   });
 
+  it('excludes the boot-mounted default screen from both five-extension sessions', () => {
+    const extensions = [...EXTENSIONS, { id: 'ext.widgets', kind: 'visual', label: 'Widgets Host', domain: 'screen' }];
+    const sf = new SessionFixtures({ extensions, singleExtensionId: 'ext.blank', defaultExtensionId: 'ext.hello' });
+    const expected = ['ext.profile', 'ext.theme', 'ext.uikit', 'ext.blank', 'ext.widgets'];
+    expect(sf.select('shell+5-sequential').map((e) => e.id)).toEqual(expected);
+    expect(sf.select('shell+5-parallel-startup').map((e) => e.id)).toEqual(expected);
+  });
+
   it("selects shell+5 parallel startup (five visual startup extensions, loaded together right after bootstrap)", () => {
     const sf = new SessionFixtures({ extensions: EXTENSIONS, singleExtensionId: 'ext.blank' });
     const sel = sf.select('shell+5-parallel-startup');

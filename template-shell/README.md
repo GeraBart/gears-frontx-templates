@@ -105,7 +105,7 @@ code.
 # 1. Install dependencies
 npm install
 
-# 2. Build the solution packages (the library builds first, via prebuild:packages)
+# 2. Build the solution packages
 npm run build:packages
 
 # 3. Start everything — host + any MFE dev servers present
@@ -150,7 +150,7 @@ my-app/
 ├── packages/                # Solution packages: react, framework, state, i18n, studio, auth
 ├── public/                  # Static assets + generated-mfe-manifests.json
 ├── scripts/                 # dev-all, build-mfes, manifest generation, dist layout
-├── vite.config.ts           # Host Vite + Module Federation config
+├── vite.config.ts           # Host Vite config (`vitePluginShell`)
 └── .frontx/                 # Template provenance (managed by the frontx CLI)
 ```
 
@@ -180,15 +180,16 @@ per-test and hook timeout for every test lane; unset or empty keeps 30000 ms.
 
 ```text
 dist/
-├── index.html                    # the shell
+├── index.html                    # the shell, with its import map and boot preloads
 ├── assets/                       # the shell's modules and styles, hashed names
+├── shared/                       # the shell's shared units: <package>@<version>/<name>.<content hash>.js
 ├── generated-mfe-manifests.json  # every screen, addressed as mfe/<package>/
 └── mfe/<package>/                # one folder per screen package
     ├── remoteEntry.js
     ├── mf-manifest.json
     ├── assets/                   # hashed names
     ├── labels/                   # optional per-language menu labels
-    └── shared/                   # shared dependencies, names without a hash
+    └── shared/                   # the screen's shared units, content hash in the name
 ```
 
 A screen package's preview page, type bundles, build statistics and enriched
@@ -214,21 +215,28 @@ folder's `index.html` directly with no rewrite. If the host answers unknown
 paths with `index.html` (a single-page fallback), use it only for paths below
 the shell's folder and answer them with a redirect to the folder that keeps the
 query string, not with the file itself: the shell's relative addresses resolve
-against the requested path. Never answer a missing file under `assets/` or
-`mfe/` with `index.html`: a missing module has to stay a 404, or the browser
-reports a wrong content type in place of the missing file.
+against the requested path. Never answer a missing file under `assets/`,
+`shared/` or `mfe/` with `index.html`: a missing module has to stay a 404, or the browser
+reports a wrong content type in place of the missing file. Under `shared/` the
+rule is a contract: the shell's cache fill trusts the content hash a unit
+declares and computes none, so an unknown path there must return 404, never
+`index.html`.
 
 **Cache headers.** Only the hashed build output may be cached for long:
 
 | Files | `Cache-Control` |
 |-------|-----------------|
-| `assets/*` and `mfe/*/assets/*` (names carry a content hash) | `public, max-age=31536000, immutable` |
-| everything else: `index.html`, `generated-mfe-manifests.json`, `mfe/*/remoteEntry.js`, `mfe/*/mf-manifest.json`, `mfe/*/shared/*`, files copied from a `public/` folder | `no-cache` (revalidate on every request) |
+| `assets/*` and `mfe/*/assets/*`, and the files under `shared/` and `mfe/*/shared/` whose name ends in a content hash (`<name>.<64 hex characters>.js`) | `public, max-age=31536000, immutable` |
+| everything else: `index.html`, `generated-mfe-manifests.json`, `mfe/*/remoteEntry.js`, `mfe/*/mf-manifest.json`, a file under `shared/` or `mfe/*/shared/` without a hash in its name, files copied from a `public/` folder | `no-cache` (revalidate on every request) |
 
 A file without a hash in its name changes content under the same name on every
 release, so a long cache on it would keep serving the previous release. Keep
 files of your own out of a `public/assets/` folder, which would land under a
 path cached as hashed.
+
+**Protocol.** HTTP/2 is required for production: serve `dist/` over it. The
+shell boots from many small shared units requested in one parallel batch;
+HTTP/1.1 queues requests per connection, so boot is slower.
 
 **When a screen does not load.** A screen whose files fail to load shows an
 error state with a Retry in its place, and navigation and the other screens
@@ -300,8 +308,8 @@ files before anyone opens it, so the first open finds them in the cache. An
 ```
 
 **High-latency HTTP/1.1.** A browser opens a handful of connections per origin
-on HTTP/1.1, so a long list of shared files queues behind them. Serve the build
-over HTTP/2 where you can. Where you cannot, combine the levers: shrink the
+on HTTP/1.1, so a long list of shared files queues behind them. Production
+serves the build over HTTP/2; on an HTTP/1.1 connection, combine the levers: shrink the
 shared set with `include` so the shell has fewer files to fetch, and load the
 startup extensions early with `load_ext` so their files are fetched while the
 shell renders instead of when the user opens them.

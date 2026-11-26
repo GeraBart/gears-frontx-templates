@@ -3,7 +3,7 @@ import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
 import { useBridgeProperty } from '../../shared/useBridgeProperty';
 import { useHostDirection } from '../../shared/useHostDirection';
-import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '../../shellContract';
 import styles from './CurrentThemeScreen.module.css';
 
 /*

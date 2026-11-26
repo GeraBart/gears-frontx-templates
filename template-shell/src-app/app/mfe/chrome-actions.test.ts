@@ -21,7 +21,7 @@ import {
   popupDomain,
   screenDomain,
   sidebarDomain,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../../src/index';
 
 import {
   CHROME_ACTION_SCHEMAS,

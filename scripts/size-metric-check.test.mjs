@@ -98,9 +98,9 @@ async function writeFixtureDist(dir, { own = 'own-chunk-code', extraUnit = true 
  * (`.run({unitsBase, units, list})`) plus the shared chunk the boot
  * list names.
  */
-async function writeShellDist(dir, { unit = REACT_UNIT } = {}) {
+async function writeShellDist(dir, { unit = REACT_UNIT, unitsBase = './shared/' } = {}) {
   const boot = `x.run(${JSON.stringify({
-    unitsBase: './shared/',
+    unitsBase,
     units: [item(REACT_LOC, REACT_UNIT)],
     list: { units: [sha(REACT_UNIT)], ownChunks: [] },
   })});`;
@@ -196,6 +196,19 @@ const BASELINE = (over = {}) => ({
     f1: { evalBytes: 900, ownChunkBytes: 100, sharedBytes: 800, packages: { react: 400, fw: 400 } },
   },
   ...over,
+});
+
+describe('measurePage unitsBase shapes', () => {
+  for (const unitsBase of ['./shared/', '/shared/', '/app/shared/', 'https://cdn.example/x/shared/']) {
+    it(`finds the units directory for unitsBase ${unitsBase}`, async () => {
+      const root = await makeRoot();
+      const shell = path.join(root, 'shell-dist');
+      const boot = await writeShellDist(shell, { unitsBase });
+      const page = measurePage({ shellDist: shell, fixtures: [], rule: 'new' });
+      expect(page.items.get(SHELL_ITEM)).toBe(Buffer.byteLength(boot) + Buffer.byteLength('shell app chunk'));
+      expect(page.items.get('react')).toBe(Buffer.byteLength(REACT_UNIT));
+    });
+  }
 });
 
 describe('normalizeBaseline', () => {

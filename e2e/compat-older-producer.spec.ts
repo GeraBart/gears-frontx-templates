@@ -6,6 +6,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { menuItemTestId, BLANK_HOME_EXTENSION_ID, HELLO_WORLD_EXTENSION_ID } from './extensionIds.mjs';
 import { SHELL_PORT } from './ports.mjs';
+import { waitForMountedScreen } from './mountedScreen';
 
 /**
  * Compatibility: the current shell registers and loads a microfrontend built
@@ -46,7 +47,15 @@ let oldPackage: PackageConfig;
 
 test.beforeAll(async () => {
   server = createServer((req, res) => {
-    const path = normalize(decodeURIComponent(new URL(req.url ?? '/', OLD_ORIGIN).pathname)).replace(/^([/\\])+/, '');
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(new URL(req.url ?? '/', OLD_ORIGIN).pathname);
+    } catch {
+      res.writeHead(400, { 'access-control-allow-origin': '*' });
+      res.end('bad request');
+      return;
+    }
+    const path = normalize(decoded).replace(/^([/\\])+/, '');
     const file = join(FIXTURE, 'emitted', path);
     if (path.startsWith('..') || !existsSync(file) || !statSync(file).isFile()) {
       res.writeHead(404, { 'access-control-allow-origin': '*' });
@@ -107,21 +116,6 @@ const withOldBlank = (served: PackageConfig[]): PackageConfig[] => [
   oldPackage,
 ];
 
-async function waitForMountedScreen(page: Page, timeout = 60_000) {
-  await page.waitForFunction(
-    () => {
-      const hosts = document.querySelectorAll('[data-mfe-screen-container] [data-extension-id]');
-      for (const h of hosts) {
-        const root = (h as HTMLElement).shadowRoot ?? h;
-        if (root.childElementCount > 0) return true;
-      }
-      return false;
-    },
-    undefined,
-    { timeout },
-  );
-}
-
 async function boot(page: Page): Promise<string[]> {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -146,7 +140,7 @@ test('an older-producer microfrontend registers and mounts in the current shell,
   const errors = await boot(page);
 
   await page.getByTestId(menuItemTestId(BLANK_HOME_EXTENSION_ID)).click();
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, BLANK_HOME_EXTENSION_ID, 60_000);
 
   // The older build's whole-package entries came from its own origin.
   expect(oldRequests.some((p) => p.startsWith('/shared/'))).toBe(true);
@@ -180,11 +174,11 @@ test('a manifest that fails registration leaves the shell, the older build and a
 
   // Another microfrontend of the same aggregate mounts.
   await page.getByTestId(menuItemTestId(HELLO_WORLD_EXTENSION_ID)).click();
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, HELLO_WORLD_EXTENSION_ID, 60_000);
 
   // So does the older build.
   await page.getByTestId(menuItemTestId(BLANK_HOME_EXTENSION_ID)).click();
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, BLANK_HOME_EXTENSION_ID, 60_000);
 
   // The broken package is the only thing the shell disabled.
   await expect

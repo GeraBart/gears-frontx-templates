@@ -14,7 +14,7 @@ export default defineConfig({
     react(),
     // The host is hosted and loaded like a Module Federation host: the
     // plugin derives the shared set from this package's package.json
-    // (share-by-default, no curated list), applies the bundler settings
+    // (the shared set over the build graph, no curated list), applies the bundler settings
     // sharing requires (resolve.dedupe for the whole set, dev
     // optimizeDeps for its CJS packages and their used subpaths),
     // externalizes the set, emits content-addressed units and fetch

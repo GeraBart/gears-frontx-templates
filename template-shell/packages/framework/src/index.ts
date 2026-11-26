@@ -225,10 +225,7 @@ export type {
   StreamStatus,
 } from '@gears-frontx/api';
 // Protocol-specific mock plugins (RestMockPlugin, SseMockPlugin, MockEventSource)
-// live in the application template (@gears-frontx/frontx-template-shell) and are
-// NOT re-exported here: the template root is a
-// private package, so re-exporting it would make this entry point unresolvable
-// for standalone consumers (#601). Import them from the template package directly.
+// are not part of this package: they live in the shell's own `src/api/`.
 
 // From @gears-frontx/i18n
 export { i18nRegistry, I18nRegistryImpl, createI18nRegistry, Language, SUPPORTED_LANGUAGES, getLanguageMetadata, TextDirection, LanguageDisplayMode } from '@gears-frontx/i18n';

@@ -94,3 +94,9 @@ export { ProducerCodeHash } from './ProducerCodeHash';
 export { ProducerCacheFingerprint } from './ProducerCacheFingerprint';
 export { ReexportResolver } from './ReexportResolver';
 export { defaultProducerCacheDir } from './ProducerCacheDir';
+export { ExternalChain, FallbackReproduction } from './PluginBuildWiring';
+export type {
+  ExternalChainConfig,
+  ExternalOptionLike,
+  FallbackReproductionResult,
+} from './PluginBuildWiring';

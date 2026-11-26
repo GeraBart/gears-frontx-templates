@@ -24,7 +24,6 @@
   "devDependencies": {
     "@gears-frontx/api": "0.3.2",
     "@gears-frontx/framework": "0.2.0-alpha.21",
-    "@gears-frontx/frontx-template-shell": "0.1.0-alpha.9",
     "@gears-frontx/gts-plugin": "0.7.0",
     "@gears-frontx/i18n": "0.2.0-alpha.2",
     "@gears-frontx/mfes": "0.7.0",

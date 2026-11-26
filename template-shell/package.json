@@ -4,20 +4,7 @@
   "description": "Standard FrontX application template - target scaffold for template-side code relocation",
   "private": true,
   "type": "module",
-  "//": "overrides pins two things for unrelated reasons, both load-bearing: \"@gears-frontx/frontx-template-shell\": \"file:.\" is the self-link every template-mfe fixture's exact pin on this package resolves through (npm/cli#524's subject - see CONTRIBUTING.md); the symlink resolves correctly, though `npm ls` prints it as an \"invalid\" alias under packages/framework regardless of npm version (cosmetic, not a real resolution failure - confirmed on npm 11.7.0 through 11.14.0). \"nwsapi\": \"2.2.28\" pins jsdom's transitive CSS-matching engine past a performance regression: on 2.2.26 and 2.2.27, @testing-library/user-event's getComputedStyle-based pointer-events checks hang 25-30 s per click, enough to time out packages/studio's ThemeSelector.test.tsx (measured on 2.2.27 with the current studio sheet and with the earlier one, so the cause is not escaped selectors in STUDIO_CSS); 2.2.28 runs the same tests in milliseconds. jsdom's own range (^2.2.16) still allows 2.2.27, hence the pin. template-mfe/package.json carries the same pin for the same reason. \"reselect\": \"5.2.0\" dedupes reselect for the shared-unit build's version check (closure_enforcement.version_check fails when two versions of a shared package are reachable from the shared closure): recharts pins reselect exactly at 5.2.0 while @reduxjs/toolkit (^5.1.0) and @base-ui/utils (^5.2.0) accept it, so one copy at 5.2.0 satisfies every dependent instead of a 5.3.0 root copy plus a 5.2.0 copy nested under recharts. template-mfe/package.json carries the same override for the same reason.",
-  "main": "./dist-lib/index.cjs",
-  "module": "./dist-lib/index.js",
-  "types": "./dist-lib/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist-lib/index.d.ts",
-      "import": "./dist-lib/index.js",
-      "require": "./dist-lib/index.cjs"
-    }
-  },
-  "files": [
-    "dist-lib"
-  ],
+  "//": "overrides pins several things for unrelated reasons, all load-bearing: \"nwsapi\": \"2.2.28\" pins jsdom's transitive CSS-matching engine past a performance regression: on 2.2.26 and 2.2.27, @testing-library/user-event's getComputedStyle-based pointer-events checks hang 25-30 s per click, enough to time out packages/studio's ThemeSelector.test.tsx (measured on 2.2.27 with the current studio sheet and with the earlier one, so the cause is not escaped selectors in STUDIO_CSS); 2.2.28 runs the same tests in milliseconds. jsdom's own range (^2.2.16) still allows 2.2.27, hence the pin. template-mfe/package.json carries the same pin for the same reason. \"reselect\": \"5.2.0\" dedupes reselect for the shared-unit build's version check (closure_enforcement.version_check fails when two versions of a shared package are reachable from the shared closure): recharts pins reselect exactly at 5.2.0 while @reduxjs/toolkit (^5.1.0) and @base-ui/utils (^5.2.0) accept it, so one copy at 5.2.0 satisfies every dependent instead of a 5.3.0 root copy plus a 5.2.0 copy nested under recharts. template-mfe/package.json carries the same override for the same reason. \"@tanstack/store\": \"0.11.2\" dedupes @tanstack/store for the same version check: @tanstack/react-store 0.11.1 (reached through @gears-frontx/ui-kit's @tanstack/react-table) pins it exactly at 0.11.1 while @tanstack/react-store 0.11.2 (reached through @tanstack/react-router) pins 0.11.2, so without the override the shared closure reaches two versions. template-mfe/package.json carries the same override for the same reason.",
   "workspaces": [
     "packages/*",
     "src-app/mfe_packages/*",
@@ -33,7 +20,6 @@
     "verify:preflight": "npx tsx scripts/verify-preflight.ts",
     "preview": "vite preview",
     "cache:clear": "node -e \"require('node:fs').rmSync('node_modules/.cache/frontx-unit-producer',{recursive:true,force:true})\"",
-    "build:package": "tsup",
     "build:packages:auth": "npm run build --workspace=@gears-frontx/auth",
     "build:packages:state": "npm run build --workspace=@gears-frontx/state",
     "build:packages:i18n": "npm run build --workspace=@gears-frontx/i18n",
@@ -42,7 +28,6 @@
     "build:packages:studio": "npm run build --workspace=@gears-frontx/studio",
     "build:packages:unit-producer": "npm run build --workspace=@gears-frontx/unit-producer",
     "build:packages:vite-plugin-shell": "npm run build --workspace=@gears-frontx/vite-plugin-shell",
-    "prebuild:packages": "npm run build:package",
     "build:packages": "npm run build:packages:auth && npm run build:packages:state && npm run build:packages:i18n && npm run build:packages:framework && npm run build:packages:react && npm run build:packages:studio && npm run build:packages:unit-producer && npm run build:packages:vite-plugin-shell",
     "build": "npm run build:mfes && npm run generate:mfe-manifests && vite build && npm run layout:dist",
     "build:clean": "npm run cache:clear && npm run build",
@@ -78,7 +63,7 @@
     "@gears-frontx/gts-plugin": "0.7.0",
     "@gears-frontx/mfes": "0.7.0",
     "@gears-frontx/routing": "0.4.1",
-    "@gears-frontx/ui-kit": "0.5.0",
+    "@gears-frontx/ui-kit": "0.7.1",
     "@hookform/resolvers": "5.2.2",
     "@iconify/react": "6.0.2",
     "@radix-ui/react-slot": "1.3.3",
@@ -103,7 +88,6 @@
     "vite": "6.4.6"
   },
   "overrides": {
-    "@gears-frontx/frontx-template-shell": "file:.",
     "nwsapi": "2.2.28",
     "reselect": "5.2.0",
     "@tanstack/store": "0.11.2",

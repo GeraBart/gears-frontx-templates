@@ -2,12 +2,14 @@
  * `ExposeListComposer` — the MFE-side fetch-list assembly: for every
  * exposed entry, the shared specifiers its chunk closure reaches merge
  * into one fetch list (units, lazy records, patterns, opaque-import
- * entries deduplicated by location); every lazily loaded own chunk gets a
- * nested list holding only what it needs beyond its expose's list. The
- * result is the manifest's unit table `units` — every shared unit once —
- * and its `lists` record: one list per exposed module naming units by
- * content identity, and each lazy own chunk's list held once under its
- * location and named in the `lazy` array of every expose list.
+ * entries deduplicated by location); every lazy target — a lazily loaded
+ * own chunk, or a shared package the own code imports dynamically by bare
+ * specifier — gets a nested list holding only what it needs beyond its
+ * expose's list. The result is the manifest's unit table `units` — every
+ * shared unit once — and its `lists` record: one list per exposed module
+ * naming units by content identity, and each lazy target's list held once
+ * under its key (an own chunk's location, a shared package's bare
+ * specifier) and named in the `lazy` array of every expose list.
  */
 
 import type {
@@ -27,8 +29,10 @@ export interface ExposeListComposerOptions {
   /** Expose path (`'./lifecycle'`) → shared specifiers its chunks reach. */
   exposeSpecifiers: ReadonlyMap<string, readonly string[]>;
   /**
-   * Lazily loaded own chunk (asset-base-relative file name) → the
-   * shared specifiers its static closure reaches.
+   * Lazy target → the shared specifiers it reaches: a lazily loaded own
+   * chunk (asset-base-relative file name) → its static closure's; a bare
+   * specifier of a shared package the own code imports dynamically →
+   * that specifier.
    */
   lazyChunkSpecifiers: ReadonlyMap<string, readonly string[]>;
   /**
@@ -126,10 +130,11 @@ export class ExposeListComposer {
     };
     // @cpt-end:cpt-template-mfe-algo-mfe-fetch-list-assembly-compose:p1:inst-merge-expose-list
 
-    // Own lazy chunks get a nested list each — only what the chunk
-    // needs beyond every expose list (parent chain), keyed by the
-    // chunk's location relative to `publicPath`, the base an own chunk
-    // resolves against.
+    // Lazy targets get a nested list each — only what the target needs
+    // beyond every expose list (parent chain), keyed where the runtime
+    // looks it up: an own chunk by its location relative to
+    // `publicPath`, the base an own chunk resolves against; a shared
+    // package imported dynamically by bare specifier by that specifier.
     const exposeItems = new Map<string, Map<string, SharedDepUnit>>();
     const mergedByExpose = new Map<string, ReturnType<typeof mergeItems>>();
     for (const [expose, specs] of exposeSpecifiers) {
@@ -199,12 +204,15 @@ export class ExposeListComposer {
     // @cpt-end:cpt-template-mfe-algo-mfe-fetch-list-assembly-compose:p1:inst-lazy-lists
     const exposeLists: Record<string, ProducedFetchList> = {};
     for (const [expose, merged] of mergedByExpose) {
-      // The expose's own lazy chunks join its `lazy` record under the
-      // chunk's location relative to `publicPath` — the asset-base-relative
-      // file name the runtime resolves a `__frontx_lazy` call to.
+      // @cpt-begin:cpt-template-mfe-algo-mfe-fetch-list-assembly-compose:p1:inst-lazy-keys
+      // The lazy targets join the expose's `lazy` record under their
+      // keys — the asset-base-relative file name of an own chunk, the
+      // bare specifier of a shared package — the key the runtime resolves
+      // a `__frontx_lazy` call to.
       for (const [fileName, nested] of lazyChunkLists) {
         if (merged.lazy[fileName] === undefined) merged.lazy[fileName] = nested;
       }
+      // @cpt-end:cpt-template-mfe-algo-mfe-fetch-list-assembly-compose:p1:inst-lazy-keys
       const list: ProducedFetchList = {
         items: [...merged.items.values()].sort((a, b) =>
           a.location < b.location ? -1 : a.location > b.location ? 1 : 0

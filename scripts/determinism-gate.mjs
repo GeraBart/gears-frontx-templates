@@ -1,36 +1,30 @@
 #!/usr/bin/env node
 /**
- * `scripts/determinism-gate.mjs` — the two-tier determinism gate.
- * Verifies FrontX builds are deterministic in emitted bytes and lists across build environments
- * for the same producer version and inputs.
+ * `scripts/determinism-gate.mjs` — the two-tier determinism gate. Builds
+ * the shell and the MFE fixtures and compares the content hashes of every
+ * emitted file between two builds per comparison (see
+ * `scripts/verify/DeterminismGate.mjs`).
  *
  * Tiers:
- * - `--tier=fix` — cold vs warm, serial vs parallel, shell +
- *   `_blank-mfe`, hash comparison only.
+ * - `--tier=fix` — cold vs warm and serial vs parallel, on the shell and
+ *   the first MFE fixture.
  * - `--tier=full` — all four comparisons (cold vs warm, serial vs
- *   parallel, two checkout folders, npm install vs workspace link) on
- *   the shell and every MFE, hashing every shared file, every list
- *   and the build report.
+ *   parallel, two checkout folders, npm install vs workspace link) on the
+ *   shell and every MFE fixture.
  *
- * Each comparison is its own bounded 15-minute sub-step under
- * `perl -e 'alarm 900; exec @ARGV' <cmd>` (enforced by the shared
- * `StepRunner`), reported individually; a sub-step timeout is
- * reported, not retried in a loop. The script reuses
- * `scripts/verify-dev.mjs` for builds instead of its own build loop.
- * Writes `e2e/results/determinism-gate-<ISO>.json` with
- * per-step `{step, command, exitCode, durationMs, log}` and an
- * overall `status`. Exits non-zero on fail.
+ * Needs installed templates (`npm ci` in `template-shell` and
+ * `template-mfe`); it builds their packages itself. No browser is used.
+ * Every build is its own bounded 15-minute step (StepRunner), never
+ * retried. Writes `e2e/results/determinism-gate-<ISO>.json` with each
+ * comparison's verdict (and every differing file), and each step's
+ * `{step, command, exitCode, durationMs, log}`; logs go to
+ * `e2e/results/logs/`. Exits non-zero on fail, naming the first differing
+ * file and the stage.
  *
  * CLI: `node scripts/determinism-gate.mjs --tier=fix|full [--mfes=a,b]`
  *
- * Coordinator script — runs detached with stdin closed (`nohup node …
- * < /dev/null > <log> 2>&1 &`); every step inside it carries its own
- * 15-minute limit enforced by the StepRunner; the caller polls the
- * log and the JSON. Generic: discovers MFE fixtures by directory;
- * no package names in logic.
- *
- * It changes no package version and writes only `e2e/results/`. Unit tests
- * use tiny fake commands only, never a real run.
+ * It changes no package version and writes only build outputs, producer
+ * caches and `e2e/results/`.
  */
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -39,6 +33,7 @@ import process from 'node:process';
 import { StepRunner, DEFAULT_TIMEOUT_MS } from './verify/StepRunner.mjs';
 import { DeterminismGate } from './verify/DeterminismGate.mjs';
 import { MfeFixtureDiscovery } from './verify/MfeFixtureDiscovery.mjs';
+import { ClearUnitCache } from './verify/ClearUnitCache.mjs';
 
 const REPO_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..');
 const RESULTS_DIR = path.join(REPO_ROOT, 'e2e', 'results');
@@ -67,17 +62,14 @@ const isEntryPoint =
 
 if (isEntryPoint) {
   const stepRunner = new StepRunner({ logDir: LOGS_DIR, timeoutMs: DEFAULT_TIMEOUT_MS });
-  const pinnedMfes = opts.mfes;
-  const discovery = pinnedMfes !== undefined
-    ? { discover: () => pinnedMfes.map((name) => path.join(REPO_ROOT, 'template-mfe', 'src-app', 'mfe_packages', name)) }
-    : new MfeFixtureDiscovery({ root: REPO_ROOT });
-  const mfes = discovery.discover().map((p) => path.basename(p));
+  const mfes = opts.mfes ?? new MfeFixtureDiscovery({ root: REPO_ROOT }).discover().map((p) => path.basename(p)).sort();
   const gate = new DeterminismGate({
     tier: opts.tier,
     stepRunner,
     resultsDir: RESULTS_DIR,
     repoRoot: REPO_ROOT,
     mfes,
+    clearCache: (root) => new ClearUnitCache({ root, log: () => {} }).run(),
   });
   gate.run()
     .then(({ jsonPath, status }) => {

@@ -47,7 +47,7 @@
 # template's own code paths ([[systems.codebase]] under its block), so that
 # the @cpt- markers there trace to that template's own documents; cfs does
 # not report a registered code path that does not exist, so review checks
-# the paths. template-shell registers the unit producer and template-mfe the
+# the paths. template-shell registers the unit producer and the shell build plugin, and template-mfe the
 # microfrontend build plugin, whose features hold the documents their markers
 # trace to; template-design-guardrails registers none, because it has no
 # documents yet for a marker to trace to. FrontX ADR-0033
@@ -132,6 +132,10 @@ required = false
 
 [[systems.codebase]]
 path = "template-shell/packages/unit-producer/src"
+extensions = [".ts"]
+
+[[systems.codebase]]
+path = "template-shell/packages/vite-plugin-shell/src"
 extensions = [".ts"]
 
 # template-mfe: ids cpt-template-mfe-*.

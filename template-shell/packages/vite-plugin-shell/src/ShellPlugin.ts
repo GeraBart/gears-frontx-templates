@@ -9,8 +9,9 @@
  * and fetch lists into the host's own build output (`unitsDir`, default
  * `shared/`), generates an import map from every fetch list the producer returned
  * — inline in the emitted `index.html`, pointing only into the host's
- * own `dist`, with a `sha256-…` CSP source emitted and an optional
- * nonce — and emits a small fill chunk that, from the shell entry,
+ * own `dist`, with a `sha256-…` CSP source emitted and a nonce, when one
+ * is configured, on every tag it injects — and emits a small fill chunk
+ * that, from the shell entry,
  * refills the realm content-identity text cache from the boot list by
  * re-fetching the same URLs through the shared unit fetcher, so MFE loads
  * reuse those sources and mint their own instances.
@@ -28,6 +29,7 @@
  * inactive outside `vite build` — `vite dev` stays native.
  */
 
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +41,7 @@ import {
   ConsumerBarrelRewriteLedger,
   ConsumerBarrelRewriteTransform,
   AliasMap,
+  ExternalChain,
   BuildGraphSharing,
   type ProducedFetchList,
   SharedSetResolver,
@@ -75,16 +78,20 @@ export interface VitePluginShellOptions {
   exclude?: string[];
   /**
    * Directory under the build output dir where shared units and fetch
-   * lists are emitted, and the document-relative URL base the runtime
-   * resolves shared-file locations under. Default `'shared'`.
+   * lists are emitted; the import map and the boot preloads address them
+   * under `${base}${unitsDir}/`. A non-empty relative path strictly
+   * inside the output dir (no `.` or `..` segment, not absolute); any
+   * other value fails the build. Default `'shared'`.
    */
   unitsDir?: string;
   /** Per-package escape hatch from the consumer barrel rewrite. */
   barrelRewriteExclude?: string[];
   /**
-   * A nonce stamped on the inline `<script type="importmap">` tag so a
-   * nonce-based host CSP admits it. The build always emits the map's
-   * `sha256-…` CSP source token in its log for hash-based policies.
+   * A nonce stamped on every tag the plugin injects into the emitted HTML —
+   * the inline `<script type="importmap">`, the modulepreload links and the
+   * fill chunk's module script — so a nonce-based host CSP admits them.
+   * Unset, Vite's own `html.cspNonce` is used. The build always emits the
+   * map's `sha256-…` CSP source token in its log for hash-based policies.
    * The value must match the CSP nonce grammar `[A-Za-z0-9+/=_-]+`
    * (base64 + `_-`, no quotes or whitespace); any other character is
    * rejected so the attribute is never a vector for tag injection.
@@ -119,12 +126,12 @@ const FILL_DATA_MARKER = '__FRONTX_FILL_DATA__';
  * up front. The returned value is safe to interpolate into the
  * attribute without further escaping.
  */
-function assertNonce(nonce: string): string {
+function assertNonce(nonce: string, source: string): string {
   if (!/^[A-Za-z0-9+/=_-]+$/.test(nonce)) {
     throw new Error(
-      '[vite-plugin-shell] importMapNonce must match the CSP nonce ' +
+      `[vite-plugin-shell] ${source} must match the CSP nonce ` +
         'grammar [A-Za-z0-9+/=_-]+ (base64 + "_-"); received a value ' +
-        'with another character — refusing to write the import map tag.'
+        'with another character — refusing to write the injected tags.'
     );
   }
   return nonce;
@@ -160,14 +167,43 @@ const SCRIPT_TAG = /<script\b[^>]*\bsrc="([^"]+)"[^>]*>\s*<\/script>/gi;
 export class ShellPlugin {
   private readonly options: VitePluginShellOptions;
 
+  /** The validated `unitsDir`. */
+  private readonly unitsDir: string;
+
   constructor(options?: VitePluginShellOptions) {
     this.options = options ?? {};
+    this.unitsDir = ShellPlugin.validatedUnitsDir(this.options.unitsDir);
     if ('chunkGrouping' in (this.options as object)) {
       throw new Error(
         '[vite-plugin-shell] "chunkGrouping" is not an option — shared packages use ' +
           "the bundler's normal chunking with no merging; remove it."
       );
     }
+  }
+
+  /**
+   * `unitsDir` as the plugin uses it: the directory the producer writes into
+   * and the URL segment the runtime addresses, so it must name a place
+   * strictly inside the output dir.
+   */
+  private static validatedUnitsDir(value: string | undefined): string {
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-host-production:p1:inst-validate-units-dir
+    if (value === undefined) return 'shared';
+    const segments = typeof value === 'string' ? value.split(/[\\/]/) : [];
+    if (
+      typeof value !== 'string' ||
+      path.posix.isAbsolute(value) ||
+      path.win32.isAbsolute(value) ||
+      segments.some((s) => s === '' || s === '.' || s === '..')
+    ) {
+      throw new Error(
+        `[vite-plugin-shell] unitsDir must be a non-empty relative path ` +
+          `strictly inside the build output dir (no '.' or '..' segment, ` +
+          `not absolute); received ${JSON.stringify(value)}.`
+      );
+    }
+    return value;
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-host-production:p1:inst-validate-units-dir
   }
 
   /**
@@ -179,6 +215,29 @@ export class ShellPlugin {
       `ShellCacheFill.run(${JSON.stringify(FILL_DATA_MARKER)})` +
       `.catch(function(e){console.error(e);});\n`
     );
+  }
+
+  /**
+   * The emitted fill chunk's text with its data in place of the marker, or
+   * `undefined` when the text carries no marker. The data is inserted
+   * verbatim: a replacement string would give `$&` and `$$` in it their
+   * special meaning.
+   */
+  static injectFillData(source: string, data: unknown): string | undefined {
+    const marker = JSON.stringify(FILL_DATA_MARKER);
+    if (!source.includes(marker)) return undefined;
+    return source.replace(marker, () => JSON.stringify(data));
+  }
+
+  /**
+   * The fill chunk's file name for its final text: the emitted chunk's
+   * directory and a name carrying a hash of that text.
+   */
+  static fillFileNameOf(emittedFileName: string, source: string): string {
+    const hash = createHash('sha256').update(source, 'utf-8').digest('hex').slice(0, 16);
+    const dir = path.posix.dirname(emittedFileName);
+    const name = `frontx-shell-fill-${hash}.js`;
+    return dir === '.' ? name : `${dir}/${name}`;
   }
 
   /**
@@ -229,7 +288,9 @@ export class ShellPlugin {
     let fillRef = '';
     let fillFileName = '';
     let base = '/';
+    let cspNonce: string | undefined;
     const options = this.options;
+    const unitsDir = this.unitsDir;
     // Bare specifiers the host's own chunks import statically — the
     // boot list's roots and the native load's eager reach.
     const chunkImports = new Set<string>();
@@ -360,33 +421,30 @@ export class ShellPlugin {
             !aliasMap.rewrites(specifier) &&
             graph.sharesRoot(SharedSetResolver.extractRootPackageName(specifier)),
         });
-        const previous = config.build?.rollupOptions?.external;
-        const external = (
-          source: string,
-          importer: string | undefined,
-          isResolved: boolean
-        ): boolean => {
-          // What the fill runtime imports bundles natively into the fill
-          // chunk; every realm copy of the loader converges through
-          // Symbol.for.
-          if (importer !== undefined && isFillRuntimeModule(importer)) return false;
-          if (graph.external(source, importer)) return true;
-          if (Array.isArray(previous)) return previous.includes(source);
-          if (typeof previous === 'function') {
-            return previous(source, importer, isResolved) === true;
-          }
-          if (previous instanceof RegExp) return previous.test(source);
-          return false;
-        };
-        bundlerConfig.build = { rollupOptions: { external } };
         return bundlerConfig;
       },
 
+      // The shared set is externalized on the resolved config, wrapping
+      // whatever `external` the project configured: returned from
+      // `config`, the predicate would go through Vite's config merge,
+      // which replaces a string `external` and puts a function into an
+      // array, where Rollup never calls it.
       configResolved(config) {
         packageRoot = config.root;
         outDir = config.build?.outDir ?? 'dist';
         command = config.command;
         base = config.base;
+        cspNonce = config.html?.cspNonce;
+        const graph = sharing;
+        if (!active || graph === undefined) return;
+        // What the fill runtime imports bundles natively into the fill
+        // chunk; every realm copy of the loader converges through
+        // Symbol.for.
+        ExternalChain.install(
+          config,
+          (source, importer) => graph.external(source, importer),
+          (importer) => importer !== undefined && isFillRuntimeModule(importer)
+        );
       },
 
       resolveId(source) {
@@ -517,7 +575,6 @@ export class ShellPlugin {
         const distDir = path.isAbsolute(outDir)
           ? outDir
           : path.join(packageRoot, outDir);
-        const unitsDir = options.unitsDir ?? 'shared';
         const sharedDir = path.join(distDir, unitsDir);
 
         // ── HTML: the native module scripts stay as emitted ─────────
@@ -556,11 +613,18 @@ export class ShellPlugin {
           consumerSpecifiers: [
             ...new Set([...chunkImports, ...[...dynamicChunkImports].filter(isShared)]),
           ].sort(),
+          dynamicSpecifiers: [...dynamicChunkImports].filter(isShared),
           barrelLedger,
           hostChunks,
           stageTimer,
           cacheDir: options.cacheDir,
         }).produce((message) => this.error({ message }));
+        // The barrel fallback rewrites the host chunks' imports in place;
+        // the import map answers what the chunks import after it.
+        chunkImports.clear();
+        for (const chunk of hostChunks) {
+          for (const spec of chunk.imports) chunkImports.add(spec);
+        }
 
         for (const record of barrelLedger.packages()) {
           if (record.mode === 'not-needed') continue;
@@ -583,7 +647,15 @@ export class ShellPlugin {
         // boot list (so into the preloads and the fill): what only a
         // lazily reached chunk imports is produced and answered by the
         // import map, but never competes with the boot.
-        const bootGraph = new BootChunkGraph(bootGraphChunks);
+        // The bare imports come from `hostChunks` as the fallback left them,
+        // not from the arrays captured in `generateBundle`.
+        const hostImports = new Map(hostChunks.map((c) => [c.fileName, c.imports]));
+        const bootGraph = new BootChunkGraph(
+          bootGraphChunks.map((c) => ({
+            ...c,
+            bareImports: hostImports.get(c.fileName) ?? c.bareImports,
+          }))
+        );
         const composed = BootDataComposer.compose({
           produced: production?.produced ?? [],
           staticSpecifiers: bootGraph.bootSpecifiers().filter(isShared),
@@ -627,38 +699,47 @@ export class ShellPlugin {
           onError: (message) => this.error({ message }),
         });
 
+        // The units base is the URL the import map and the preloads use,
+        // so the fill requests the very URLs the boot fetched, whatever
+        // address the document itself was served under.
         const fillData = {
-          unitsBase: `./${unitsDir}/`,
+          unitsBase: `${ownBase}${unitsDir}/`,
           units: composed.bootUnits,
           list: composed.list,
         };
-        const fillPath = path.join(distDir, fillFileName);
-        const fillSource = fs.readFileSync(fillPath, 'utf-8');
-        const marker = JSON.stringify(FILL_DATA_MARKER);
-        if (!fillSource.includes(marker)) {
+        const emittedFillPath = path.join(distDir, fillFileName);
+        const fillSource = ShellPlugin.injectFillData(
+          fs.readFileSync(emittedFillPath, 'utf-8'),
+          fillData
+        );
+        if (fillSource === undefined) {
           this.error({
             message:
               `[vite-plugin-shell] emitted fill chunk '${fillFileName}' ` +
               'carries no fill-data marker.',
           });
         }
-        fs.writeFileSync(
-          fillPath,
-          fillSource.replace(marker, JSON.stringify(fillData)),
-          'utf-8'
-        );
+        // Rollup hashed the chunk before its data existed, so the file is
+        // renamed after the text it now carries: a release with different
+        // data gets a different name, which immutable caching needs.
+        fillFileName = ShellPlugin.fillFileNameOf(fillFileName, fillSource);
+        fs.rmSync(emittedFillPath);
+        fs.writeFileSync(path.join(distDir, fillFileName), fillSource, 'utf-8');
 
         // ── HTML: import map + modulepreloads before the first module
         // script; the fill chunk's module script after the last ──────
         if (html !== undefined) {
-          const nonce =
+          const nonceValue =
             options.importMapNonce !== undefined
-              ? ` nonce="${assertNonce(options.importMapNonce)}"`
-              : '';
+              ? assertNonce(options.importMapNonce, 'importMapNonce')
+              : cspNonce !== undefined
+                ? assertNonce(cspNonce, 'html.cspNonce')
+                : undefined;
+          const nonce = nonceValue !== undefined ? ` nonce="${nonceValue}"` : '';
           const preloads = composed.bootUnits
             .map(
               (item) =>
-                `<link rel="modulepreload" fetchpriority="high" href="${ownBase}${unitsDir}/${item.location}" />`
+                `<link rel="modulepreload" fetchpriority="high" href="${ownBase}${unitsDir}/${item.location}"${nonce} />`
             )
             .join('');
           const first = moduleScripts[0];
@@ -669,7 +750,7 @@ export class ShellPlugin {
             `<script type="importmap"${nonce}>${importMap.json}</script>` +
             preloads +
             html.slice(first.index, lastEnd) +
-            `<script type="module" fetchpriority="low" src="${ownBase}${fillFileName}"></script>` +
+            `<script type="module" fetchpriority="low" src="${ownBase}${fillFileName}"${nonce}></script>` +
             html.slice(lastEnd);
           fs.writeFileSync(htmlPath, ShellPlugin.prioritiseBoot(rewritten), 'utf-8');
         }
@@ -692,6 +773,7 @@ export class ShellPlugin {
           ShellBuildReport.compose({
             host: 'template-shell',
             sharedOutDir: unitsDir,
+            sharedDir,
             produced: production?.produced ?? [],
             stageTimings: stageTimer.toRecord(),
             cache: production?.cache,

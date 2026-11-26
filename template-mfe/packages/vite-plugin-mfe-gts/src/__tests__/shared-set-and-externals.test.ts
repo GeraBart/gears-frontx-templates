@@ -78,12 +78,18 @@ describe('config hook externals (real predicate)', () => {
   }
 
   function externalOf(root: string): (source: string) => boolean {
-    const plugin = mfeGtsPlugin();
-    const hook = plugin.config as (c: object) => {
-      build: { rollupOptions: { external: (s: string, i?: string, r?: boolean) => boolean } };
+    const plugin = mfeGtsPlugin({ root });
+    (plugin.config as (c: object, env: object) => unknown).call({}, {}, { command: 'build' });
+    const resolved = {
+      root,
+      command: 'build',
+      build: {
+        outDir: 'dist',
+        rollupOptions: {} as { external?: (s: string, i?: string, r?: boolean) => boolean },
+      },
     };
-    const result = hook.call({}, { root });
-    return (s) => result.build.rollupOptions.external(s, undefined, false);
+    (plugin.configResolved as (c: object) => void).call({}, resolved);
+    return (s) => resolved.build.rollupOptions.external!(s, undefined, false);
   }
 
   it('externalizes shared roots, their subpaths, and the closure', () => {

@@ -1,6 +1,6 @@
 import { createFrontX, presets, type FrontXApp } from '@gears-frontx/react';
 import { MfeHandlerMF, microfrontends, type MfeRegistry } from '@gears-frontx/react/mfe';
-import { FRONTX_MFE_ENTRY_MF } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_MFE_ENTRY_MF } from '../../src/index';
 import { gtsPlugin } from '@gears-frontx/gts-plugin';
 
 interface HostApp {

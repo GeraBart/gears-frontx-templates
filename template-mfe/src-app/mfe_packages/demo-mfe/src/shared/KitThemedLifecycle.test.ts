@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SHARED_PROPERTY_THEME } from '../shellContract';
 import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 import { KitThemedLifecycle } from './KitThemedLifecycle';
 

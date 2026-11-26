@@ -48,7 +48,7 @@ import { useLoadFailedText, type LoadFailedProps } from './loadFailedText';
 import { screenLoadFailure, useScreenLoadFailure } from './screenLoadFailure';
 import { addressScreenEntry, firstScreenId, type RegistryScreenExtension } from './defaultScreen';
 import { screenState } from './screenState';
-import { FRONTX_SCREEN_DOMAIN, screenDomain, popupDomain } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SCREEN_DOMAIN, screenDomain, popupDomain } from '../../../src/index';
 import { FRONTX_ACTION_MOUNT_EXT, FRONTX_ACTION_UNMOUNT_EXT } from '@gears-frontx/gts-plugin';
 import styles from './MfeScreenContainer.module.css';
 

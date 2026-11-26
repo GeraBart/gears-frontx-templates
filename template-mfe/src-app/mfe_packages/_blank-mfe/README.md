@@ -37,7 +37,7 @@ Edit `vite.config.ts`:
 - No federation `name` to change: `vitePluginMfeGts` derives it from `package.json`'s `name` (`@gears-frontx/your-mfe-name` → `yourMfeName`, camelCase)
 - Add your lifecycle modules to the `exposes` map passed to `vitePluginMfeGts({ exposes })` (or to `exposes` in `mfe.json`)
 - Update the port in the dev server config if needed
-- Keep `@gears-frontx/routing` declared in `package.json` — the scaffold keeps it in `devDependencies`, so it stays bundled per MFE; only `dependencies` (and non-optional `peerDependencies`) entries are emitted as shared units. If the MFE renders `<ExtensionRouter>` or calls `navigation()` (both from `@gears-frontx/routing-tanstack`), declare `@gears-frontx/routing-tanstack` under `dependencies` too
+- Keep `@gears-frontx/routing` declared in `package.json` at its exact pin. Every bare package the MFE's code imports is emitted as shared units, whichever `package.json` section declares it; list a package in `mfe.json`'s `share.exclude` to keep it in the MFE's own chunks instead. If the MFE renders `<ExtensionRouter>` or calls `navigation()` (both from `@gears-frontx/routing-tanstack`), declare `@gears-frontx/routing-tanstack` under `dependencies` too
 
 ### 3. Update GTS IDs in mfe.json
 
@@ -139,7 +139,8 @@ _blank-mfe/
 └── src/
     ├── lifecycle.tsx         # MFE lifecycle: shadow-root styling + screen render
     ├── init.ts               # MFE app composition (services, slices, effects)
-    ├── api/                  # MFE-local API service, endpoint types, mocks
+    ├── shellContract.ts      # Shell contract ids this MFE uses, declared locally (an MFE never imports shell code)
+    ├── api/                  # MFE-local API service, endpoint types, mocks, own RestMockPlugin copy
     ├── actions/              # Action creators
     ├── events/               # Event definitions
     ├── effects/              # Effect handlers
@@ -332,7 +333,7 @@ project - a shell plus this template - not from either template alone.
 ### Module Federation Errors
 
 If you see "Shared module not available" errors:
-- Ensure every shared package is declared in `package.json` — sharing is derived from `dependencies` and non-optional `peerDependencies`, and `@gears-frontx/routing` is declared (every MFE declares it); a package that must not be shared goes into `share.exclude` in `mfe.json`, never an externals list
+- Ensure every package the MFE's code imports is declared in `package.json` and `@gears-frontx/routing` is declared at its exact pin (every MFE declares it). Every bare package the code imports is emitted as shared units, whichever `package.json` section declares it; a package that must not be shared goes into `share.exclude` in `mfe.json`, never an externals list
 - Verify the host app is configured to consume your remote
 
 ### Type Errors

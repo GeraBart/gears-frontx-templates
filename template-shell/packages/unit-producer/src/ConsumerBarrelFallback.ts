@@ -5,11 +5,14 @@
  * import at `<pkg>/<module-path>`; it stands only when a produced unit
  * answers that module with the defining module's own export names:
  *
- *  - the package was delivered (`units` mode — split into SCC units);
+ *  - the package was delivered as more than one unit;
  *  - some unit owns the module path;
- *  - when that unit is the package's pack (the whole package is one
- *    strongly connected component), the pack exports the barrel's names,
- *    so every moved binding must keep its barrel name.
+ *  - when that unit is the package's root unit (the one answering the
+ *    package's own specifier), it exports the barrel's names, so every
+ *    moved binding must keep its barrel name;
+ *  - the unit answering the rewritten specifier exports every name the
+ *    consumer imports from it (a nested barrel's entry chunk answers
+ *    the paths of the modules it holds but exports only its own names).
  *
  * Anything else is unanswered, and the emitted consumer code is turned
  * back to the barrel specifier and barrel names ({@link revert}).
@@ -28,7 +31,12 @@ export interface ConsumerBarrelProducedPackage {
   unitMode: string;
   packLocation: string;
   fallbackReason?: string;
-  units: ReadonlyArray<{ location: string; modulePaths: readonly string[] }>;
+  units: ReadonlyArray<{
+    location: string;
+    modulePaths: readonly string[];
+    /** The names the unit exports; absent when not statically known. */
+    exports?: readonly string[];
+  }>;
   /** Entry specifier (`pkg`, `pkg/sub`) → the unit answering it. */
   entryUnits?: Readonly<Record<string, string>>;
 }
@@ -53,7 +61,8 @@ export class ConsumerBarrelFallback {
         name,
         target.slice(name.length + 1),
         renamed,
-        ledger.isEntryTarget(target) ? target : undefined
+        ledger.isEntryTarget(target) ? target : undefined,
+        [...ledger.bindingsOf(target).keys()]
       );
       if (reason !== undefined) unanswered.set(target, reason);
     }
@@ -66,19 +75,31 @@ export class ConsumerBarrelFallback {
    * binding's defining name differs from its barrel name.
    * `entrySpecifier`: the rewrite lands on that entry specifier of the
    * package (a re-export chain ending at an evaluated barrel), answered
-   * by the unit delivering the entry.
+   * by the unit delivering the entry. `importedNames`: the names the
+   * consumer imports from the rewritten specifier — each must be
+   * exported by the unit answering it.
    */
   static whyUnanswered(
     pkg: ConsumerBarrelProducedPackage | undefined,
     name: string,
     modulePath: string,
     renamed: boolean,
-    entrySpecifier?: string
+    entrySpecifier?: string,
+    importedNames: readonly string[] = []
   ): string | undefined {
     if (pkg === undefined) return `"${name}" is not delivered as a shared package`;
+    const target = entrySpecifier ?? `${name}/${modulePath}`;
+    const missingExport = (): string | undefined => {
+      const location = pkg.entryUnits?.[target];
+      return ConsumerBarrelFallback.missingExport(
+        pkg.units.find((u) => u.location === location)?.exports,
+        importedNames,
+        target
+      );
+    };
     if (entrySpecifier !== undefined) {
       return pkg.entryUnits?.[entrySpecifier] !== undefined
-        ? undefined
+        ? missingExport()
         : `no unit of "${name}" delivers "${entrySpecifier}"`;
     }
     if (pkg.unitMode !== 'units') {
@@ -91,11 +112,28 @@ export class ConsumerBarrelFallback {
     if (unit === undefined) return `no unit of "${name}" owns ${modulePath}`;
     if (unit.location === pkg.packLocation && renamed) {
       return (
-        `"${name}" is one strongly connected component; its pack ` +
-        `exports the barrel's names`
+        `${modulePath} is held by the root unit of "${name}", which ` +
+          `exports the barrel's names`
       );
     }
-    return undefined;
+    return missingExport();
+  }
+
+  /**
+   * Why the unit answering `target`, exporting `exported`, cannot bind
+   * `importedNames` — `undefined` when it exports each of them or its
+   * surface is not statically known (`exported` absent).
+   */
+  static missingExport(
+    exported: readonly string[] | undefined,
+    importedNames: readonly string[],
+    target: string
+  ): string | undefined {
+    if (exported === undefined) return undefined;
+    const missing = importedNames.find((n) => !exported.includes(n));
+    return missing === undefined
+      ? undefined
+      : `the unit answering "${target}" does not export "${missing}"`;
   }
 
   /**

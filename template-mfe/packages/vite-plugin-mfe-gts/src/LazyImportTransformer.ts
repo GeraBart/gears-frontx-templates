@@ -8,8 +8,8 @@
  * own file. A literal import and a statically bounded pattern import (a
  * template literal with a fixed prefix or suffix) both reach the ABI, the
  * pattern call passing its runtime-computed path; a fully opaque
- * `import(expr)` stays native and is surfaced through the caller's
- * `onOpaque` callback.
+ * `import(expr)` fails the build, or stays native where the caller asks
+ * for `opaque: 'leave'` and reads it through `opaqueImports`.
  */
 
 /** ESTree node shape as produced by Rollup's `this.parse()`. */
@@ -179,9 +179,9 @@ export class LazyImportTransformer {
    * Runs the transform on one compiled chunk: the rewritten code and the
    * transform count, or `null` when nothing changed. `parse` is the
    * caller-provided Rollup `parse`. A non-statically-resolvable
-   * `import(expr)` is never a build error: it stays native and is
-   * surfaced through `onOpaque` with its file position and expression
-     * text.
+   * `import(expr)` fails the build with `opaque: 'error'` (the default);
+   * with `opaque: 'leave'` it stays native and
+   * {@link LazyImportTransformer.opaqueImports} reports it.
    */
   static transformChunk(
     code: string,
@@ -189,11 +189,7 @@ export class LazyImportTransformer {
     error: (message: string, pos: number) => never,
     chunkFileName: string,
     leaveAlone?: (specifier: string) => boolean,
-    onOpaque?: (entry: {
-      file: string;
-      line: number;
-      expression: string;
-    }) => void
+    opaque: 'error' | 'leave' = 'error'
   ): { code: string; count: number } | null {
     // Fast skip: no `import` followed by a parenthesis or a comment.
     if (!/\bimport\s*(?:\(|\/[*/])/.test(code)) return null;
@@ -209,24 +205,51 @@ export class LazyImportTransformer {
     const transformer = new LazyImportTransformer(code, leaveAlone);
     transformer.visit(ast);
 
-    for (const { node } of transformer.nonStaticNodes()) {
-      const line = code.slice(0, node.start).split('\n').length;
-      const expression = code.slice(node.start, node.end);
-      onOpaque?.({ file: chunkFileName, line, expression });
-      if (onOpaque === undefined) {
-        error(
-          `[vite-plugin-mfe-gts] Non-statically-resolvable dynamic import ` +
-            `in compiled chunk '${chunkFileName}'. Lazy-import paths MUST be ` +
-            `string literals, constant template literals, or constant ` +
-            `string concatenation so the MFE's runtime can resolve them ` +
-            `through the per-load blob URL chain.`,
-          node.start
-        );
-      }
+    const first = transformer.nonStaticNodes()[0];
+    if (opaque === 'error' && first !== undefined) {
+      error(
+        `[vite-plugin-mfe-gts] Non-statically-resolvable dynamic import ` +
+          `in compiled chunk '${chunkFileName}'. Lazy-import paths MUST be ` +
+          `string literals, constant template literals, or constant ` +
+          `string concatenation so the MFE's runtime can resolve them ` +
+          `through the per-load blob URL chain.`,
+        first.node.start
+      );
     }
 
     if (transformer.count() === 0) return null;
     return { code: transformer.apply(code), count: transformer.count() };
+  }
+
+  /**
+   * Every fully opaque `import(expr)` left in `code` — neither a literal,
+   * a constant expression nor a statically bounded pattern, and not
+   * marked `@vite-ignore` — with its line and expression text. Reads only:
+   * nothing is rewritten. `code` is the plugin's own emitted chunk, so a
+   * parse failure fails the build instead of reporting nothing.
+   */
+  static opaqueImports(
+    code: string,
+    parse: (input: string) => unknown,
+    file: string
+  ): Array<{ file: string; line: number; expression: string }> {
+    if (!/\bimport\s*(?:\(|\/[*/])/.test(code)) return [];
+    let ast: unknown;
+    try {
+      ast = parse(code);
+    } catch (cause) {
+      throw new Error(
+        `[vite-plugin-mfe-gts] cannot parse emitted chunk '${file}' to find its ` +
+          `opaque dynamic imports: ${cause instanceof Error ? cause.message : String(cause)}`
+      );
+    }
+    const transformer = new LazyImportTransformer(code);
+    transformer.visit(ast);
+    return transformer.nonStaticNodes().map(({ node }) => ({
+      file,
+      line: code.slice(0, node.start).split('\n').length,
+      expression: code.slice(node.start, node.end),
+    }));
   }
 
   /**

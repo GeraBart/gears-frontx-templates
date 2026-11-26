@@ -128,6 +128,7 @@ export class PackageEntrySet {
     const deferredEntries: ExcludedEntry[] = [];
     const runtimeRequires: RuntimeRequire[] = [];
 
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-compute-entry-set
     const subpaths = PackageEntrySet.exportsSubpaths(dep.pkg);
     if (subpaths.length === 0) {
       const file = await PackageEntrySet.fileResolver.resolve(
@@ -175,6 +176,7 @@ export class PackageEntrySet {
       }
     }
 
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-split-barrel-members
     // Every module a public barrel re-exports becomes an entry —
     // when the package's sideEffects semantics allow the member to
     // stand alone. An unsplittable barrel stays one entry and is
@@ -190,11 +192,13 @@ export class PackageEntrySet {
               'barrel is not a pure re-export list — its own side effects must be evaluated',
           };
       if (!splitAllowed.ok) {
+        // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-keep-whole-entry
         barrelNotes.push({
           entry: specifier,
           reason: splitAllowed.reason,
           fix: 'declare "sideEffects" (false or a glob list) in the package\'s package.json',
         });
+        // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-keep-whole-entry
         continue;
       }
       const members = barrel.members;
@@ -205,6 +209,8 @@ export class PackageEntrySet {
         if (!entries.has(spec) && PackageEntrySet.isModuleEntry(memberFile)) entries.set(spec, memberFile);
       }
     }
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-split-barrel-members
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-compute-entry-set
 
     // Entries resolve under production browser runtime
     // conditions alone (the resolver's conditions never include

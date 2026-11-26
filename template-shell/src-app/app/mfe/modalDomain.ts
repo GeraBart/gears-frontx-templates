@@ -34,7 +34,7 @@ import {
   extensionModalSchema,
   popupDomain,
   type ExtensionPresentation,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../../src/index';
 import { clearAutomaticReload } from './automaticReload';
 import {
   buildSignInUnmountChain,

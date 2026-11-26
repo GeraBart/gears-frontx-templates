@@ -43,7 +43,7 @@ import {
   FRONTX_SHARED_PROPERTY_LANGUAGE,
   FRONTX_SHARED_PROPERTY_THEME,
   screenDomain,
-} from '@gears-frontx/frontx-template-shell';
+} from './shellContract';
 import { bootstrapWidgetsRuntime } from './lifecycle-widgets-host';
 
 const WIDGETS_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';

@@ -50,33 +50,35 @@ export interface ShellBuildReportDocument {
 export class ShellBuildReport {
   static compose(params: {
     host: string;
+    /** The units directory as the report names it (`unitsDir`). */
     sharedOutDir: string;
+    /** The absolute directory the units were written to. */
+    sharedDir: string;
     produced: readonly ProducedSharedPackage[];
     stageTimings: BuildStageTimings;
     cache?: PackageCacheSummary;
     sharedSet?: SharedSetSummaryDocument;
   }): ShellBuildReportDocument {
-    const sharedDir = path.join(params.sharedOutDir);
-    void sharedDir; // sharedOutDir is reported as a string; no fs walk needed here.
     const packages = params.produced.map((p): ShellBuildReportPackage => {
       const locations = new Set<string>();
       for (const list of Object.values(p.lists)) {
         for (const item of list.items) locations.add(item.location);
       }
       let reachableBytes = 0;
-      // The host report carries the produced bytes the producer
-      // already computed (chunks + lists) — the host does not rewalk
-      // the shared dir for the report; the produced record holds the
-      // bytes the size gate and the determinism gate both read.
+      // Each listed unit's size, read from the directory it was written
+      // to, so the report does not depend on the working directory.
       for (const location of locations) {
+        const file = path.join(params.sharedDir, location);
         try {
-          reachableBytes += fs.statSync(
-            path.join(params.sharedOutDir, location)
-          ).size;
-        } catch {
-          // A listed chunk missing from the shared dir surfaces as a
-          // build error elsewhere; the report never silently masks
-          // it, but it also does not throw on a missing file.
+          reachableBytes += fs.statSync(file).size;
+        } catch (cause) {
+          // The producer wrote every listed unit moments ago: one that is
+          // missing means the output was damaged, and the report must not
+          // describe a build that cannot boot.
+          throw new Error(
+            `[vite-plugin-shell] listed unit '${location}' of '${p.name}@${p.version}' ` +
+              `is missing from '${file}' (${(cause as Error).message})`
+          );
         }
       }
       return {

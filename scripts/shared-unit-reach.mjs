@@ -16,6 +16,44 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+/** The path of a URL or URL-shaped base: origin, query and hash removed. */
+function urlPath(url) {
+  return String(url)
+    .replace(/^(?:[a-z][a-z\d+.-]*:)?\/\/[^/]*/i, '')
+    .replace(/[?#].*$/, '');
+}
+
+/**
+ * The on-disk units directory (relative to the dist) a shell's declared
+ * `unitsBase` names: the base is `${ownBase}${unitsDir}/` — `./shared/`,
+ * `/shared/`, `/app/shared/`, `https://cdn/x/shared/` — so the directory
+ * is its trailing segment.
+ *
+ * @param {string | undefined} unitsBase
+ * @returns {string}
+ */
+export function unitsDirOf(unitsBase) {
+  if (typeof unitsBase !== 'string') return 'shared';
+  const segments = urlPath(unitsBase).split('/').filter((seg) => seg !== '' && seg !== '.');
+  return segments[segments.length - 1] ?? 'shared';
+}
+
+/**
+ * The dist-relative path of a URL the built shell emits (an import-map
+ * entry): a URL under the units directory resolves through that
+ * directory whatever base prefixes it; any other URL is read relative to
+ * the dist.
+ *
+ * @param {string} url
+ * @param {string} unitsDir
+ * @returns {string}
+ */
+export function distPathOfUrl(url, unitsDir) {
+  const pathname = urlPath(url);
+  const at = `/${pathname}`.indexOf(`/${unitsDir}/`);
+  return at === -1 ? pathname.replace(/^\.?\//, '') : `/${pathname}`.slice(at + 1);
+}
+
 /**
  * Shared-asset base directory for a dist: `metaData.sharedBase`, else
  * `metaData.publicPath`, resolved against the dist dir when relative.

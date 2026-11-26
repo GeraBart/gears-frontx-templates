@@ -15,7 +15,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import {
   FRONTX_SHARED_PROPERTY_LANGUAGE,
   FRONTX_SHARED_PROPERTY_THEME,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../shellContract';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';
 import { describe, expect, it, vi } from 'vitest';

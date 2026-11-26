@@ -6,7 +6,7 @@ import {
   screenLabelsSchema,
   themeSchema,
   screenDomain,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../../src/index';
 import { labelDictionaryUrl, MenuLabels } from './menuLabels';
 import { gtsPlugin } from '@gears-frontx/gts-plugin';
 

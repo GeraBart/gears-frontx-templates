@@ -360,8 +360,8 @@ export interface FrontXAppRuntimeExtensions {
  * ```
  *
  * With that declaration in scope, `app.mfeRegistry` is typed as `MfeRegistry`
- * (no longer `MfeRegistry | undefined`), so call sites no longer need an
- * `if (!app.mfeRegistry)` guard or a `app.mfeRegistry!` assertion:
+ * rather than `MfeRegistry | undefined`, so call sites need no
+ * `if (!app.mfeRegistry)` guard or `app.mfeRegistry!` assertion:
  *
  * ```typescript
  * app.mfeRegistry.registerDomain(myDomain, new MyDomainFactory());

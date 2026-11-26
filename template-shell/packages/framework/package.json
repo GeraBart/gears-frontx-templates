@@ -46,7 +46,6 @@
   },
   "devDependencies": {
     "@gears-frontx/auth": "*",
-    "@gears-frontx/frontx-template-shell": "file:../..",
     "@gears-frontx/mfes": "0.7.0",
     "@gears-frontx/routing": "0.4.1",
     "@reduxjs/toolkit": "2.12.0",

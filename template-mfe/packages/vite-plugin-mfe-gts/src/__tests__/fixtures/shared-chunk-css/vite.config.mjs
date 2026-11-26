@@ -31,7 +31,7 @@
 // `sonner` and `fixture-shared-kit` are stand-in packages the test writes
 // into this fixture's own node_modules before building: `sonner/dist/styles.css`
 // is a node_modules stylesheet the fixture's code imports itself, and
-// `fixture-shared-kit` a shared package (share-by-default) whose component
+// `fixture-shared-kit` a shared package (in the shared set) whose component
 // modules import their own stylesheets.
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -172,6 +172,7 @@ const importEditor = importEditMode
 const mfePlugins = vitePluginMfeGts({
   root,
   exposes: pickedExposes,
+  cacheDir: process.env.FIXTURE_CACHE_DIR,
   // The fixture's entities are not GTS-typed: the type system accepts them.
   typeSystem: { registerSchema() {}, register() {} },
 });

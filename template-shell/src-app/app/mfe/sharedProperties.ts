@@ -23,7 +23,7 @@ import type { MfeRegistry } from '@gears-frontx/react/mfe';
 import {
   FRONTX_SHARED_PROPERTY_LANGUAGE,
   FRONTX_SHARED_PROPERTY_THEME,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../../src/index';
 
 /**
  * Publishes the app's theme and language to `registry` as shared properties:

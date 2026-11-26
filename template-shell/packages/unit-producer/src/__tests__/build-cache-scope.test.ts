@@ -1,7 +1,7 @@
 /**
  * Scenario: the shared build cache under parallel builds
  * Several builds sharing one
- * cache dir run concurrently (phase-26 atomic writes); a cache-served
+ * cache dir run concurrently (atomic writes); a cache-served
  * build emits files identical to a cold build; parallel per-package
  * processing emits the same bytes as serial; the cache holds the
  * entry-set result so a hit skips entry-set computation; per-package

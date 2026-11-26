@@ -44,7 +44,19 @@ const FIXTURES = [
   '@unit-format-fixture/subpath-import',
 ];
 
-const CONSUMER_SPECIFIERS = ['@unit-format-fixture/subpath-import/feature'];
+/** Every fixture is requested, so every fixture's chunks are emitted and compared. */
+const CONSUMER_SPECIFIERS = [
+  ...FIXTURES,
+  '@unit-format-fixture/barrel-package/chain',
+  '@unit-format-fixture/barrel-package/ns',
+  '@unit-format-fixture/subpath-import/feature',
+];
+
+/** A consumer using a different subset of the same packages. */
+const SUBSET_SPECIFIERS = [
+  '@unit-format-fixture/barrel-package/chain',
+  '@unit-format-fixture/subpath-import/feature',
+];
 
 const require = createRequire(import.meta.url);
 
@@ -234,6 +246,85 @@ describe('UnitProducer byte identity', () => {
     const checks = new UnitOutputChecks();
     expect(checks.checkAll([checked(outA), checked(outB)])).toEqual([]);
     expect(checks.checkConsumerIndependence([outA, outB])).toEqual([]);
+  }, 240000);
+
+  it('every fixture is emitted under the requested consumer set', async () => {
+    const packageRoot = makeFixtureRoot(tmpRoot('all'), { mode: 'copies' });
+    const out = join(packageRoot, 'out');
+    expect(await produce(packageRoot, out)).toEqual([]);
+    for (const name of FIXTURES) {
+      const dir = join(out, `${name}@1.0.0`);
+      expect(existsSync(dir), name).toBe(true);
+      expect(listFiles(dir).length, name).toBeGreaterThan(0);
+    }
+  }, 240000);
+
+  it('a consumer using a subset of the packages gets the same bytes for every chunk it emits', async () => {
+    const packageRoot = makeFixtureRoot(tmpRoot('subset'), { mode: 'copies' });
+    const outAll = join(packageRoot, 'out-all');
+    const outSubset = join(packageRoot, 'out-subset');
+    expect(await produce(packageRoot, outAll)).toEqual([]);
+    expect(
+      await produce(packageRoot, outSubset, { consumerSpecifiers: SUBSET_SPECIFIERS })
+    ).toEqual([]);
+    const subsetFiles = listFiles(outSubset).map((f) => relative(outSubset, f));
+    expect(subsetFiles.length).toBeGreaterThan(0);
+    for (const rel of subsetFiles) {
+      expect(existsSync(join(outAll, rel)), rel).toBe(true);
+      expect(readFileSync(join(outSubset, rel), 'utf-8'), rel).toBe(
+        readFileSync(join(outAll, rel), 'utf-8')
+      );
+    }
+    expect(listFiles(outAll).length).toBeGreaterThan(subsetFiles.length);
+  }, 240000);
+
+  it('a package built next to two versions of its dependency comes out byte-identical', async () => {
+    const rootFor = (depVersion: string, depBody: string): string => {
+      const root = tmpRoot(`dep-${depVersion}`);
+      const write = (rel: string, text: string): void => {
+        mkdirSync(dirname(join(root, rel)), { recursive: true });
+        writeFileSync(join(root, rel), text);
+      };
+      write(
+        'package.json',
+        JSON.stringify({ name: 'host', version: '0.0.0', dependencies: { user: '1.0.0' } })
+      );
+      write(
+        'node_modules/user/package.json',
+        JSON.stringify({
+          name: 'user',
+          version: '1.0.0',
+          type: 'module',
+          exports: { '.': './index.js' },
+          dependencies: { dep: '*' },
+        })
+      );
+      write('node_modules/user/index.js', "import { value } from 'dep';\nexport const use = () => value();\n");
+      write(
+        'node_modules/dep/package.json',
+        JSON.stringify({ name: 'dep', version: depVersion, type: 'module', exports: { '.': './index.js' } })
+      );
+      write('node_modules/dep/index.js', depBody);
+      return root;
+    };
+    const one = rootFor('1.0.0', "export const value = () => 'one';\n");
+    const two = rootFor('2.0.0', "export const value = () => 'two, a longer body';\n");
+    const outOne = join(one, 'out');
+    const outTwo = join(two, 'out');
+    expect(await produce(one, outOne, { consumerSpecifiers: ['user'] })).toEqual([]);
+    expect(await produce(two, outTwo, { consumerSpecifiers: ['user'] })).toEqual([]);
+    const filesOf = (dir: string): string[] =>
+      listFiles(dir).map((f) => relative(dir, f)).sort();
+    const userOne = filesOf(join(outOne, 'user@1.0.0'));
+    expect(userOne.length).toBeGreaterThan(0);
+    expect(filesOf(join(outTwo, 'user@1.0.0'))).toEqual(userOne);
+    for (const rel of userOne) {
+      expect(readFileSync(join(outTwo, 'user@1.0.0', rel), 'utf-8')).toBe(
+        readFileSync(join(outOne, 'user@1.0.0', rel), 'utf-8')
+      );
+    }
+    expect(existsSync(join(outOne, 'dep@1.0.0'))).toBe(true);
+    expect(existsSync(join(outTwo, 'dep@2.0.0'))).toBe(true);
   }, 240000);
 
   it('the same package@version built through a shell root and an MFE root is byte-identical', async () => {

@@ -3,7 +3,7 @@
  * Pins the shared-dependency mechanism in this package's `vite.config.ts`.
  *
  * Since `@gears-frontx/vite-plugin-mfe-gts` derives the shared set from the
- * package's own declared dependencies (share-by-default), a scaffold config
+ * package's own declared dependencies (the shared set over the build graph), a scaffold config
  * declares no externals or shared list at all: a curated `sharedDeps` array
  * or `rollupOptions.external` list would silently fight the plugin's
  * resolution. The check is static (no real build): the config must call

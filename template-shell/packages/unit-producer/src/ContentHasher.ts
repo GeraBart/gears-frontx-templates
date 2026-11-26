@@ -1,6 +1,6 @@
 /**
- * `ContentHasher` — SHA-256 content identity of emitted unit, pack and
- * graph files.
+ * `ContentHasher` — SHA-256 content identity of emitted chunk files and
+ * the build-cache inputs.
  */
 
 import { createHash } from 'node:crypto';

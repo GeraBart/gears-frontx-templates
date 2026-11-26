@@ -1,4 +1,4 @@
-import { test, expect, type Page, type CDPSession } from '@playwright/test';
+import { test, expect, type CDPSession } from '@playwright/test';
 import { FillRequestWatcher } from '../scripts/load-matrix/FillRequestWatcher.mjs';
 import {
   BLANK_HOME_EXTENSION_ID,
@@ -7,6 +7,8 @@ import {
   menuItemTestId,
 } from './extensionIds.mjs';
 import { SHELL_PORT } from './ports.mjs';
+import { waitForMountedScreen } from './mountedScreen';
+import { roundsOf, type Req } from './roundsOf';
 
 const scheme = process.env.E2E_PROTOCOL === 'h2' ? 'https' : 'http';
 
@@ -33,7 +35,11 @@ const scheme = process.env.E2E_PROTOCOL === 'h2' ? 'https' : 'http';
  * fails on HTTP/1.1: preloads beyond the ~6-connection cap queue
  * behind earlier ones, so a round-2 start time after a round-1 end
  * is the connection staggering, not the import waterfall — every
- * preloaded boot item would intermittently count as round 2.
+ * preloaded boot item would intermittently count as round 2. Only a
+ * request issued by already-loaded code (the shell entry, the MFE
+ * runtime) is placed by timing — after the slice requests that had
+ * finished before it was sent, on the same origin — because its initiator
+ * cannot tell one of the runtime's batches from the next (see `roundsOf`).
  *
  * Shell boot is separated from the realm-cache fill by request kind,
  * not by when the spec polls: the boot's units are native
@@ -62,23 +68,6 @@ const SHELL = `${scheme}://localhost:${SHELL_PORT}`;
 
 /** Every `/shared/` JSON request the page issued: a list document, which no load requests. */
 const listDocumentRequests: string[] = [];
-
-interface Req {
-  url: string;
-  start: number;
-  end?: number;
-  /** CDP `initiator.type` — `parser` | `script` | `preload` | `other`. */
-  initiatorType: string;
-  /** CDP `type` — `Script` for native module loads, `Fetch` for `fetch()`. */
-  resourceType: string;
-  /**
-   * For script-initiated requests, the URL of the script that
-   * triggered the import (`initiator.stack.callFrames[0].url`); for
-   * parser/preload, the document URL or `undefined`. Used to look
-   * the initiator's request up in the slice by URL.
-   */
-  initiatorUrl?: string;
-}
 
 /** Tracks `/shared/**.js` unit fetches via CDP Network events. */
 function watch(cdp: CDPSession) {
@@ -115,56 +104,6 @@ function watch(cdp: CDPSession) {
   return requests;
 }
 
-/** Strip the query string and hash from a URL for initiator matching. */
-function urlBase(url: string): string {
-  return url.split('#')[0].split('?')[0];
-}
-
-/**
- * Causal import depth: a request's round is `1` if its CDP
- * `initiator.type` is `parser` or `preload` (the boot list's flat
- * modulepreload fan-out, or the document's own `<script type=module>`);
- * `1 + initiator's round` if it is `script`-initiated and the
- * initiator's URL is found in the slice (a `/shared/` chunk that
- * imported it); and `1` if it is `script`-initiated but the
- * initiator's URL is outside the slice (the shell's own entry, or
- * a click handler — the phase's entry point). The recursion guards
- * against cycles and unknown initiators by capping depth at the
- * slice length.
- */
-function roundsOf(requests: Req[]) {
-  const byUrl = new Map<string, Req>();
-  for (const r of requests) {
-    const key = urlBase(r.url);
-    if (!byUrl.has(key)) byUrl.set(key, r);
-  }
-  const roundOf = (r: Req, seen: Set<string>): number => {
-    if (
-      r.initiatorType === 'parser' ||
-      r.initiatorType === 'preload' ||
-      r.initiatorType === 'other' ||
-      r.initiatorUrl === undefined
-    ) {
-      return 1;
-    }
-    // script-initiated: find the initiator's request in the slice
-    const initiatorKey = urlBase(r.initiatorUrl);
-    const initiator = byUrl.get(initiatorKey);
-    if (initiator === undefined || initiator === r) return 1;
-    if (seen.has(initiatorKey)) return 1; // cycle guard
-    seen.add(initiatorKey);
-    return 1 + roundOf(initiator, seen);
-  };
-  const perRound = new Map<number, Req[]>();
-  let max = 0;
-  for (const r of requests) {
-    const d = roundOf(r, new Set());
-    (perRound.get(d) ?? perRound.set(d, []).get(d)!).push(r);
-    if (d > max) max = d;
-  }
-  return { rounds: max, perRound };
-}
-
 /**
  * Asserts a load used at most `max` sequential unit-fetch rounds. The
  * failure message names the entry, the observed count and the first
@@ -189,21 +128,6 @@ function assertExactRounds(entry: string, expected: number, got: number, perRoun
     got,
     `${entry}: expected ${expected} sequential unit-fetch round(s), observed ${got}; item "${breaker}" opened round ${expected + 1}`,
   ).toBe(expected);
-}
-
-async function waitForMountedScreen(page: Page, timeout = 30_000) {
-  await page.waitForFunction(
-    () => {
-      const hosts = document.querySelectorAll('[data-mfe-screen-container] [data-extension-id]');
-      for (const h of hosts) {
-        const root = (h as HTMLElement).shadowRoot ?? h;
-        if (root.childElementCount > 0) return true;
-      }
-      return false;
-    },
-    undefined,
-    { timeout },
-  );
 }
 
 test('round-count gate: every load at most one round; one cold load exactly one', async ({
@@ -236,7 +160,7 @@ test('round-count gate: every load at most one round; one cold load exactly one'
   // rounds is the expected outcome and one is the ceiling.
   const beforeExpose = requests.length;
   await page.getByTestId(menuItemTestId(BLANK_HOME_EXTENSION_ID)).click();
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, BLANK_HOME_EXTENSION_ID);
   const expose = roundsOf(requests.slice(beforeExpose));
   console.log(`expose load: ${expose.rounds} unit-fetch round(s)`);
   assertAtMostRounds('expose ./lifecycle (blank home)', 1, expose.rounds, expose.perRound);
@@ -245,9 +169,12 @@ test('round-count gate: every load at most one round; one cold load exactly one'
   // element chunks are requested on first use, in at most one round.
   const beforeLazy = requests.length;
   await page.getByTestId(menuItemTestId(UIKIT_ELEMENTS_EXTENSION_ID)).click();
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, UIKIT_ELEMENTS_EXTENSION_ID);
   const lazy = roundsOf(requests.slice(beforeLazy));
   console.log(`lazy target: ${lazy.rounds} unit-fetch round(s), ${requests.length - beforeLazy} unit(s)`);
+  // The lazy element chunks are fetched on first use, so the click must
+  // request at least one unit; a click that requests nothing measured nothing.
+  expect(lazy.rounds, 'lazy target (UI-kit elements): the click requested no unit').toBeGreaterThan(0);
   assertAtMostRounds('lazy target (UI-kit elements)', 1, lazy.rounds, lazy.perRound);
 
   // Case 4, cold load (exactly 1 round): the widgets host screen. Its
@@ -257,7 +184,7 @@ test('round-count gate: every load at most one round; one cold load exactly one'
   // the units were never requested, so it fails too.
   const beforeCold = requests.length;
   await page.getByTestId(menuItemTestId(WIDGETS_HOST_EXTENSION_ID)).click();
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, WIDGETS_HOST_EXTENSION_ID);
   const cold = roundsOf(requests.slice(beforeCold));
   console.log(`cold load (widgets host): ${cold.rounds} unit-fetch round(s), ${requests.length - beforeCold} unit(s)`);
   assertExactRounds('cold load (widgets host)', 1, cold.rounds, cold.perRound);

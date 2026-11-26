@@ -1,7 +1,6 @@
 /**
  * `SessionFixtures` — session-fixture selection. The harness records a fixed extension sequence at
- * construction (the existing 8 fixture extensions cover 5 distinct
- * loads; the old rule runs the same sequence), and selects one of
+ * construction; the old-rule baseline variant runs the same sequence. It selects one of
  * three session forms:
  *
  *   shell+1                  — a single extension, selected by id
@@ -11,10 +10,12 @@
  *                              right after the shell's bootstrap through
  *                              the shell's own registry
  *
- * The parallel startup case uses the five visual extensions the template
- * ships; the template has one root domain and no headless extension, so
- * no other kind is recorded. `select('shell+5-parallel-startup')` fails
- * closed when fewer than five visual startup extensions are recorded.
+ * The two five-extension forms exclude the default screen, which the shell
+ * mounts at boot, so each measures only its own loads. The parallel startup
+ * case uses visual extensions the template ships; the template has one root
+ * domain and no headless extension, so no other kind is recorded.
+ * `select('shell+5-parallel-startup')` fails closed when the recorded visual
+ * startup extensions are fewer than the form requires.
  *
  * One class per file (OOP). Pure — no I/O.
  */
@@ -38,14 +39,18 @@ export class SessionFixtures {
   #sequence;
   /** @type {string} */
   #singleExtensionId;
+  /** @type {string | undefined} */
+  #defaultExtensionId;
 
   /**
    * @param {Object} opts
    * @param {FixtureExtension[]} opts.extensions
    * @param {string} opts.singleExtensionId the id of the extension `shell+1` loads
+   * @param {string} [opts.defaultExtensionId] the screen mounted at boot; no five-extension session includes it
    */
-  constructor({ extensions, singleExtensionId }) {
+  constructor({ extensions, singleExtensionId, defaultExtensionId }) {
     this.#extensions = extensions;
+    this.#defaultExtensionId = defaultExtensionId;
     this.#singleExtensionId = singleExtensionId;
     // The recorded sequence is the input order — stable and immutable.
     this.#sequence = Object.freeze(extensions.map((e) => e.id));
@@ -74,7 +79,7 @@ export class SessionFixtures {
       return [single];
     }
     if (kind === 'shell+5-sequential') {
-      const visuals = this.#extensions.filter((e) => e.kind === 'visual');
+      const visuals = this.#extensions.filter((e) => e.kind === 'visual' && e.id !== this.#defaultExtensionId);
       if (visuals.length < 5) {
         throw new Error(`not enough visual extensions for shell+5-sequential: ${visuals.length}`);
       }
@@ -84,7 +89,7 @@ export class SessionFixtures {
       // Five startup extensions, visual only (the template has no headless
       // extension), loaded together right after the shell's bootstrap and
       // measured until every entry module has loaded.
-      const visuals = this.#extensions.filter((e) => e.kind === 'visual');
+      const visuals = this.#extensions.filter((e) => e.kind === 'visual' && e.id !== this.#defaultExtensionId);
       if (visuals.length < 5) {
         throw new Error(
           `not enough visual startup extensions for shell+5-parallel-startup: ${visuals.length}`,

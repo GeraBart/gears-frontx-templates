@@ -1,6 +1,7 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { menuItemTestId, BLANK_HOME_EXTENSION_ID } from './extensionIds.mjs';
 import { SHELL_PORT } from './ports.mjs';
+import { waitForMountedScreen } from './mountedScreen';
 
 const scheme = process.env.E2E_PROTOCOL === 'h2' ? 'https' : 'http';
 
@@ -8,23 +9,6 @@ const scheme = process.env.E2E_PROTOCOL === 'h2' ? 'https' : 'http';
  * Smoke: the built host boots and the blank MFE screen mounts with no
  * page errors and no failed requests. Blocking.
  */
-
-async function waitForMountedScreen(page: Page, timeout = 30_000) {
-  await page.waitForFunction(
-    () => {
-      const hosts = document.querySelectorAll(
-        '[data-mfe-screen-container] [data-extension-id]',
-      );
-      for (const h of hosts) {
-        const root = (h as HTMLElement).shadowRoot ?? h;
-        if (root.childElementCount > 0) return true;
-      }
-      return false;
-    },
-    undefined,
-    { timeout },
-  );
-}
 
 test('shell boots and blank MFE screen mounts', async ({ page }) => {
   const errors: string[] = [];
@@ -52,7 +36,7 @@ test('shell boots and blank MFE screen mounts', async ({ page }) => {
   await expect(page.locator('#root')).not.toBeEmpty({ timeout: 60_000 });
 
   await page.getByTestId(menuItemTestId(BLANK_HOME_EXTENSION_ID)).click();
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, BLANK_HOME_EXTENSION_ID);
 
   expect(failed).toEqual([]);
   expect(errors).toEqual([]);

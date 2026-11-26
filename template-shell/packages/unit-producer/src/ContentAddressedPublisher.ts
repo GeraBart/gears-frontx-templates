@@ -9,7 +9,7 @@
  * content discards the staged copy; differing bytes behind a
  * content-derived name, an unreadable destination, or any other error
  * code throws, so a broken publish fails the build instead of shipping
- * a graph that names a file this build never wrote.
+ * a list that names a file this build never wrote.
  */
 
 import * as fs from 'node:fs';

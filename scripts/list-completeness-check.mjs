@@ -10,16 +10,18 @@
  * nested list repeating a chunk the parent chain already carries, or a
  * specifier two units of the combined lists both answer.
  *
- * CLI entry: `node scripts/list-completeness-check.mjs` (exit 0 on
- * success). Runs after the builds (each fixture's `vite build`, the
- * shell's `vite build`).
+ * CLI entry: `node scripts/list-completeness-check.mjs [--shell-dist <dir>]`
+ * (exit 0 on success). Runs after the builds (each fixture's `vite build`,
+ * the shell's `vite build`). `--shell-dist` is relative to the checked root
+ * (default `template-shell/dist`); the composed CI copy builds the shell to
+ * `dist`.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { checkOutputLists, resolveList, sharedDir, unitsByHash } from './shared-unit-reach.mjs';
+import { checkOutputLists, distPathOfUrl, resolveList, sharedDir, unitsByHash, unitsDirOf } from './shared-unit-reach.mjs';
 import { findMfePackageDirs } from './evaluation-scope-check.mjs';
 
 const MFE_PACKAGES_REL = path.join('template-mfe', 'src-app', 'mfe_packages');
@@ -77,7 +79,8 @@ export function checkBootLists(shellDist) {
   ) {
     return ['shell fill chunk carries no readable fill data (.run({...}))'];
   }
-  const base = path.resolve(shellDist, (boot.unitsBase ?? './shared/').replace(/^\.\//, ''));
+  const unitsDir = unitsDirOf(boot.unitsBase);
+  const base = path.resolve(shellDist, unitsDir);
   const violations = [];
   const byHash = unitsByHash(boot.units);
   const missing = [];
@@ -95,7 +98,7 @@ export function checkBootLists(shellDist) {
     const map = JSON.parse(mapMatch[1]);
     for (const record of [map.imports ?? {}, ...Object.values(map.scopes ?? {})]) {
       for (const [spec, url] of Object.entries(record)) {
-        const rel = String(url).replace(/^\.?\//, '');
+        const rel = distPathOfUrl(String(url), unitsDir);
         if (!fs.existsSync(path.join(shellDist, rel))) {
           violations.push(`import map: specifier "${spec}" points at "${url}", which is not an emitted file`);
         }
@@ -149,9 +152,9 @@ export function checkBootLists(shellDist) {
   return violations;
 }
 
-function check({ rootDir, log, logError }) {
+function check({ rootDir, shellDistRel, log, logError }) {
   const failures = [];
-  const shellDist = path.join(rootDir, SHELL_DIST_REL);
+  const shellDist = path.resolve(rootDir, shellDistRel);
   if (!fs.existsSync(shellDist)) {
     failures.push(`no shell build at ${shellDist} — build the shell first`);
   } else {
@@ -187,10 +190,14 @@ function check({ rootDir, log, logError }) {
 
 export function runCli(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
+  const argv = options.argv ?? [];
   const log = options.log ?? console.log;
   const logError = options.logError ?? console.error;
   try {
-    return check({ rootDir, log, logError });
+    const i = argv.indexOf('--shell-dist');
+    if (i !== -1 && argv[i + 1] === undefined) throw new Error('--shell-dist needs a value');
+    const shellDistRel = i === -1 ? SHELL_DIST_REL : argv[i + 1];
+    return check({ rootDir, shellDistRel, log, logError });
   } catch (error) {
     logError(`[list-completeness] FAIL: ${error instanceof Error ? error.message : String(error)}`);
     return 1;
@@ -198,4 +205,4 @@ export function runCli(options = {}) {
 }
 
 const isEntryPoint = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isEntryPoint) process.exitCode = runCli();
+if (isEntryPoint) process.exitCode = runCli({ argv: process.argv.slice(2) });

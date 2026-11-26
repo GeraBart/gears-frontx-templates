@@ -6,7 +6,9 @@
  *  - `sideEffects: false` — every module is side-effect free.
  *  - `sideEffects: [...]` — every module except the listed files; entries
  *    support an optional `./` prefix and webpack/minimatch wildcards:
- *    `*` matches within a path segment, `**` across segments.
+ *    `*` matches within a path segment, `**` across zero or more
+ *    segments, and an entry without a slash matches the file name in
+ *    any directory.
  *  - absent or `true` — the package declares no freedom.
  */
 
@@ -20,11 +22,15 @@ export class BarrelRewritePolicy {
     const normalize = (p: string): string => p.replace(/^\.\//, '');
     const target = normalize(moduleRelPath);
     for (const entry of sideEffects) {
-      const pattern = normalize(entry);
+      // A pattern without a slash matches the file name in any
+      // directory, as the bundlers read it (`*.css` is `**/*.css`).
+      const written = normalize(entry);
+      const pattern = written.includes('/') ? written : `**/${written}`;
       const regex = new RegExp(
         '^' +
           pattern
             .replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
+            .replace(/\\\*\\\*\//g, '(?:.*/)?')
             .replace(/\\\*\\\*/g, '.*')
             .replace(/\\\*/g, '[^/]*') +
           '$'

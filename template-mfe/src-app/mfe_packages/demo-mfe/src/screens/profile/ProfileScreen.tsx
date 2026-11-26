@@ -11,7 +11,7 @@ import type { GetCurrentUserResponse } from '../../api/types';
 import { ProfileDetailsCard, type ProfileFormValues } from './components/ProfileDetailsCard';
 import { applyOptimisticProfileUpdate } from './profileOptimisticUpdate';
 import styles from './ProfileScreen.module.css';
-import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '../../shellContract';
 
 type UpdateProfileContext = {
   snapshot: GetCurrentUserResponse | undefined;

@@ -9,7 +9,7 @@ import { declaredDependencies } from './support/declaredDependencies';
 
 /**
  * Scenario: `include: []` — the shell shares nothing and boots fully
- * natively, while two MFEs that share by default still reuse each
+ * natively, while two MFEs that take the derived shared set still reuse each
  * other's shared sources: the same package@version yields the same
  * content-addressed files, so the second MFE's output names exactly the
  * first MFE's locations.

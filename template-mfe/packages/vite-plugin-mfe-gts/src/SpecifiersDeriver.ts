@@ -66,8 +66,11 @@ export class SpecifiersDeriver {
   }
 
   /**
-   * Reached specifiers per lazily loaded chunk, keyed by the chunk's
-   * file name (path relative to the asset base).
+   * Reached specifiers per lazy target: a lazily loaded own chunk, keyed
+   * by its file name (path relative to the asset base), and a shared
+   * package the MFE's own code imports dynamically by bare specifier,
+   * keyed by that specifier — the key the runtime looks its list up
+   * under — reaching that specifier itself.
    */
   static lazyChunkSpecifiers(params: {
     chunks: ReadonlyMap<string, CapturedChunk>;
@@ -81,7 +84,12 @@ export class SpecifiersDeriver {
     }
     for (const lazyChunkName of lazyChunks) {
       const chunk = chunks.get(lazyChunkName);
-      if (!chunk) continue;
+      if (!chunk) {
+        if (SpecifiersDeriver.isShared(lazyChunkName, chunks, sharedDepNames)) {
+          specifiers[lazyChunkName] = [lazyChunkName];
+        }
+        continue;
+      }
       const visited = new Set<string>([lazyChunkName]);
       const reached = new Set<string>();
       const queue = [...chunk.imports];

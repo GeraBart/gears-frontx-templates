@@ -1,10 +1,11 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 const scheme = process.env.E2E_PROTOCOL === 'h2' ? 'https' : 'http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { menuItemTestId, BLANK_HOME_EXTENSION_ID } from './extensionIds.mjs';
 import { SHELL_PORT, SHELL_PORT_CSP_BLOB, SHELL_PORT_CSP_STRICT } from './ports.mjs';
+import { waitForMountedScreen } from './mountedScreen';
 
 declare global {
   interface Window {
@@ -19,29 +20,11 @@ declare global {
  * 'strict-dynamic' + blob: — the spec verifies the probe really ran
  * under that policy (CSP header present with the nonce, nonce-less
  * inline blocked, import(blobUrl) actually attempted) and records the
- * true verdict in e2e/strict-dynamic-result.json; when the verdict is
+ * true verdict in e2e/results/strict-dynamic-result.json; when the verdict is
  * "blocked" the record carries the hosting-requirement note.
  */
 
-const STRICT_DYNAMIC_RESULT_FILE = path.resolve('e2e', 'strict-dynamic-result.json');
-
-/** Mount-settled signal — see unit-model.spec.ts. */
-async function waitForMountedScreen(page: Page, timeout = 30_000) {
-  await page.waitForFunction(
-    () => {
-      const hosts = document.querySelectorAll(
-        '[data-mfe-screen-container] [data-extension-id]',
-      );
-      for (const h of hosts) {
-        const root = (h as HTMLElement).shadowRoot ?? h;
-        if (root.childElementCount > 0) return true;
-      }
-      return false;
-    },
-    undefined,
-    { timeout },
-  );
-}
+const STRICT_DYNAMIC_RESULT_FILE = path.resolve('e2e', 'results', 'strict-dynamic-result.json');
 
 test('the page works under a CSP permitting blob: script-src', async ({ page }) => {
   const errors: string[] = [];
@@ -54,7 +37,7 @@ test('the page works under a CSP permitting blob: script-src', async ({ page }) 
   // Poll for the mount to settle — blob minting and rendering complete —
   // instead of sleeping; a CSP failure surfaces as a page error before
   // the screen settles.
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, BLANK_HOME_EXTENSION_ID);
   expect(
     errors.filter((e) => /Content Security Policy|CSP|resolve module specifier/i.test(e)),
   ).toEqual([]);
@@ -105,6 +88,7 @@ test("records whether import(blobUrl) works under 'strict-dynamic' (informationa
       'is blocked. FrontX blob-unit loading therefore requires the host CSP to ' +
       "omit 'strict-dynamic' (or otherwise keep blob: effective) in script-src.";
   }
+  fs.mkdirSync(path.dirname(STRICT_DYNAMIC_RESULT_FILE), { recursive: true });
   fs.writeFileSync(STRICT_DYNAMIC_RESULT_FILE, JSON.stringify(record, null, 2));
   console.log(`STRICT_DYNAMIC_BLOB_IMPORT_RESULT=${result}`);
   // Informational: assert only that the probe produced a verdict.

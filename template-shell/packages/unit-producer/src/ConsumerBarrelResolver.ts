@@ -4,7 +4,7 @@
  * barrel (`import { Icon } from 'lucide-react'`), which module of the
  * package defines it. The answer is a module specifier
  * `<pkg>/<module-path>` — the package-relative module path the producer
- * records in the graph file's `modulePaths` — so the consumer's chunk
+ * records as a unit's `modulePaths` — so the consumer's chunk
  * imports, and its roots name, exactly the unit that owns the binding.
  *
  * Re-export chains across shared packages are followed: a binding a

@@ -5,7 +5,7 @@ import { createHostApp } from '@frontx-test-utils/createHostApp';
 import {
   FRONTX_SHARED_PROPERTY_LANGUAGE,
   FRONTX_SHARED_PROPERTY_THEME,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../../src/index';
 import { publishThemeAndLanguage } from './sharedProperties';
 
 /** A registry whose `updateSharedProperty` records the shared properties published to it. */

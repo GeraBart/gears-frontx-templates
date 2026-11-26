@@ -305,14 +305,17 @@ export class LoadMatrixRunner {
    * a planned-only run from a real one, and `jsonPath` is `null`.
    * Everywhere a result JSON IS written, a result with zero executed
    * steps can never be `"pass"` — it is `"fail"` with `reason` set to
-   * `"no steps executed"`.
+   * `"no steps executed"`. A gate-cells run without `oldServeRoot` that
+   * otherwise passes is `"incomplete"`: it measured no old-rule variant,
+   * so the guards against the old rule were not judged. The matrix is a
+   * local report, not a CI gate.
    *
    * @param {Object} [opts]
    * @param {number} [opts.runs] override LOAD_GATE_RUNS (CLI `--runs`)
    * @param {number} [opts.envRuns] LOAD_GATE_RUNS env var (resolved by the CLI script)
    * @param {string} [opts.oldServeRoot] old-rule worktree path
    * @param {boolean} [opts.dryRun] list cells without invoking playwright
-   * @returns {Promise<{ results: Cell[]; markdown: string; json: object; jsonPath: string | null; status: 'pass' | 'fail' | 'dry-run' }>}
+   * @returns {Promise<{ results: Cell[]; markdown: string; json: object; jsonPath: string | null; status: 'pass' | 'fail' | 'incomplete' | 'dry-run' }>}
    */
   async run({ runs, envRuns, oldServeRoot, dryRun = false } = {}) {
     const cells = this.cells();
@@ -344,7 +347,7 @@ export class LoadMatrixRunner {
       dryRun || oldServeRoot === undefined || this.#mode !== 'gate-cells'
         ? []
         : this.#referenceGuardVerdicts(planned);
-    /** @type {'pass' | 'fail' | 'dry-run'} */
+    /** @type {'pass' | 'fail' | 'incomplete' | 'dry-run'} */
     let status;
     /** @type {string | undefined} */
     let reason;
@@ -353,13 +356,21 @@ export class LoadMatrixRunner {
     } else if (steps.length === 0) {
       status = 'fail';
       reason = 'no steps executed';
-    } else {
-      status =
+    } else if (
+      !(
         steps.every((r) => r.exitCode === 0) &&
         verdicts.every((v) => v.pass) &&
         referenceVerdicts.every((v) => v.pass)
-          ? 'pass'
-          : 'fail';
+      )
+    ) {
+      status = 'fail';
+    } else if (this.#mode === 'gate-cells' && oldServeRoot === undefined) {
+      // The guards against the old rule are part of the report; a run that
+      // did not measure the old variant cannot judge them, so it is not a pass.
+      status = 'incomplete';
+      reason = 'old-rule variant not measured (--old-serve-root)';
+    } else {
+      status = 'pass';
     }
     const summary = {
       total: steps.length,
@@ -571,7 +582,7 @@ export class LoadMatrixRunner {
    * @param {PlannedStep[]} planned
    * @param {number} n
    * @param {StepResult[]} steps
-   * @param {'pass' | 'fail' | 'dry-run'} status
+   * @param {'pass' | 'fail' | 'incomplete' | 'dry-run'} status
    * @param {boolean} dryRun
    * @param {Array<{ step: string, pass: boolean, finding: string }>} verdicts
    * @param {Array<{ step: string, pass: boolean, finding: string }>} referenceVerdicts

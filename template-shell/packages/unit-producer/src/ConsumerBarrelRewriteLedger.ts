@@ -34,6 +34,18 @@ export interface ConsumerBarrelRewrite extends ConsumerBarrelRedirect {
   barrelName: string;
 }
 
+/**
+ * One rewritten specifier as a cache record: the barrel behind each
+ * moved binding, so a build served from the cache can still turn a
+ * rewrite back.
+ */
+export interface ConsumerBarrelOriginRecord {
+  target: string;
+  /** The target is another package's entry specifier, not a module path. */
+  entry: boolean;
+  bindings: Array<{ name: string; barrelSpecifier: string; barrelName: string }>;
+}
+
 interface PackageState {
   rewrites: number;
   keptReasons: Set<string>;
@@ -145,6 +157,31 @@ export class ConsumerBarrelRewriteLedger {
   /** Defining names recorded for a rewritten specifier → barrel names. */
   bindingsOf(specifier: string): ReadonlyMap<string, { barrelSpecifier: string; barrelName: string }> {
     return this.origins.get(specifier) ?? new Map();
+  }
+
+  /** The origins of every rewritten specifier, sorted, for a cache record. */
+  originRecords(): ConsumerBarrelOriginRecord[] {
+    return this.targets().map((target) => ({
+      target,
+      entry: this.entryTargets.has(target),
+      bindings: [...this.bindingsOf(target)]
+        .map(([name, origin]) => ({ name, ...origin }))
+        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
+    }));
+  }
+
+  /** Takes the origins a cache record holds, as if the rewrites had just happened. */
+  restoreOrigins(records: readonly ConsumerBarrelOriginRecord[]): void {
+    for (const record of records) {
+      if (record.entry) this.entryTargets.add(record.target);
+      const byName = this.origins.get(record.target) ?? new Map();
+      this.origins.set(record.target, byName);
+      for (const b of record.bindings) {
+        if (!byName.has(b.name)) {
+          byName.set(b.name, { barrelSpecifier: b.barrelSpecifier, barrelName: b.barrelName });
+        }
+      }
+    }
   }
 
   /** Where a binding imported from a rewritten specifier came from. */

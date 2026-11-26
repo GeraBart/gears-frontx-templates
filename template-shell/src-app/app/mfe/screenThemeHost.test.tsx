@@ -68,7 +68,7 @@ async function buildApp() {
   const mfe = await import('@gears-frontx/react/mfe');
   const { gtsPlugin } = await import('@gears-frontx/gts-plugin');
   const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema, FRONTX_MFE_ENTRY_MF } =
-    await import('@gears-frontx/frontx-template-shell');
+    await import('../../../src/index');
   gtsPlugin.registerSchema(themeSchema);
   gtsPlugin.registerSchema(languageCodeSchema);
   gtsPlugin.registerSchema(languageSchema);

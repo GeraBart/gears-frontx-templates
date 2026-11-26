@@ -8,15 +8,18 @@ import { summarizeEvaluatedBytes } from '../scripts/load-matrix/EvaluatedBytes.m
 import { CacheStateDriver } from '../scripts/load-matrix/CacheStateDriver.mjs';
 import { ParallelCaseChecks } from '../scripts/load-matrix/ParallelCaseChecks.mjs';
 import { FillRequestWatcher } from '../scripts/load-matrix/FillRequestWatcher.mjs';
+import { SessionFixtures } from '../scripts/load-matrix/SessionFixtures.mjs';
 import {
   BLANK_HOME_EXTENSION_ID,
   CURRENT_THEME_EXTENSION_ID,
   HELLO_WORLD_EXTENSION_ID,
   PROFILE_EXTENSION_ID,
   UIKIT_ELEMENTS_EXTENSION_ID,
+  WIDGETS_HOST_EXTENSION_ID,
   menuItemTestId,
 } from './extensionIds.mjs';
 import { SHELL_PORT } from './ports.mjs';
+import { waitForMountedScreen } from './mountedScreen';
 
 const scheme = process.env.E2E_PROTOCOL === 'h2' ? 'https' : 'http';
 
@@ -168,8 +171,28 @@ async function applyThrottle(cdp: CDPSession) {
   }
 }
 
-/** The five screen routes whose extensions the parallel startup loads together. */
-const PARALLEL_STARTUP_ROUTES = ['/hello-world', '/profile', '/current-theme', '/uikit-elements', '/blank-home'];
+/**
+ * The session screens, in order, with the route each is served on. The
+ * default screen (Hello World) is the one the new shell mounts at boot, so
+ * no five-extension session includes it. The sequential ids and the
+ * parallel-startup routes both derive from this one list.
+ */
+const SESSION_SCREENS = [
+  { id: HELLO_WORLD_EXTENSION_ID, label: 'Hello World', route: '/hello-world' },
+  { id: PROFILE_EXTENSION_ID, label: 'Profile', route: '/profile' },
+  { id: CURRENT_THEME_EXTENSION_ID, label: 'Current Theme', route: '/current-theme' },
+  { id: UIKIT_ELEMENTS_EXTENSION_ID, label: 'UIKit Elements', route: '/uikit-elements' },
+  { id: BLANK_HOME_EXTENSION_ID, label: 'Blank Home', route: '/blank-home' },
+  { id: WIDGETS_HOST_EXTENSION_ID, label: 'Widgets Host', route: '/widgets-host' },
+];
+const SESSION_FIXTURES = new SessionFixtures({
+  extensions: SESSION_SCREENS.map(({ id, label }) => ({ id, label, kind: 'visual' as const, domain: 'screen' })),
+  singleExtensionId: BLANK_HOME_EXTENSION_ID,
+  defaultExtensionId: HELLO_WORLD_EXTENSION_ID,
+});
+const PARALLEL_STARTUP_ROUTES = SESSION_FIXTURES.select('shell+5-parallel-startup').map(
+  ({ id }) => SESSION_SCREENS.find((screen) => screen.id === id)!.route,
+);
 
 /**
  * The requests for the given entry module URLs, one per distinct URL.
@@ -228,21 +251,6 @@ async function measureBoot(page: Page): Promise<number> {
   return Date.now() - t0;
 }
 
-async function waitForMountedScreen(page: Page, timeout = 120_000) {
-  await page.waitForFunction(
-    () => {
-      const hosts = document.querySelectorAll('[data-mfe-screen-container] [data-extension-id]');
-      for (const h of hosts) {
-        const root = (h as HTMLElement).shadowRoot ?? h;
-        if (root.childElementCount > 0) return true;
-      }
-      return false;
-    },
-    undefined,
-    { timeout },
-  );
-}
-
 async function measureSession(
   page: Page,
   session: string,
@@ -251,23 +259,24 @@ async function measureSession(
   const mounts: number[] = [];
   let entryUrls: string[] = [];
   let sessionStart = net.length;
+  if (session === 'shell+1' || session === 'shell+5-sequential' || session === 'shell+5-parallel-startup') {
+    // Timings start after the default screen (Hello World) the new shell
+    // mounts at boot, so the session measures only its own work; the
+    // old-rule shell mounts none. No session includes the default screen.
+    if (VARIANT !== 'old') await waitForMountedScreen(page, HELLO_WORLD_EXTENSION_ID, 120_000);
+  }
   if (session === 'shell+1') {
     const t0 = Date.now();
-    await page.getByTestId(menuItemTestId(BLANK_HOME_EXTENSION_ID)).click();
-    await waitForMountedScreen(page);
+    const { id: singleExtensionId } = SESSION_FIXTURES.select('shell+1')[0];
+    await page.getByTestId(menuItemTestId(singleExtensionId)).click();
+    await waitForMountedScreen(page, singleExtensionId, 120_000);
     mounts.push(Date.now() - t0);
   } else if (session === 'shell+5-sequential') {
-    const extensionIds = [
-      HELLO_WORLD_EXTENSION_ID,
-      PROFILE_EXTENSION_ID,
-      CURRENT_THEME_EXTENSION_ID,
-      UIKIT_ELEMENTS_EXTENSION_ID,
-      BLANK_HOME_EXTENSION_ID,
-    ];
+    const extensionIds = SESSION_FIXTURES.select('shell+5-sequential').map(({ id }) => id);
     for (const extensionId of extensionIds) {
       const t0 = Date.now();
       await page.getByTestId(menuItemTestId(extensionId)).click();
-      await waitForMountedScreen(page);
+      await waitForMountedScreen(page, extensionId, 120_000);
       mounts.push(Date.now() - t0);
     }
   } else if (session === 'shell+5-parallel-startup') {

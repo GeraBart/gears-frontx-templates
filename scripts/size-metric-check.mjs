@@ -23,8 +23,8 @@
  *
  * Byte attribution: files under a `shared/` (or legacy `frontx-shared/`)
  * directory belong to the package the first path segments name
- * (`<pkg>@<ver>.graph.<hash>.json`, `<pkg>@<ver>.pack.<hash>.js`,
- * `<pkg>@<ver>/<file>`; `@scope/name@<ver>` for scoped packages);
+ * (`<pkg>@<ver>/<file>`, and the old rule's `<pkg>@<ver>.graph.<hash>.json`
+ * and `<pkg>@<ver>.pack.<hash>.js`; `@scope/name@<ver>` for scoped packages);
  * everything else under the shell dist belongs to `template-shell`, and a
  * fixture's own chunks belong to `<fixture> (own chunks)`. Identical
  * content claimed by several owners is attributed to the first package
@@ -44,7 +44,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { packageOfLocation, readEntryLists, sharedDir } from './shared-unit-reach.mjs';
+import { packageOfLocation, readEntryLists, sharedDir, unitsDirOf } from './shared-unit-reach.mjs';
 
 const BASELINE_REL = path.join('template-mfe', 'size-baseline.json');
 const EXCEPTIONS_REL = path.join('template-mfe', 'size-gate-exceptions.json');
@@ -112,8 +112,9 @@ export function measureOwnChunks(distDir, sharedDirRel) {
 
 /**
  * The package a shared-territory file belongs to, from the first path
- * segments under the shared dir: `react@19.2.4.pack.<hash>.js`,
- * `@scope/name@1.0.0.graph.<hash>.json`, `use-sidecar@1.1.3/dist-x.js`.
+ * segments under the shared dir: `use-sidecar@1.1.3/dist-x.js`, and the
+ * old rule's `react@19.2.4.pack.<hash>.js` and
+ * `@scope/name@1.0.0.graph.<hash>.json`.
  * `null` when the path names no package.
  *
  * @param {string} rel path relative to the shared directory
@@ -235,8 +236,8 @@ export function fixtureEvaluationOld(distDir) {
  * source maps excluded): files under its shared directory are attributed
  * to the owning package, the rest to `template-shell`. Each fixture
  * contributes its own chunks (`<fixture> (own chunks)`) plus, under the
- * new rule, the graph files its manifest declares and the units the walk
- * reaches — under the old rule, every file of its shared directory.
+ * new rule, the units its fetch lists reach — under the old rule, every
+ * file of its shared directory.
  *
  * @param {{
  *   shellDist: string;
@@ -283,7 +284,7 @@ export function measurePage({ shellDist, fixtures, rule }) {
       break;
     }
     if (boot !== null && typeof boot.unitsBase === 'string') {
-      unitsDirRel = boot.unitsBase.replace(/^\.\//, '').replace(/\/$/, '');
+      unitsDirRel = unitsDirOf(boot.unitsBase);
     }
     const sharedAbs = unitsDirRel === null ? null : path.resolve(distDir, unitsDirRel);
     for (const file of walkFiles(distDir)) {

@@ -11,7 +11,8 @@
  * a use. Any other use — a computed access (`ns[key]`), a member
  * expression written to (`ns.Foo = x`), deleted (`delete ns.Foo`),
  * updated (`ns.Foo++`) or bound (`for (ns.Foo of …)`), the namespace
- * passed whole, destructured or spread — is dynamic and the statement
+ * passed whole, destructured or spread, or referenced from JSX
+ * (`<ns.Item />`) — is dynamic and the statement
  * is left exactly as written. The local names the members are bound
  * under never collide: a member whose own name is already taken in the
  * module is imported under a `ns_Member` alias.
@@ -104,6 +105,13 @@ export class NamespaceAccessRewriter {
     }
     for (const statement of program.body) {
       EsmSourceParser.forEachNode(statement, (node) => {
+        // A JSX reference (`<NS.Item />`) reads the namespace binding
+        // itself, which a rewrite into named imports would leave unbound.
+        if (node.type === 'JSXIdentifier') {
+          const jsxUse = namespaces.get(String(node.name));
+          if (jsxUse !== undefined) jsxUse.use.onlyMembers = false;
+          return;
+        }
         if (node.type !== 'Identifier') return;
         const use = namespaces.get(String(node.name));
         if (use === undefined) return;

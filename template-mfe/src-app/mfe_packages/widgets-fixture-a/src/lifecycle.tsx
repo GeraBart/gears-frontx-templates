@@ -31,7 +31,7 @@ import {
   type MfeEntryLifecycle,
 } from '@gears-frontx/react/mfe';
 import { gtsPlugin, FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
-import { FRONTX_SCREEN_DOMAIN } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SCREEN_DOMAIN } from './shellContract';
 import {
   ExtensionRouter,
   navigation,

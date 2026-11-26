@@ -347,46 +347,19 @@ The `./testing` subpath exposes Vitest-based helpers — `TestContainerProvider`
 - Projects that import from `@gears-frontx/framework/testing` **must** install `vitest` at a version compatible with the range declared in this package's `peerDependencies` (currently pinned to `4.1.4`).
 - The `./testing` entry is runtime-isolated from the main entry; importing the default entry does not pull `vitest` into the production bundle.
 
-## Migration from Legacy API
+## Navigation and Registration
 
-The legacy screenset navigation API has been removed. FrontX now uses the MFE architecture exclusively:
+FrontX uses the MFE architecture exclusively: screens are extensions mounted
+into domains, registered on `app.mfeRegistry`.
 
-### Removed APIs
-- `screensetRegistry` (replaced by `mfeRegistry`)
-- `createScreensetRegistry()` (replaced by `MfeRegistry` class)
-- `navigation()` plugin (replaced by MFE actions)
-- `routing()` plugin (replaced by extension route presentation)
-- `routeRegistry` (replaced by extension route management)
-- `navigateToScreen()` / `navigateToScreenset()` actions (replaced by `mountExtension()`)
+### Mount an extension
 
-### Migration Examples
-
-**OLD**: Navigate to screen
-```typescript
-app.actions.navigateToScreen({ screensetId: 'demo', screenId: 'home' });
-```
-
-**NEW**: Mount extension
 ```typescript
 app.actions.mountExtension('home');
 ```
 
-**OLD**: Register screenset
-```typescript
-import { screensetRegistry, ScreensetDefinition } from '@gears-frontx/framework';
+### Register a domain and its extensions
 
-const screenset: ScreensetDefinition = {
-  id: 'demo',
-  name: 'Demo',
-  category: ScreensetCategory.Production,
-  defaultScreen: 'home',
-  menu: [/* ... */],
-};
-
-screensetRegistry.register(screenset);
-```
-
-**NEW**: Register domain and extensions
 ```typescript
 import type { ExtensionDomain, Extension } from '@gears-frontx/framework/mfe';
 // `screenDomain` is the application's own ExtensionDomain declaration
@@ -399,4 +372,4 @@ await app.mfeRegistry.registerExtension(homeExtension);
 await app.mfeRegistry.registerExtension(profileExtension);
 ```
 
-See the MFE migration guide in the project documentation for detailed migration steps.
+See the MFE guide in the project documentation for the full flow.

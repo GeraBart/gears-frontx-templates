@@ -27,7 +27,7 @@ import {
   extensionScreenSchema,
   languageCodeSchema,
   screenDomain,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../../src/index';
 import { claimAutomaticReload } from './automaticReload';
 import { isShellLanguage } from '@/app/i18n/shellLanguages';
 import {

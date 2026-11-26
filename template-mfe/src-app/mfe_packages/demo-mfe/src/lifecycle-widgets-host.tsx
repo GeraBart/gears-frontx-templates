@@ -72,7 +72,7 @@ import {
   extensionScreenSchema,
   FRONTX_MFE_ENTRY_MF,
   screenDomain,
-} from '@gears-frontx/frontx-template-shell';
+} from './shellContract';
 import styles from './lifecycle-widgets-host.module.css';
 
 const WIDGET_PING_ACTION_TYPE =

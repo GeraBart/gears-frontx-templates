@@ -83,12 +83,14 @@ domain without one, has no router access: `ExtensionRouter` and `navigation()`
 refuse with an error there.
 
 Every MFE declares `@gears-frontx/routing` in its `package.json`; there is no
-shared-dependencies list in `vite.config.ts` to keep in sync. Sharing is
-derived: `vitePluginMfeGts()` shares every package in `dependencies` (and
-non-optional `peerDependencies`) by default, `devDependencies` are bundled
-into the MFE, and `share.exclude` in `mfe.json` is the only opt-out. The
-scaffold keeps routing bundled, so its runtime evaluates one copy of it,
-never shared across MFEs. An MFE that renders `<ExtensionRouter>` or calls
+shared-dependencies list in `vite.config.ts` to keep in sync. Sharing follows
+the build graph: `vitePluginMfeGts()` shares every bare package the MFE's code
+imports, whichever `package.json` section declares it, together with the
+runtime dependencies of `dependencies` and non-optional `peerDependencies`.
+In `mfe.json`, `share.exclude` is the only opt-out (the plugin's `include`
+option also narrows the set); it keeps a package in the MFE's own chunks. A shared package arrives as content-addressed units, and
+every MFE runtime still evaluates its own copy, so routing state is never
+shared across MFEs. An MFE that renders `<ExtensionRouter>` or calls
 `navigation()` declares `@gears-frontx/routing-tanstack` in `package.json`
 the same way.
 

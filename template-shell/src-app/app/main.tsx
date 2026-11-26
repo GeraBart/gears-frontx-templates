@@ -10,7 +10,7 @@ import {
   languageSchema,
   screenLabelsSchema,
   FRONTX_MFE_ENTRY_MF,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../src/index';
 import { Toaster } from '@/app/components/ui/sonner';
 import { layout } from '@/app/layout/state';
 import { AccountsApiService } from '@/app/api';

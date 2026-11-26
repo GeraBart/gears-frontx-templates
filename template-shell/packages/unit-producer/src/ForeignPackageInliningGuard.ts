@@ -1,7 +1,7 @@
 /**
- * `ForeignPackageInliningGuard` — fails the build when a unit's or pack's
- * esbuild metafile contains modules of another shared package. Every
- * shared package is delivered once, from its own graph; a copy inlined
+ * `ForeignPackageInliningGuard` — fails the build when a package's chunks
+ * contain modules of another shared package. Every shared package is
+ * delivered once, from its own chunks; a copy inlined
  * into a sibling's output is a second, per-consumer instance of it —
  * exactly what the unit model exists to prevent.
  *

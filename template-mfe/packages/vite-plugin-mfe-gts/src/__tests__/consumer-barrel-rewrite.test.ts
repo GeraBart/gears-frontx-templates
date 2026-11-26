@@ -58,7 +58,7 @@ afterAll(() => {
 type TransformHandler = (code: string, id: string) => Promise<{ code: string } | null>;
 
 function pluginFor(command: 'build' | 'serve'): { plugin: Plugin; transform: TransformHandler } {
-  const plugin = vitePluginMfeGts().find(
+  const plugin = vitePluginMfeGts({ root }).find(
     (p): p is Plugin =>
       typeof p === 'object' &&
       p !== null &&

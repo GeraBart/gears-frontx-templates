@@ -15,7 +15,7 @@
 
 import type { ChildMfeBridge, MfeMountContext } from '@gears-frontx/react/mfe';
 import { ThemeAwareReactLifecycle } from '@gears-frontx/react/mfe';
-import { FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SHARED_PROPERTY_THEME } from '../shellContract';
 import kitThemeCss from '@gears-frontx/ui-kit/theme.css?inline';
 import { anchorKitThemeOnShadowHost } from './anchorKitThemeOnShadowHost';
 import { kitThemeScopeFor } from './kitThemeScope';

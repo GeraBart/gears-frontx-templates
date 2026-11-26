@@ -20,6 +20,8 @@ export const PROFILE_EXTENSION_ID = `${SCREEN}frontx.demo.screens.profile.v1`;
 export const CURRENT_THEME_EXTENSION_ID = `${SCREEN}frontx.demo.screens.theme.v1`;
 /** `demo-mfe`: the UI-kit elements screen, which loads lazy element chunks. */
 export const UIKIT_ELEMENTS_EXTENSION_ID = `${SCREEN}frontx.demo.screens.uikit.v1`;
+/** `lazy-import-fixture`: the screen whose triggers lazily import shared packages by bare specifier. */
+export const LAZY_IMPORT_EXTENSION_ID = `${SCREEN}frontx.lazyimport.screens.home.v1`;
 
 /** The test id the host stamps on the menu item that mounts `extensionId`. */
 export function menuItemTestId(extensionId) {

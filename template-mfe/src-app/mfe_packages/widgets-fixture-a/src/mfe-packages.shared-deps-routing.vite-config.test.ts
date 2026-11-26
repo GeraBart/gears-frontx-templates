@@ -2,7 +2,7 @@
 /**
  * Every MFE package builds its shared dependencies through
  * `@gears-frontx/vite-plugin-mfe-gts` — the plugin resolves the shared set
- * share-by-default from each package's declared dependencies, so each MFE
+ * over the build graph from each package's declared dependencies, so each MFE
  * runtime evaluates exactly one copy of `@gears-frontx/routing` (and of every
  * other shared package), never a second copy inlined next to the host's.
  * A scaffold config therefore declares no sharedDeps or externals list of its

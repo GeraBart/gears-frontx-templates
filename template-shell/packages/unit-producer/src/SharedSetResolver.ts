@@ -1,9 +1,10 @@
 /**
  * `SharedSetResolver` — owns the shared-dependency set for a producing
- * build. The set is derived, never listed: every name declared in the
- * producing package's `dependencies` plus its non-optional
- * `peerDependencies` is shared by default; `devDependencies` are never
- * shared. The `share.exclude` opt-out removes entries, and is rejected —
+ * build. The set is derived, never listed. It describes the declared
+ * seed — every name declared in the producing package's `dependencies`
+ * plus its non-optional `peerDependencies`, never its `devDependencies`
+ * — which the build graph extends with every package the bundled code
+ * imports (`BuildGraphSharing`). The `share.exclude` opt-out removes entries, and is rejected —
  * naming the dependents — when a still-shared package declares the
  * excluded one (`closure_enforcement.formation`).
  *
@@ -23,7 +24,8 @@
  * build fails early with no output written; the producer repeats the
  * second check for every package the closure reaches by import.
  *
- * The set is derived share-by-default; no name list is curated by hand.
+ * No name list is curated by hand: the seed is derived from the declared
+ * names and extended by what the build graph imports.
  */
 
 import * as fs from 'node:fs';
@@ -133,7 +135,8 @@ export class SharedSetResolver {
    * dependencies are resolvable and bundled when present, so they count;
    * peers marked `optional` in `peerDependenciesMeta` may legitimately be
    * absent and are not treated as hard dependents. `devDependencies` are
-   * never consulted: they are not installed for consumers.
+   * not part of the declared seed: they are not installed for consumers
+   * (a package the build graph imports is shared whether declared or not).
    */
   static declaredDepNames(pkg: ResolvablePackageJson): string[] {
     // A name declared in two fields (a `dependencies` entry that is also a
@@ -185,7 +188,7 @@ export class SharedSetResolver {
       };
     }
 
-    // Share-by-default: the set is derived from the declared dependency
+    // The shared set over the build graph is derived from the declared dependency
     // fields, never from a curated name list (`closure_enforcement.formation`).
     const derived = this.include ?? SharedSetResolver.declaredDepNames(projectPkg);
     const sharedDeps = derived.filter((name) => !this.isExcluded(name));

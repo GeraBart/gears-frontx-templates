@@ -10,11 +10,12 @@ skeleton for anything not listed here. An MFE imports the ecosystem from
 subpath `@gears-frontx/react/mfe` for the MFE surface (`ThemeAwareReactLifecycle`,
 `ChildMfeBridge`, the MFE hooks and components, the MFE runtime types and classes, and
 the MFE host plugin `microfrontends()` a nested host adds). Both are type-system
-agnostic. The template's GTS vocabulary - the shared-property, domain and entry type IDs
+agnostic. The shell's GTS vocabulary - the shared-property, domain and entry type IDs
 (`FRONTX_SHARED_PROPERTY_*`, `FRONTX_SCREEN_DOMAIN`, `FRONTX_MFE_ENTRY_MF`, ...), the
-base domains such as `screenDomain` and the GTS schemas - comes from
-`@gears-frontx/frontx-template-shell`; the GTS type system itself (`gtsPlugin`, the
-`FRONTX_ACTION_*` constants, `JSONSchema`) from `@gears-frontx/gts-plugin`, which only a
+base domains such as `screenDomain` and the GTS schemas - is not importable: an MFE
+declares the ids it uses itself, in its own `src/shellContract.ts`, like an independent
+repository, and never imports shell code. The GTS type system itself (`gtsPlugin`, the
+`FRONTX_ACTION_*` constants, `JSONSchema`) comes from `@gears-frontx/gts-plugin`, which only a
 package that declares custom action schemas or builds a registry needs. Name another
 package only inside a `declare module` block.
 
@@ -327,7 +328,8 @@ in an effect body is what `react-hooks/set-state-in-effect` rejects. `bridge.dom
 and `bridge.instanceId` are plain string properties.
 
 ```ts
-import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/frontx-template-shell';
+// Declared in this MFE's own `src/shellContract.ts`, never imported from the shell.
+import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from './shellContract';
 
 const [theme, setTheme] = useState<string>(() => {
   const initial = bridge.getProperty(FRONTX_SHARED_PROPERTY_THEME);

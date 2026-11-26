@@ -10,6 +10,8 @@
  * framework plugin plus `vitePluginMfeGts({ exposes })`.
  */
 
+import * as path from 'node:path';
+
 import type { PluginOption } from 'vite';
 
 import { MfeFederationSetup } from './MfeFederationSetup';
@@ -18,14 +20,15 @@ import { MfeGtsPlugin, type VitePluginMfeGtsOptions } from './MfeGtsPlugin';
 export default function vitePluginMfeGts(
   options?: VitePluginMfeGtsOptions
 ): PluginOption[] {
-  const setup = new MfeFederationSetup(
-    options?.root ?? process.cwd(),
-    options?.exposes
-  );
+  // One package root for everything the plugin reads from the package:
+  // federation settings, the shared set, `mfe.json` and the exposes.
+  const root = path.resolve(options?.root ?? process.cwd());
+  const setup = new MfeFederationSetup(root, options?.exposes);
   return [
     ...setup.plugins(),
     new MfeGtsPlugin({
       ...options,
+      root,
       exposes: setup.getSettings().exposes,
       ownedFederationPlugins: new Set(setup.plugins()),
     }).toVitePlugin(),

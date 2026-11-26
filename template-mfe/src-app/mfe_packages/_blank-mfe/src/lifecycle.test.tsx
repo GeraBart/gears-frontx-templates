@@ -3,7 +3,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMfeBridgeFixture } from '../../../__test-utils__/createMfeBridgeFixture';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from './shellContract';
 
 type BridgeFixture = ReturnType<typeof createMfeBridgeFixture>;
 type TestBridge = BridgeFixture['bridge'];

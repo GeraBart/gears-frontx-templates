@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
-import { FRONTX_POPUP_DOMAIN, FRONTX_SCREEN_DOMAIN } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_POPUP_DOMAIN, FRONTX_SCREEN_DOMAIN } from '../../../src/index';
 import { CHROME_REFRESH_PAGE, CHROME_SIGN_IN } from '@/app/mfe/chrome-actions';
 import type { AuthRuntime, AuthSession } from '@gears-frontx/react';
 import {

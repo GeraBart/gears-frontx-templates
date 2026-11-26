@@ -13,7 +13,7 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { GtsPlugin } from '@gears-frontx/gts-plugin';
-import { extensionScreenSchema, languageCodeSchema, languageSchema, themeSchema } from '@gears-frontx/frontx-template-shell';
+import { extensionScreenSchema, languageCodeSchema, languageSchema, themeSchema } from './shellContract';
 import type { ExtensionDomain, Extension } from '@gears-frontx/react/mfe';
 import { PROFILE_EXTENSION_ID, DEMO_ACTION_REFRESH_PROFILE } from './shared/extension-ids';
 import refreshProfileSchemaJson from '../mfe.json' with { type: 'json' };

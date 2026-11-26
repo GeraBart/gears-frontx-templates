@@ -5,7 +5,7 @@ import {
   FRONTX_SCREEN_DOMAIN,
   FRONTX_SHARED_PROPERTY_LANGUAGE,
   FRONTX_SHARED_PROPERTY_THEME,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../shellContract';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

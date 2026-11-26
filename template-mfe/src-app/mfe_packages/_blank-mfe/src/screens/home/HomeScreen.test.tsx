@@ -37,7 +37,7 @@ vi.mock('../../shared/useScreenTranslations', () => ({
 }));
 
 import { HomeScreen } from './HomeScreen';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '../../shellContract';
 
 // Neutral fixture values — test-controlled, not tied to any template placeholder.
 const TEST_THEME = 'smoke-theme';

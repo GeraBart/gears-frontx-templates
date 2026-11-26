@@ -282,7 +282,7 @@ export type {
  * Re-declare EventPayloadMap to enable module augmentation on @gears-frontx/react
  *
  * This creates a new declaration site in @gears-frontx/react that TypeScript can augment.
- * App-layer code can now use `declare module '@gears-frontx/react'` instead of importing
+ * App-layer code uses `declare module '@gears-frontx/react'` instead of importing
  * from L1 packages directly, maintaining proper layer architecture.
  *
  * ARCHITECTURE: This pattern allows L3+ code to augment event types without

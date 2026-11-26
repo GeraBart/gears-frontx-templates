@@ -28,7 +28,7 @@ Authoritative files:
 ## The domain and the presentation
 
 The shell implements the template's popup domain (`popupDomain` from
-`@gears-frontx/frontx-template-shell`, route `popup`) as its modal extension
+`src/gts`, route `popup`) as its modal extension
 domain. `modalDomain.ts` registers it with `OptionalMountStrategy`, so
 `mount_ext` opens one modal and displaces the one before it, and `unmount_ext`
 closes it. The domain pins a derived extension

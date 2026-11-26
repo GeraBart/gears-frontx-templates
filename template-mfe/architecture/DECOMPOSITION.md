@@ -35,7 +35,8 @@ The template-mfe architecture holds the behaviour of the MFE build plugin that t
 - **Depends On**: `cpt-template-shell-feature-unit-producer-output`
 
 - **Scope**:
-  - One list per exposed module and per lazy own chunk, keyed by emitted chunk location, with the union for a target two parents reach.
+  - One list per exposed module and per lazy target, a lazy own chunk keyed by emitted chunk location and a shared package imported dynamically keyed by its bare specifier, with the union for a target two parents reach.
+  - The check that every name an own chunk imports from a shared specifier is exported by the unit answering it.
   - `ownChunks` per list.
   - The lazy-import call for every literal and pattern dynamic import in the microfrontend's own code, and no list for a pattern import.
   - The opaque-import report with file and line.

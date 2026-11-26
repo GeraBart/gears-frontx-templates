@@ -1,4 +1,4 @@
-import { screenLabelsSchema } from '@gears-frontx/frontx-template-shell';
+import { screenLabelsSchema } from '../../../src/index';
 import { gtsPlugin } from '@gears-frontx/gts-plugin';
 
 const screenLabelsType = (screenLabelsSchema.$id ?? '').replace(/^gts:\/\//, '');

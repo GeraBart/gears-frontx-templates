@@ -22,8 +22,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { ConsumerBarrelFallback } from '@gears-frontx/unit-producer';
 import { build } from 'vite';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { vitePluginShell } from '../index';
 
@@ -444,5 +445,34 @@ describe('vitePluginShell consumer barrel rewrite (boot-chunk model)', () => {
     expect(emitted.chunks).toMatch(/from\s*["']icons["']/);
     // The package-name specifier is answered by a boot-list item.
     expect(bootAnswers(emitted).has('icons')).toBe(true);
+  });
+
+  it('answers the barrel specifiers the fallback reverts the host chunks to, through the import map and the boot list', async () => {
+    const root = path.join(tmp, 'host');
+    makeHost(root, "import { Icon } from 'icons';\nconsole.log(Icon);\n");
+    const target = 'icons/dist/icons/icon.js';
+    // The fallback turning the rewrite back to the barrel, as it does when
+    // no produced unit answers the rewritten specifier.
+    const apply = vi.spyOn(ConsumerBarrelFallback, 'apply').mockImplementation((params) => {
+      for (const chunk of params.chunks) {
+        if (!chunk.imports.includes(target)) continue;
+        const file = path.join(params.outDir, chunk.fileName);
+        fs.writeFileSync(file, fs.readFileSync(file, 'utf-8').split(target).join('icons'));
+        chunk.imports.splice(chunk.imports.indexOf(target), 1, 'icons');
+      }
+      return new Map([[target, 'reverted for the test']]);
+    });
+    try {
+      const emitted = await buildHost(root);
+
+      expect(emitted.chunks).toMatch(/from\s*["']icons["']/);
+      expect(emitted.importMap.imports['icons']).toBeDefined();
+      expect(emitted.importMap.imports[target]).toBeUndefined();
+      expect(bootAnswers(emitted).has('icons')).toBe(true);
+      const mod = await loadItem(root, emitted, 'icons');
+      expect((mod as { Icon: string }).Icon).toBe('ICON_BODY');
+    } finally {
+      apply.mockRestore();
+    }
   });
 });

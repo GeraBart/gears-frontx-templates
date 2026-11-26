@@ -90,7 +90,19 @@ function callConfig(
     c: object,
     env: { command: string }
   ) => ConfigResult;
-  return hook.call({}, { root, ...extra }, { command });
+  const result = hook.call({}, { root, ...extra }, { command });
+  // The shared set is externalized on the resolved config.
+  const build = {
+    outDir: 'dist',
+    rollupOptions: { external: extra?.build?.rollupOptions?.external },
+  };
+  const resolved = plugin.configResolved as (c: object) => void;
+  resolved.call({}, { root, command, base: '/', build, html: {} });
+  if (result === null || typeof build.rollupOptions.external !== 'function') return result;
+  return {
+    ...result,
+    build: { rollupOptions: { external: build.rollupOptions.external as (s: string) => boolean } },
+  };
 }
 
 const DEPS: FixtureDep[] = [

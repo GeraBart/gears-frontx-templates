@@ -20,7 +20,7 @@ import { useHostDirection } from '../../shared/useHostDirection';
 import { kitThemeScopeFor } from '../../shared/kitThemeScope';
 import { CategoryMenu } from './components/CategoryMenu';
 import styles from './UIKitElements.module.css';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '../../shellContract';
 
 // Lazy-loaded category components
 const LayoutElements = lazy(() =>

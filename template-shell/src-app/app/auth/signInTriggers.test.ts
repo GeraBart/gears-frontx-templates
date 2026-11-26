@@ -16,7 +16,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthProvider, FrameworkTransportErrorEvent, FrontXApp } from '@gears-frontx/react';
 import { FRONTX_ACTION_UNMOUNT_EXT } from '@gears-frontx/gts-plugin';
-import { FRONTX_POPUP_DOMAIN } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_POPUP_DOMAIN } from '../../../src/index';
 import { SIGN_IN_EXTENSION_ID } from './signIn';
 
 /** The event shape of the provider hook the 401 trigger wraps; the package

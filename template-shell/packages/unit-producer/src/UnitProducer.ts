@@ -38,11 +38,15 @@ import type {
 import { BuildReport } from './BuildReport';
 import type { BuildStageTimer } from './BuildStageTimer';
 import { ContentAddressedPublisher } from './ContentAddressedPublisher';
+import { ChunkSyntaxMemo } from './ChunkSyntaxMemo';
 import { ContentHasher } from './ContentHasher';
 import { ConsumerBarrelResolver } from './ConsumerBarrelResolver';
+import { ConsumerBarrelFallback } from './ConsumerBarrelFallback';
 import { ConsumerBarrelRewriteLedger } from './ConsumerBarrelRewriteLedger';
 import { ConsumerBarrelRewriteTransform } from './ConsumerBarrelRewriteTransform';
-import { DynamicImportClassifier } from './DynamicImportClassifier';
+import { ExportClauseMembers } from './ExportClauseMembers';
+import { LazyListSeeds } from './LazyListSeeds';
+import { UnitExportNames } from './UnitExportNames';
 import { UnitFileNaming } from './UnitFileNaming';
 import { ForeignPackageInliningGuard } from './ForeignPackageInliningGuard';
 import { ModuleLinkageScanner } from './ModuleLinkageScanner';
@@ -55,6 +59,9 @@ import { PackageBuildCache, type CachedPackageBuild, type CachedChunkRecord } fr
 import { PackageEntryFileResolver } from './PackageEntryFileResolver';
 import { PackageEntrySet, type BarrelNote, type ExcludedEntry } from './PackageEntrySet';
 import { PackageExportPatternExpander } from './PackageExportPatternExpander';
+import { PackageContentFingerprints } from './PackageContentFingerprints';
+import { PatternImportMatcher } from './PatternImportMatcher';
+import { PortableCacheRecord } from './PortableCacheRecord';
 import { restoreMemberNames } from './ProducerBuildSettings';
 import { ProducerCacheFingerprint } from './ProducerCacheFingerprint';
 import type { OpaqueImportReport, ProducedFetchList } from './ProducedFetchList';
@@ -74,6 +81,7 @@ export interface SharedDepPackageJson {
   browser?: unknown;
   /** The package's side-effect declaration; gates barrel member splitting. */
   sideEffects?: boolean | string[];
+  optionalDependencies?: Record<string, string>;
   version?: string;
 }
 
@@ -95,6 +103,11 @@ export interface ProducedChunk {
   modulePaths: string[];
   /** Root names of the bare specifiers the chunk keeps external. */
   bareImports: string[];
+  /**
+   * The names the emitted unit exports; absent when the unit is not
+   * emitted by this build or its surface is not statically known.
+   */
+  exports?: string[];
 }
 
 /** One produced shared package, as `UnitProducer.produce` returns it. */
@@ -232,6 +245,31 @@ interface PackageChunks {
    * stay runtime requires and never enter the delivered closure.
    */
   optionalExternals?: Set<string>;
+  /** Member respells of this package turned back to their barrel this run. */
+  turnedBackRespells?: Set<string>;
+}
+
+/** What every list of one package's emit shares: lookups and the publisher. */
+interface ListEmitContext {
+  build: PackageChunks;
+  answerToItem: ReadonlyMap<string, string>;
+  answerToRecord: ReadonlyMap<string, { build: PackageChunks; chunk: ChunkRecord }>;
+  chunkByHash: ReadonlyMap<string, { build: PackageChunks; chunk: ChunkRecord }>;
+  deliveredRoots: ReadonlySet<string>;
+  onError: (message: string) => never;
+  recordFor: (hash: string) => { build: PackageChunks; chunk: ChunkRecord } | undefined;
+  byIdOf: (b: PackageChunks) => Map<string, ChunkRecord>;
+  answersOf: (b: PackageChunks, chunk: ChunkRecord) => string[];
+  publishChunk: (chunk: ChunkRecord) => void;
+}
+
+/** The state of the one list being emitted that its edge walk reads and extends. */
+interface ListEmitState {
+  answeredNow: Set<string>;
+  emittedHashes: Set<string>;
+  parentLocations: ReadonlySet<string>;
+  seedLazy: (build: PackageChunks, chunk: ChunkRecord, key?: string) => void;
+  push: (entry: string | { build: PackageChunks; chunk: ChunkRecord }) => void;
 }
 
 // @cpt-dod:cpt-template-shell-dod-unit-producer-output-obligations:p1
@@ -264,11 +302,28 @@ export class UnitProducer {
   private entryScreens?: EntryScreenLedger;
   /** Per-package cache outcomes, for the build report. */
   private readonly cacheReport = new PackageCacheReport();
+  /**
+   * The content fingerprint of each package directory, read once: it
+   * keys the package's own cached computation and is a part of the key
+   * of every package that reads it.
+   */
+  readonly contentFingerprints: PackageContentFingerprints;
+  /** What the current run reads out of each emitted chunk, parsed once per chunk. */
+  private chunkSyntax = new ChunkSyntaxMemo();
+  private patternImports: PatternImportMatcher;
+  /** Per package: the origins of the imports its own build respelled. */
+  private readonly respellLedgers = new Map<string, ConsumerBarrelRewriteLedger>();
 
-  constructor(options: UnitProducerOptions) {
+  /**
+   * `contentFingerprints`: the memo of another producer of the same
+   * host produce call, so the packages both read are fingerprinted once.
+   */
+  constructor(options: UnitProducerOptions, contentFingerprints?: PackageContentFingerprints) {
     this.options = options;
     this.packageRoot = options.packageRoot;
     this.outputDir = options.outputDir;
+    this.contentFingerprints = contentFingerprints ?? new PackageContentFingerprints();
+    this.patternImports = new PatternImportMatcher(options.outputDir);
   }
 
   /** Per-package cache hits/misses of the last `produce()`, sorted by `name@version`. */
@@ -283,6 +338,8 @@ export class UnitProducer {
     fs.mkdirSync(this.outputDir, { recursive: true });
     // @cpt-begin:cpt-template-shell-flow-unit-producer-output-produce:p1:inst-produce-output
     this.stagingDir = fs.mkdtempSync(`${this.outputDir}.staging-`);
+    this.chunkSyntax = new ChunkSyntaxMemo();
+    this.patternImports = new PatternImportMatcher(this.outputDir);
     this.entryScreens = new EntryScreenLedger(
       new EntryScreen(this.entryFileResolver, new EntryClosureMemo()),
       this.skipped
@@ -537,7 +594,10 @@ export class UnitProducer {
           onError
         );
       }
-      if (head >= queue.length) break;
+      // At rest, a shared package's member respells whose answering
+      // unit lacks an imported name go back to the barrel; the barrel
+      // specifiers they restore are requested like any other.
+      if (head >= queue.length && !this.keepUnansweredRespells(builds, queue)) break;
       await drainQueue();
       await this.propagateSkips(builds);
     }
@@ -671,7 +731,7 @@ export class UnitProducer {
         new Set([...builds.values()].map((b) => b.dep.name)),
         onError
       );
-      produced.push(this.finishPackage(build, key, emitted));
+      produced.push(this.finishPackage(build, key, emitted, onError));
     }
     return produced;
   }
@@ -852,21 +912,22 @@ export class UnitProducer {
       this.options.cacheDir !== undefined
         ? new PackageBuildCache(this.options.cacheDir)
         : undefined;
-    // The cached computation is the raw Rollup output these
-    // settings produced — a different producer code base or a
-    // different fixed settings set is a different computation
-    // The key is a content hash of every input
-    // (package files, the producer's own built code, the fixed
-    // settings text), never a version label: relying on the producer
-    // version string masked stale output (warm builds kept serving chunks
-    // computed before a fix because the version had not bumped).
+    // The key is a content hash of every input of the cached raw
+    // Rollup output, never a version label: the package's files, the
+    // files of the packages its build reads, the producer's own built
+    // code, the toolchain versions and the fixed settings text.
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-key-build-cache
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-cache-key-inputs
     const fingerprint =
       cache !== undefined
-        ? PackageBuildCache.fingerprint(
+        ? this.contentFingerprints.of(
             dep.packageDir,
-            ProducerCacheFingerprint.forProcess()
+            `${ProducerCacheFingerprint.forProcess()}\n` +
+              ProducerCacheFingerprint.dependencyFingerprints(dep, this.contentFingerprints)
           )
         : undefined;
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-cache-key-inputs
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-key-build-cache
     const loadCached = () => cache?.load(dep.name, dep.version, fingerprint!);
     const cached = stageTimer !== undefined
       ? stageTimer.measure('cache-read', loadCached)
@@ -877,6 +938,8 @@ export class UnitProducer {
       cache === undefined ? 'disabled' : cached !== undefined ? 'hit' : 'miss'
     );
     if (cached !== undefined) {
+      cached.build = PortableCacheRecord.located(cached.build, dep);
+      this.respellLedger(dep).restoreOrigins(cached.build.respells ?? []);
       const chunks = cached.build.chunks.map((r) => this.chunkFromCache(cached.chunkDir, dep, r));
       const build: PackageChunks = {
         dep,
@@ -910,9 +973,11 @@ export class UnitProducer {
       version: dep.version,
       pkg: dep.pkg,
     });
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-package-own-entry-set
     const entrySet = stageTimer !== undefined
       ? await stageTimer.measureAsync('entry-set-computation', computeEntrySet)
       : await computeEntrySet();
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-package-own-entry-set
     for (const excluded of entrySet.excludedEntries) {
       console.warn(
         `  [unit-producer] ${dep.name}: entry "${excluded.entry}" ` +
@@ -1021,7 +1086,18 @@ export class UnitProducer {
         dep.name,
         dep.version,
         fingerprint!,
-        this.cacheManifest(chunks, entryChunks, entrySet, result.inputModuleIds),
+        // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-cache-record-portable
+        PortableCacheRecord.portable(
+          this.cacheManifest(
+            chunks,
+            entryChunks,
+            entrySet,
+            result.inputModuleIds,
+            this.respellLedger(dep)
+          ),
+          dep
+        ),
+        // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-cache-record-portable
         outdir
       );
       if (stageTimer !== undefined) {
@@ -1128,12 +1204,113 @@ export class UnitProducer {
           isShared: () => true,
           entryResolver: this.entryFileResolver,
         }),
-        ledger: new ConsumerBarrelRewriteLedger(),
+        ledger: this.respellLedger(dep),
       });
       this.memberRespells.set(dep.name, transform);
     }
     const rewrite = transform;
     return (code, id) => rewrite.transform(code, id);
+  }
+
+  /**
+   * A member respell stands only when the unit answering the member
+   * specifier exports every name the importing package takes from it —
+   * the rule {@link ConsumerBarrelFallback} applies to consumer code,
+   * here applied to a shared package's own chunks before they are
+   * shaped. A nested barrel's entry chunk answers the module paths of
+   * the modules it holds but exports only its own names, so a binding
+   * respelled to such a module is turned back to the barrel specifier
+   * it was written with. Decided against the package-determined chunk
+   * set only, so the result never depends on which consumer asked.
+   * Returns whether any respell was turned back.
+   */
+  private keepUnansweredRespells(
+    builds: ReadonlyMap<string, PackageChunks>,
+    queue: Array<{ specifier: string; importer?: ResolvedSharedDep }>
+  ): boolean {
+    let turnedBack = false;
+    for (const build of builds.values()) {
+      const ledger = this.respellLedgers.get(build.dep.name);
+      if (ledger === undefined) continue;
+      const unanswered = new Set<string>();
+      for (const target of ledger.targets()) {
+        if (build.turnedBackRespells?.has(target)) continue;
+        const targetBuild = builds.get(SharedSetResolver.extractRootPackageName(target));
+        if (targetBuild === undefined || targetBuild === build) continue;
+        const answering = UnitProducer.entriesLast(
+          targetBuild.chunks.filter((c) => !c.consumerOnly)
+        ).find((c) => c.answers.includes(target));
+        if (answering === undefined) continue;
+        const reason = ConsumerBarrelFallback.missingExport(
+          this.exportSurface(targetBuild.dep, answering),
+          [...ledger.bindingsOf(target).keys()],
+          target
+        );
+        if (reason !== undefined) unanswered.add(target);
+      }
+      if (unanswered.size === 0) continue;
+      this.turnBackRespells(build, ledger, unanswered, queue);
+      build.turnedBackRespells = new Set([...(build.turnedBackRespells ?? []), ...unanswered]);
+      turnedBack = true;
+    }
+    return turnedBack;
+  }
+
+  /**
+   * Turns every import of a `targets` specifier in `build`'s chunks
+   * back to the barrel specifier and barrel name it was written with,
+   * and swaps the chunk's external edge for the barrel's.
+   */
+  private turnBackRespells(
+    build: PackageChunks,
+    ledger: ConsumerBarrelRewriteLedger,
+    targets: ReadonlySet<string>,
+    queue: Array<{ specifier: string; importer?: ResolvedSharedDep }>
+  ): void {
+    for (const chunk of build.chunks) {
+      if (!chunk.externalEdges.some((e) => targets.has(e.specifier))) continue;
+      const source = fs.readFileSync(chunk.file, 'utf-8');
+      const { code, reverts } = ConsumerBarrelFallback.revert(source, targets, ledger, chunk.id);
+      if (reverts > 0) fs.writeFileSync(chunk.file, code, 'utf-8');
+      const edges = new Map<string, { specifier: string; kind: string }>();
+      for (const edge of chunk.externalEdges) {
+        const origins = targets.has(edge.specifier)
+          ? [...ledger.bindingsOf(edge.specifier).values()].map((o) => o.barrelSpecifier)
+          : [edge.specifier];
+        for (const specifier of origins) {
+          edges.set(`${edge.kind}:${specifier}`, { specifier, kind: edge.kind });
+          if (targets.has(edge.specifier)) queue.push({ specifier, importer: build.dep });
+        }
+      }
+      chunk.externalEdges = [...edges.values()];
+    }
+  }
+
+  /**
+   * The names the chunk's unit will export once shaped — its text with
+   * the module interface exposed and member names restored — or
+   * `undefined` when not statically known.
+   */
+  private exportSurface(dep: ResolvedSharedDep, chunk: ChunkRecord): string[] | undefined {
+    const text = fs.readFileSync(chunk.file, 'utf-8');
+    try {
+      return UnitExportNames.of(
+        restoreMemberNames(`${text}${this.interfaceAdditions(chunk, dep, text)}`),
+        chunk.id
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The origins of the imports `dep`'s own builds respelled. */
+  private respellLedger(dep: ResolvedSharedDep): ConsumerBarrelRewriteLedger {
+    let ledger = this.respellLedgers.get(dep.name);
+    if (ledger === undefined) {
+      ledger = new ConsumerBarrelRewriteLedger();
+      this.respellLedgers.set(dep.name, ledger);
+    }
+    return ledger;
   }
 
   /** A cache record back into a chunk record (bytes under `chunkDir`). */
@@ -1175,7 +1352,8 @@ export class UnitProducer {
       excludedEntries: ExcludedEntry[];
       deferredEntries: ExcludedEntry[];
     },
-    inputModuleIds: string[]
+    inputModuleIds: string[],
+    respells: ConsumerBarrelRewriteLedger
   ): CachedPackageBuild {
     return {
       chunks: chunks.map((c) => ({
@@ -1194,6 +1372,7 @@ export class UnitProducer {
       barrelNotes: entrySet.barrelNotes,
       entrySpecifiers: [...entrySet.entries.keys()].sort(),
       inputs: inputModuleIds,
+      respells: respells.originRecords(),
     };
   }
 
@@ -1256,8 +1435,8 @@ export class UnitProducer {
       // answers only its own owned modules and never an unrequested
       // barrel-member deep path. A stub no list reaches is
       // published on the package's root list in `emitLists`, so its
-      // entry-set specifier is still answered by an emitted item
-      // (F-25-1): the override is safe because the stub is delivered.
+      // entry-set specifier is still answered by an emitted item; the
+      // override is safe because the stub is delivered.
       moduleOwner.set(m, entry);
     }
     // Owned modules per chunk — the entry chunk of a module file
@@ -1291,8 +1470,7 @@ export class UnitProducer {
       // keeps the holder from answering its member deep path, so a
       // barrel member no list requests stays unanswered; the
       // stub is published on the root list in `emitLists` so the
-      // entry-set specifier is still answered by an emitted item
-      // (F-25-1).
+      // entry-set specifier is still answered by an emitted item.
       if (!chunk.isCjsEntry) {
         for (const spec of this.moduleSpecifierAnswers(
           dep,
@@ -1433,7 +1611,21 @@ export class UnitProducer {
     chunk: ChunkRecord,
     dep: ResolvedSharedDep
   ): void {
-    if (chunk.entryPoint !== undefined || chunk.isCjsEntry) return;
+    const text = fs.readFileSync(chunk.file, 'utf-8');
+    const additions = this.interfaceAdditions(chunk, dep, text);
+    if (additions !== '') fs.writeFileSync(chunk.file, `${text}${additions}`, 'utf-8');
+  }
+
+  /**
+   * The `export{…};` line {@link exposeModuleInterface} appends to the
+   * chunk's `text`; `''` when the chunk needs none.
+   */
+  private interfaceAdditions(
+    chunk: ChunkRecord,
+    dep: ResolvedSharedDep,
+    text: string
+  ): string {
+    if (chunk.entryPoint !== undefined || chunk.isCjsEntry) return '';
     // module-local name → public export name, over every module in
     // the chunk: `export { y as Empty }` → y→Empty; `X as default` →
     // X→default; `export const C` → C→C; `export default ...` →
@@ -1463,12 +1655,8 @@ export class UnitProducer {
           exposed.set(local, pub);
         }
       };
-      for (const clause of source.matchAll(/export\s*\{([^}]*)\}/g)) {
-        for (const member of clause[1].split(',')) {
-          const m = member.trim().match(/^([\w$]+)(?:\s+as\s+([\w$]+))?$/);
-          if (m === null) continue;
-          offer(m[1], m[2] ?? m[1]);
-        }
+      for (const member of ExportClauseMembers.of(source)) {
+        offer(member.local, member.exported);
       }
       for (const m of source.matchAll(
         /export\s+(?:const|let|var|function\s*\*?|class)\s+([\w$]+)/g
@@ -1477,17 +1665,12 @@ export class UnitProducer {
       }
       if (/export\s+default\b/.test(source)) offer('default', 'default');
     }
-    if (exposed.size === 0) return;
-    const text = fs.readFileSync(chunk.file, 'utf-8');
+    if (exposed.size === 0) return '';
     // Chunk export names → bindings: `export{<b> as <local>}` and
     // bare `export{<b>}` (binding doubles as the export name).
     const bindingOf = new Map<string, string>();
-    for (const clause of text.matchAll(/export\s*\{([^}]*)\}/g)) {
-      for (const member of clause[1].split(',')) {
-        const m = member.trim().match(/^([\w$]+)(?:\s+as\s+([\w$]+))?$/);
-        if (m === null) continue;
-        bindingOf.set(m[2] ?? m[1], m[1]);
-      }
+    for (const member of ExportClauseMembers.of(text)) {
+      bindingOf.set(member.exported, member.local);
     }
     const additions: string[] = [];
     for (const [local, pub] of exposed) {
@@ -1497,12 +1680,7 @@ export class UnitProducer {
         additions.push(`${binding} as ${pub}`);
       }
     }
-    if (additions.length === 0) return;
-    fs.writeFileSync(
-      chunk.file,
-      `${text}export{${additions.join(',')}};\n`,
-      'utf-8'
-    );
+    return additions.length === 0 ? '' : `export{${additions.join(',')}};\n`;
   }
 
   /**
@@ -1774,341 +1952,26 @@ export class UnitProducer {
       ContentAddressedPublisher.publish(tmp, dest);
       // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-emit-content-addressed
     };
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-include-referenced-chunks
     const publishChunk = (chunk: ChunkRecord): void => {
       publishTo(chunk.file, chunk.location);
       for (const alias of chunk.publishAliases ?? []) {
         publishTo(chunk.file, alias);
       }
     };
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-include-referenced-chunks
 
-    const emit = (
-      seeds: readonly (
-        | string
-        | { build: PackageChunks; chunk: ChunkRecord }
-      )[],
-      parentLocations: ReadonlySet<string>,
-      entryPath: string,
-      listSpec: string,
-      parentAnswers: ReadonlySet<string> = new Set()
-    ): ProducedFetchList => {
-      // Items are keyed by location: the same content identity reached
-      // through two builds' internal edges needs both locations —
-      // each importer's emitted specifier resolves against its own
-      // item's location.
-      const items = new Map<string, SharedDepUnit>();
-      const emitted = new Map<string, ChunkRecord>();
-      const emittedHashes = new Set<string>();
-      const lazy: Record<string, ProducedFetchList> = {};
-      const patterns: Record<string, ProducedFetchList> = {};
-      const opaqueImports: OpaqueImportReport[] = [];
-      const lazySeeds: Array<{
-        build: PackageChunks;
-        chunk: ChunkRecord;
-      }> = [];
-      const lazySeeded = new Set<string>();
-      const seedLazy = (
-        seedBuild: PackageChunks,
-        chunk: ChunkRecord
-      ): void => {
-        if (lazySeeded.has(chunk.location)) return;
-        lazySeeded.add(chunk.location);
-        lazySeeds.push({ build: seedBuild, chunk });
-      };
-      // Specifiers already answered by a delivered item: the parent
-      // list's answers plus every answer claimed by items this emit
-      // produces. An external edge dedupes only when its SPECIFIER is
-      // answered — never on content identity or location alone: a
-      // byte-identical twin or a same-hash item can carry different
-      // answers, and dropping the answering item leaves the emitted
-      // bare specifier resolvable only by a second-round fetch
-      const answeredNow = new Set<string>(parentAnswers);
-      const queue: Array<{ build: PackageChunks; chunk: ChunkRecord }> = [];
-      const push = (
-        entry: string | { build: PackageChunks; chunk: ChunkRecord }
-      ): void => {
-        const found = typeof entry === 'string' ? recordFor(entry) : entry;
-        if (found === undefined && typeof entry === 'string') {
-          // A seeded or reached content identity no chunk produced —
-          // an internal inconsistency, never a skippable item.
-          onError(
-            `[unit-producer] list "${entryPath}" of "${dep.name}" ` +
-              `references item ${entry}, but no emitted chunk carries ` +
-              `that content identity`
-          );
-        }
-        if (found !== undefined) queue.push(found);
-      };
-      for (const seed of seeds) push(seed);
-      // F-25-1 rule: every entry-set specifier is answered by an item
-      // delivered with the package's ROOT list (the list for the bare
-      // package name, emitted only when the whole package is in scope).
-      // A stub facade Rollup mints for an entry whose bytes folded into
-      // a shared holder — and which the barrel facade imports past, so
-      // no list reaches it — is seeded on the root list and published,
-      // so its entry specifiers are answered by an emitted item instead
-      // of going unanswered. The stub's holder must already be
-      // reachable from the root list's seed (the barrel) through static
-      // internal edges, so the seed never pulls in a closure the
-      // barrel does not deliver. Consumer lists never seed stubs, so a
-      // barrel-member stub no consumer imports stays unpublished and
-      // its unrequested member deep path stays unanswered.
-      if (listSpec === dep.name) {
-        const closureChunks = new Set<ChunkRecord>();
-        const closureQueue: Array<{ build: PackageChunks; chunk: ChunkRecord }> = [];
-        for (const seed of seeds) {
-          const found = typeof seed === 'string' ? recordFor(seed) : seed;
-          if (found !== undefined && !closureChunks.has(found.chunk)) {
-            closureChunks.add(found.chunk);
-            closureQueue.push(found);
-          }
-        }
-        const closureModules = new Set<string>();
-        while (closureQueue.length > 0) {
-          const { build: cb, chunk } = closureQueue.pop()!;
-          for (const m of chunk.modulePaths) closureModules.add(m);
-          for (const edge of chunk.internalEdges) {
-            if (edge.kind === 'dynamic') continue;
-            const target = byIdOf(cb).get(edge.id);
-            if (target !== undefined && !closureChunks.has(target)) {
-              closureChunks.add(target);
-              closureQueue.push({ build: cb, chunk: target });
-            }
-          }
-        }
-        for (const chunk of build.chunks) {
-          if (chunk.entryPoint === undefined) continue;
-          if (chunk.modulePaths.length !== 0) continue;
-          if (chunk.supplementary === true) continue;
-          if (chunk.consumerOnly === true) continue;
-          const rel = path
-            .relative(dep.packageDir, chunk.entryPoint)
-            .split(path.sep)
-            .join('/');
-          if (rel === '' || rel.startsWith('..')) continue;
-          if (!closureModules.has(rel)) continue;
-          push({ build, chunk });
-        }
-      }
-      const seen = new Set<string>();
-      while (queue.length > 0) {
-        const found = queue.pop()!;
-        const { chunk } = found;
-        if (
-          seen.has(chunk.location) ||
-          parentLocations.has(chunk.location) ||
-          emitted.has(chunk.location)
-        ) continue;
-        seen.add(chunk.location);
-        const item = this.itemOf(chunk);
-        item.answers = answersOf(found.build, chunk);
-        for (const answer of item.answers) answeredNow.add(answer);
-        // Internal static edges resolve to item references — inside
-        // the chunk's own build.
-        for (const edge of chunk.internalEdges) {
-          const target = byIdOf(found.build).get(edge.id);
-          if (target === undefined) continue;
-          if (edge.kind === 'dynamic') {
-            seedLazy(found.build, target);
-            continue;
-          }
-          item.imports.push({ unit: target.contentHash });
-          if (!parentLocations.has(target.location)) {
-            queue.push({ build: found.build, chunk: target });
-          }
-        }
-        items.set(chunk.location, item);
-        emitted.set(chunk.location, chunk);
-        emittedHashes.add(chunk.contentHash);
-        // External specifiers the chunk carries: resolved via the
-        // global answer map. A literal `import('pkg/sub')` gets a lazy
-        // list keyed by the answering item's chunk location.
-        for (const edge of chunk.externalEdges) {
-          const target = answerToItem.get(edge.specifier);
-          if (target === undefined) {
-            // List completeness: a reached specifier of a
-            // delivered package must have an answering item — a bare
-            // specifier of one surviving in the emitted list leaves a
-            // native import the browser cannot resolve. Specifiers of
-            // packages outside the delivered set (built-ins, optional
-            // peers, native-staying imports) keep their native edge.
-            const edgeRoot = SharedSetResolver.extractRootPackageName(
-              edge.specifier
-            );
-            if (!isBuiltin(edge.specifier) && deliveredRoots.has(edgeRoot)) {
-              const skip = this.skipped.forSpecifier(edge.specifier);
-              onError(
-                `[unit-producer] list "${entryPath}" of "${dep.name}" ` +
-                  `reaches specifier "${edge.specifier}" through ` +
-                  `${chunk.location}, but no emitted item answers it` +
-                  (skip !== undefined ? ` — skipped entry: ${skip}` : '')
-              );
-            }
-            continue;
-          }
-          const targetFound = chunkByHash.get(target);
-          if (edge.kind === 'dynamic') {
-            // Seed a lazy target whenever the specifier stays
-            // unanswered — a byte-identical twin or same-hash item
-            // delivered elsewhere does not bind this specifier, so a
-            // location/hash check must never silence the seed.
-            if (
-              !answeredNow.has(edge.specifier) &&
-              targetFound !== undefined
-            ) {
-              const lazyTarget =
-                answerToRecord.get(edge.specifier) ?? targetFound;
-              seedLazy(lazyTarget.build, lazyTarget.chunk);
-            }
-            continue;
-          }
-          // Every importer records the reference — deduping by
-          // location must not drop a later importer's edge.
-          item.imports.push({ unit: target });
-          // The edge is covered only when its specifier resolves to an
-          // already-delivered item AND the referenced content identity
-          // is itself delivered. Both are required: an unanswered
-          // specifier resolves late at runtime (a second fetch round),
-          // and a dangling `{item}` reference mints nothing.
-          const specAnswered = answeredNow.has(edge.specifier);
-          const hashDelivered =
-            emittedHashes.has(target) ||
-            (targetFound !== undefined &&
-              parentLocations.has(targetFound.chunk.location));
-          if (specAnswered && hashDelivered) continue;
-          // Emit the record that actually answers the specifier —
-          // byte-identical twins share the hash but keep their own
-          // answers, so the answering record is the only item whose
-          // emission delivers this specifier's binding.
-          push(answerToRecord.get(edge.specifier) ?? target);
-        }
-        // Pattern and opaque imports, read from the emitted source.
-        for (const call of DynamicImportClassifier.classify(
-          fs.readFileSync(chunk.file, 'utf-8'),
-          chunk.namePath
-        )) {
-          if (call.kind === 'literal') continue;
-          if (call.kind === 'opaque') {
-            // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-report-opaque-imports
-            opaqueImports.push({
-              file: chunk.location,
-              line: call.line,
-              expression: call.expression,
-            });
-            // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-report-opaque-imports
-            continue;
-          }
-          for (const matched of this.matchPattern(dep, call.prefix, call.suffix)) {
-            if (patterns[matched.location] === undefined) {
-              patterns[matched.location] = matched.list;
-            }
-          }
-        }
-        // Publishing moves the staged file — after every read of it.
-        publishChunk(chunk);
-      }
-      // A chunk inside an import cycle is also reached through its
-      // unhashed alias spelling, so the alias is a unit of its own in the
-      // table — same bytes, same content identity, its own location — which
-      // the runtime resolves and mints like any other unit.
-      // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-emit-alias-unit
-      // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-alias-unit-publish
-      for (const [location, chunk] of emitted) {
-        const held = items.get(location);
-        if (held === undefined) continue;
-        for (const alias of chunk.publishAliases ?? []) {
-          if (!items.has(alias)) {
-            items.set(alias, {
-              location: alias,
-              contentHash: held.contentHash,
-              answers: [],
-              imports: [...held.imports],
-            });
-          }
-        }
-      }
-      // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-alias-unit-publish
-      // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-emit-alias-unit
-      const list: ProducedFetchList = {
-        items: [...items.values()].sort((a, b) =>
-          a.location < b.location ? -1 : a.location > b.location ? 1 : 0
-        ),
-        // Shared units are not the microfrontend's own code: a shared
-        // package's list names no own chunk.
-        ownChunks: [],
-        ...(Object.keys(lazy).length > 0 ? { lazy } : {}),
-        ...(Object.keys(patterns).length > 0 ? { patterns } : {}),
-        ...(opaqueImports.length > 0 ? { opaqueImports } : {}),
-      };
-      // Lazy delta lists after the parent items are final. A delta
-      // holds only what the target needs beyond the parent list —
-      // dedup is by location: two byte-identical chunks at different
-      // locations are different items (an importer's specifier
-      // resolves to its own edge's location). The parent's emitted
-      // locations stay valid references inside the delta's text.
-      const deliveredNow = new Set([
-        ...emitted.keys(),
-        ...parentLocations,
-      ]);
-      // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-emit-lazy-lists
-      for (const seed of lazySeeds) {
-        const target = emit(
-          [seed],
-          deliveredNow,
-          `lazy-${seed.chunk.namePath}`,
-          '',
-          answeredNow
-        );
-        lazy[seed.chunk.location] = target;
-        // The same list answers the alias spelling a cyclic importer
-        // carries for the target.
-        for (const alias of seed.chunk.publishAliases ?? []) {
-          lazy[alias] = target;
-        }
-      }
-      // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-emit-lazy-lists
-      if (Object.keys(lazy).length > 0) {
-        list.lazy = Object.fromEntries(
-          Object.entries(lazy).sort(([a], [b]) => (a < b ? -1 : 1))
-        );
-      }
-      // List completeness: every relative specifier
-      // surviving in an emitted item's text must resolve — against the
-      // item's own location — to an emitted item, lazy target or
-      // pattern file. An unresolved one leaves a native import the
-      // blob realm cannot resolve: the module graph fails at runtime.
-      const resolvable = new Set([
-        ...emitted.keys(),
-        ...Object.keys(list.lazy ?? {}),
-        ...Object.keys(list.patterns ?? {}),
-        ...parentLocations,
-      ]);
-      for (const chunk of emitted.values()) {
-        for (const alias of chunk.publishAliases ?? []) {
-          resolvable.add(alias);
-        }
-      }
-      for (const [location, chunk] of emitted) {
-        const text = fs.readFileSync(chunk.file, 'utf-8');
-        const specifiers = [
-          ...text.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g),
-        ].map((m) => m[1]);
-        for (const spec of specifiers) {
-          if (!spec.startsWith('./') && !spec.startsWith('../')) continue;
-          const resolved = new URL(
-            spec,
-            `http://r/${location}`
-          ).pathname.slice(1);
-          if (!resolvable.has(resolved)) {
-            onError(
-              `[unit-producer] list "${entryPath}" of "${dep.name}" ` +
-                `emits "${location}" carrying relative specifier ` +
-                `"${spec}" resolving to "${resolved}", but no emitted ` +
-                `item, lazy target or pattern file carries that location`
-            );
-          }
-        }
-      }
-      return list;
+    const context: ListEmitContext = {
+      build,
+      answerToItem,
+      answerToRecord,
+      chunkByHash,
+      deliveredRoots,
+      onError,
+      recordFor,
+      byIdOf,
+      answersOf,
+      publishChunk,
     };
 
     for (const spec of specs) {
@@ -2126,7 +1989,8 @@ export class UnitProducer {
             (skip !== undefined ? ` — skipped entry: ${skip}` : '')
         );
       }
-      lists[spec] = emit(
+      lists[spec] = this.emitList(
+        context,
         [hash],
         new Set(),
         UnitFileNaming.namePathOf(spec),
@@ -2137,46 +2001,460 @@ export class UnitProducer {
   }
 
   /**
-   * Files under the package matching a `prefix…${}…suffix` pattern —
-   * only file names starting with the prefix's last segment and ending
-   * with the suffix match. Each match is published atomically through
-   * `ContentAddressedPublisher`, like every emitted file.
+   * Emits one fetch list: the items reachable from `seeds` beyond
+   * `parentLocations`, with the lazy delta lists its dynamic edges seed.
    */
-  private matchPattern(
-    dep: ResolvedSharedDep,
-    prefix: string,
-    suffix: string
-  ): Array<{ location: string; list: ProducedFetchList }> {
-    const relPrefix = prefix.startsWith('./') ? prefix.slice(2) : prefix;
-    const base = path.resolve(dep.packageDir, relPrefix);
-    const isDirPrefix = relPrefix === '' || relPrefix.endsWith('/');
-    const dir = isDirPrefix ? base : path.dirname(base);
-    const namePrefix = isDirPrefix ? '' : path.basename(base);
-    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return [];
-    const out: Array<{ location: string; list: ProducedFetchList }> = [];
-    const key = UnitFileNaming.packageKey(dep.name, dep.version);
-    for (const name of fs.readdirSync(dir).sort()) {
-      const file = path.join(dir, name);
-      if (!fs.statSync(file).isFile()) continue;
-      if (namePrefix !== '' && !name.startsWith(namePrefix)) continue;
-      if (suffix !== '' && !name.endsWith(suffix)) continue;
-      const bytes = fs.readFileSync(file);
-      const hash = ContentHasher.ofBytes(bytes);
-      const location = `${key}/pattern/${UnitFileNaming.namePathOf(name)}.${hash}${path.extname(name)}`;
-      const dest = path.join(this.outputDir, location);
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      const tmp = `${dest}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-      fs.writeFileSync(tmp, bytes);
-      ContentAddressedPublisher.publish(tmp, dest);
-      const list: ProducedFetchList = {
-        items: [
-          { location, contentHash: hash, answers: [], imports: [] },
-        ],
-        ownChunks: [],
-      };
-      out.push({ location, list });
+  private emitList(
+    context: ListEmitContext,
+    seeds: readonly (
+      | string
+      | { build: PackageChunks; chunk: ChunkRecord }
+    )[],
+    parentLocations: ReadonlySet<string>,
+    entryPath: string,
+    listSpec: string,
+    parentAnswers: ReadonlySet<string> = new Set()
+  ): ProducedFetchList {
+    const { build, recordFor, byIdOf, answersOf, publishChunk, onError } = context;
+    const dep = build.dep;
+    // Items are keyed by location: the same content identity reached
+    // through two builds' internal edges needs both locations —
+    // each importer's emitted specifier resolves against its own
+    // item's location.
+    const items = new Map<string, SharedDepUnit>();
+    const emitted = new Map<string, ChunkRecord>();
+    const emittedHashes = new Set<string>();
+    const patterns: Record<string, ProducedFetchList> = {};
+    const opaqueImports: OpaqueImportReport[] = [];
+    const lazySeeds = new LazyListSeeds<PackageChunks, ChunkRecord>();
+    const seedLazy = (
+      seedBuild: PackageChunks,
+      chunk: ChunkRecord,
+      key?: string
+    ): void => lazySeeds.add(seedBuild, chunk, key);
+    // Specifiers already answered by a delivered item: the parent
+    // list's answers plus every answer claimed by items this emit
+    // produces. An external edge dedupes only when its SPECIFIER is
+    // answered — never on content identity or location alone: a
+    // byte-identical twin or a same-hash item can carry different
+    // answers, and dropping the answering item leaves the emitted
+    // bare specifier resolvable only by a second-round fetch
+    const answeredNow = new Set<string>(parentAnswers);
+    const queue: Array<{ build: PackageChunks; chunk: ChunkRecord }> = [];
+    const push = (
+      entry: string | { build: PackageChunks; chunk: ChunkRecord }
+    ): void => {
+      const found = typeof entry === 'string' ? recordFor(entry) : entry;
+      if (found === undefined && typeof entry === 'string') {
+        // A seeded or reached content identity no chunk produced —
+        // an internal inconsistency, never a skippable item.
+        onError(
+          `[unit-producer] list "${entryPath}" of "${dep.name}" ` +
+            `references item ${entry}, but no emitted chunk carries ` +
+            `that content identity`
+        );
+      }
+      if (found !== undefined) queue.push(found);
+    };
+    const state: ListEmitState = {
+      answeredNow,
+      emittedHashes,
+      parentLocations,
+      seedLazy,
+      push,
+    };
+    for (const seed of seeds) push(seed);
+    if (listSpec === dep.name) {
+      for (const stub of this.stubFacadeSeeds(context, seeds)) push(stub);
     }
-    return out;
+    const seen = new Set<string>();
+    while (queue.length > 0) {
+      const found = queue.pop()!;
+      const { chunk } = found;
+      if (
+        seen.has(chunk.location) ||
+        parentLocations.has(chunk.location) ||
+        emitted.has(chunk.location)
+      ) continue;
+      seen.add(chunk.location);
+      const item = this.itemOf(chunk);
+      item.answers = answersOf(found.build, chunk);
+      for (const answer of item.answers) answeredNow.add(answer);
+      // Internal static edges resolve to item references — inside
+      // the chunk's own build.
+      for (const edge of chunk.internalEdges) {
+        const target = byIdOf(found.build).get(edge.id);
+        if (target === undefined) continue;
+        if (edge.kind === 'dynamic') {
+          // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-lazy-key-location
+          seedLazy(found.build, target);
+          // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-lazy-key-location
+          continue;
+        }
+        item.imports.push({ unit: target.contentHash });
+        if (!parentLocations.has(target.location)) {
+          queue.push({ build: found.build, chunk: target });
+        }
+      }
+      // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-list-units
+      items.set(chunk.location, item);
+      emitted.set(chunk.location, chunk);
+      emittedHashes.add(chunk.contentHash);
+      // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-list-units
+      // External specifiers the chunk carries: resolved via the
+      // global answer map.
+      this.followExternalEdges(context, state, item, chunk, entryPath);
+      // Pattern and opaque imports, read from the emitted source.
+      this.collectDynamicImports(dep, chunk, patterns, opaqueImports, onError);
+      // The chunk is published after every read of its staged file.
+      publishChunk(chunk);
+    }
+    this.addAliasUnits(items, emitted);
+    const list: ProducedFetchList = {
+      items: [...items.values()].sort((a, b) =>
+        a.location < b.location ? -1 : a.location > b.location ? 1 : 0
+      ),
+      // Shared units are not the microfrontend's own code: a shared
+      // package's list names no own chunk.
+      ownChunks: [],
+      ...(Object.keys(patterns).length > 0 ? { patterns } : {}),
+      ...(opaqueImports.length > 0 ? { opaqueImports } : {}),
+    };
+    const lazy = this.emitLazyLists(
+      context,
+      lazySeeds,
+      emitted,
+      parentLocations,
+      answeredNow
+    );
+    if (Object.keys(lazy).length > 0) {
+      list.lazy = Object.fromEntries(
+        Object.entries(lazy).sort(([a], [b]) => (a < b ? -1 : 1))
+      );
+    }
+    this.checkRelativeSpecifiers(context, entryPath, emitted, list, parentLocations);
+    return list;
+  }
+
+  /** The lazy delta lists of one list, keyed by every spelling their target answers to. */
+  private emitLazyLists(
+    context: ListEmitContext,
+    lazySeeds: LazyListSeeds<PackageChunks, ChunkRecord>,
+    emitted: ReadonlyMap<string, ChunkRecord>,
+    parentLocations: ReadonlySet<string>,
+    answeredNow: ReadonlySet<string>
+  ): Record<string, ProducedFetchList> {
+    const lazy: Record<string, ProducedFetchList> = {};
+    // Lazy delta lists after the parent items are final. A delta
+    // holds only what the target needs beyond the parent list —
+    // dedup is by location: two byte-identical chunks at different
+    // locations are different items (an importer's specifier
+    // resolves to its own edge's location). The parent's emitted
+    // locations stay valid references inside the delta's text.
+    // A chunk's alias spellings are units of this list too, so a
+    // target reaching a parent chunk through its alias finds it here.
+    const deliveredNow = new Set([
+      ...emitted.keys(),
+      ...[...emitted.values()].flatMap((c) => c.publishAliases ?? []),
+      ...parentLocations,
+    ]);
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-emit-lazy-lists
+    for (const seed of lazySeeds) {
+      // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-lazy-delta
+      const target = this.emitList(
+        context,
+        [seed],
+        deliveredNow,
+        `lazy-${seed.chunk.namePath}`,
+        '',
+        answeredNow
+      );
+      // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-lazy-delta
+      // The same list answers the alias spelling a cyclic importer
+      // carries for the target.
+      for (const key of LazyListSeeds.keysOf(seed)) lazy[key] = target;
+    }
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-emit-lazy-lists
+    return lazy;
+  }
+
+  /**
+   * The stub facades the root list also delivers: entries whose bytes
+   * folded into a shared holder already reachable from `seeds`.
+   */
+  private stubFacadeSeeds(
+    context: ListEmitContext,
+    seeds: readonly (string | { build: PackageChunks; chunk: ChunkRecord })[]
+  ): Array<{ build: PackageChunks; chunk: ChunkRecord }> {
+    const { build, recordFor, byIdOf } = context;
+    const dep = build.dep;
+    const stubs: Array<{ build: PackageChunks; chunk: ChunkRecord }> = [];
+    // Every entry-set specifier is answered by an item
+    // delivered with the package's ROOT list (the list for the bare
+    // package name, emitted only when the whole package is in scope).
+    // A stub facade Rollup mints for an entry whose bytes folded into
+    // a shared holder — and which the barrel facade imports past, so
+    // no list reaches it — is seeded on the root list and published,
+    // so its entry specifiers are answered by an emitted item instead
+    // of going unanswered. The stub's holder must already be
+    // reachable from the root list's seed (the barrel) through static
+    // internal edges, so the seed never pulls in a closure the
+    // barrel does not deliver. Consumer lists never seed stubs, so a
+    // barrel-member stub no consumer imports stays unpublished and
+    // its unrequested member deep path stays unanswered.
+    const closureChunks = new Set<ChunkRecord>();
+    const closureQueue: Array<{ build: PackageChunks; chunk: ChunkRecord }> = [];
+    for (const seed of seeds) {
+      const found = typeof seed === 'string' ? recordFor(seed) : seed;
+      if (found !== undefined && !closureChunks.has(found.chunk)) {
+        closureChunks.add(found.chunk);
+        closureQueue.push(found);
+      }
+    }
+    const closureModules = new Set<string>();
+    while (closureQueue.length > 0) {
+      const { build: cb, chunk } = closureQueue.pop()!;
+      for (const m of chunk.modulePaths) closureModules.add(m);
+      for (const edge of chunk.internalEdges) {
+        if (edge.kind === 'dynamic') continue;
+        const target = byIdOf(cb).get(edge.id);
+        if (target !== undefined && !closureChunks.has(target)) {
+          closureChunks.add(target);
+          closureQueue.push({ build: cb, chunk: target });
+        }
+      }
+    }
+    for (const chunk of build.chunks) {
+      if (chunk.entryPoint === undefined) continue;
+      if (chunk.modulePaths.length !== 0) continue;
+      if (chunk.supplementary === true) continue;
+      if (chunk.consumerOnly === true) continue;
+      const rel = path
+        .relative(dep.packageDir, chunk.entryPoint)
+        .split(path.sep)
+        .join('/');
+      if (rel === '' || rel.startsWith('..')) continue;
+      if (!closureModules.has(rel)) continue;
+      stubs.push({ build, chunk });
+    }
+    return stubs;
+  }
+
+  /**
+   * Resolves the external specifiers a chunk carries into item references,
+   * seeds the lazy targets of dynamic ones and queues the answering records.
+   */
+  private followExternalEdges(
+    context: ListEmitContext,
+    state: ListEmitState,
+    item: SharedDepUnit,
+    chunk: ChunkRecord,
+    entryPath: string
+  ): void {
+    const { build, answerToItem, answerToRecord, chunkByHash, deliveredRoots, onError } = context;
+    const dep = build.dep;
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-answer-every-import
+    // External specifiers the chunk carries: resolved via the
+    // global answer map. A literal `import('pkg/sub')` gets a lazy
+    // list keyed by the bare specifier.
+    for (const edge of chunk.externalEdges) {
+      const target = answerToItem.get(edge.specifier);
+      if (target === undefined) {
+        // List completeness: a reached specifier of a
+        // delivered package must have an answering item — a bare
+        // specifier of one surviving in the emitted list leaves a
+        // native import the browser cannot resolve. Specifiers of
+        // packages outside the delivered set (built-ins, optional
+        // peers, native-staying imports) keep their native edge.
+        const edgeRoot = SharedSetResolver.extractRootPackageName(
+          edge.specifier
+        );
+        if (!isBuiltin(edge.specifier) && deliveredRoots.has(edgeRoot)) {
+          const skip = this.skipped.forSpecifier(edge.specifier);
+          onError(
+            `[unit-producer] list "${entryPath}" of "${dep.name}" ` +
+              `reaches specifier "${edge.specifier}" through ` +
+              `${chunk.location}, but no emitted item answers it` +
+              (skip !== undefined ? ` — skipped entry: ${skip}` : '')
+          );
+        }
+        continue;
+      }
+      const targetFound = chunkByHash.get(target);
+      if (edge.kind === 'dynamic') {
+        // Seed a lazy target whenever the specifier stays
+        // unanswered — a byte-identical twin or same-hash item
+        // delivered elsewhere does not bind this specifier, so a
+        // location/hash check must never silence the seed.
+        if (
+          !state.answeredNow.has(edge.specifier) &&
+          targetFound !== undefined
+        ) {
+          const lazyTarget =
+            answerToRecord.get(edge.specifier) ?? targetFound;
+          // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-lazy-key-bare
+          state.seedLazy(lazyTarget.build, lazyTarget.chunk, edge.specifier);
+          // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-lazy-key-bare
+        }
+        continue;
+      }
+      // Every importer records the reference — deduping by
+      // location must not drop a later importer's edge.
+      item.imports.push({ unit: target });
+      // The edge is covered only when its specifier resolves to an
+      // already-delivered item AND the referenced content identity
+      // is itself delivered. Both are required: an unanswered
+      // specifier resolves late at runtime (a second fetch round),
+      // and a dangling `{item}` reference mints nothing.
+      const specAnswered = state.answeredNow.has(edge.specifier);
+      const hashDelivered =
+        state.emittedHashes.has(target) ||
+        (targetFound !== undefined &&
+          state.parentLocations.has(targetFound.chunk.location));
+      if (specAnswered && hashDelivered) continue;
+      // Emit the record that actually answers the specifier —
+      // byte-identical twins share the hash but keep their own
+      // answers, so the answering record is the only item whose
+      // emission delivers this specifier's binding.
+      state.push(answerToRecord.get(edge.specifier) ?? target);
+    }
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-answer-every-import
+  }
+
+  /**
+   * A chunk inside an import cycle is also reached through its unhashed alias
+   * spelling; the alias becomes a unit of its own in the table.
+   */
+  private addAliasUnits(
+    items: Map<string, SharedDepUnit>,
+    emitted: ReadonlyMap<string, ChunkRecord>
+  ): void {
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-emit-alias-unit
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-alias-unit-publish
+    for (const [location, chunk] of emitted) {
+      const held = items.get(location);
+      if (held === undefined) continue;
+      for (const alias of chunk.publishAliases ?? []) {
+        if (!items.has(alias)) {
+          items.set(alias, {
+            location: alias,
+            contentHash: held.contentHash,
+            answers: [],
+            imports: [...held.imports],
+          });
+        }
+      }
+    }
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-alias-unit-publish
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-emit-alias-unit
+  }
+
+  /**
+   * List completeness: every relative specifier surviving in an emitted
+   * item resolves to an emitted item, lazy target or pattern file.
+   */
+  private checkRelativeSpecifiers(
+    context: ListEmitContext,
+    entryPath: string,
+    emitted: ReadonlyMap<string, ChunkRecord>,
+    list: ProducedFetchList,
+    parentLocations: ReadonlySet<string>
+  ): void {
+    const { build, onError } = context;
+    const dep = build.dep;
+    // List completeness: every relative specifier
+    // surviving in an emitted item's text must resolve — against the
+    // item's own location — to an emitted item, lazy target or
+    // pattern file. An unresolved one leaves a native import the
+    // blob realm cannot resolve: the module graph fails at runtime.
+    const resolvable = new Set([
+      ...emitted.keys(),
+      ...Object.keys(list.lazy ?? {}),
+      ...Object.keys(list.patterns ?? {}),
+      ...parentLocations,
+    ]);
+    for (const chunk of emitted.values()) {
+      for (const alias of chunk.publishAliases ?? []) {
+        resolvable.add(alias);
+      }
+    }
+    for (const [location, chunk] of emitted) {
+      // The chunk's relative import statements and literal dynamic
+      // imports, read by parsing: an import-like string in the text
+      // is no edge.
+      const specifiers = this.syntaxOf(() =>
+        this.chunkSyntax.relativeSpecifiers(chunk.file, location), onError
+      );
+      for (const spec of specifiers) {
+        const resolved = new URL(
+          spec,
+          `http://r/${location}`
+        ).pathname.slice(1);
+        if (!resolvable.has(resolved)) {
+          onError(
+            `[unit-producer] list "${entryPath}" of "${dep.name}" ` +
+              `emits "${location}" carrying relative specifier ` +
+              `"${spec}" resolving to "${resolved}", but no emitted ` +
+              `item, lazy target or pattern file carries that location`
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Reads what a chunk's text yields through the run's memo; a text
+   * that cannot be parsed fails the build, naming the unit.
+   */
+  private syntaxOf<T>(read: () => T, onError: (message: string) => never): T {
+    try {
+      return read();
+    } catch (err) {
+      return onError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /**
+   * The dynamic imports of one emitted chunk that its list does not
+   * carry as edges: every statically bounded pattern gets a list per
+   * matching file, every fully opaque `import(expr)` is reported and
+   * stays native.
+   */
+  private collectDynamicImports(
+    dep: ResolvedSharedDep,
+    chunk: ChunkRecord,
+    patterns: Record<string, ProducedFetchList>,
+    opaqueImports: OpaqueImportReport[],
+    onError: (message: string) => never
+  ): void {
+    for (const call of this.chunkSyntax.dynamicImports(chunk.file, chunk.location)) {
+      if (call.kind === 'literal') continue;
+      if (call.kind === 'opaque') {
+        // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-report-opaque-imports
+        opaqueImports.push({
+          file: chunk.location,
+          line: call.line,
+          expression: call.expression,
+        });
+        // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-report-opaque-imports
+        continue;
+      }
+      // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-emit-pattern-lists
+      // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-pattern-file-location
+      for (const matched of this.patternImports.match(
+        dep,
+        chunk,
+        call.prefix,
+        call.suffix,
+        onError
+      )) {
+        if (patterns[matched.location] === undefined) {
+          patterns[matched.location] = matched.list;
+        }
+      }
+      // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-pattern-file-location
+      // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-emit-pattern-lists
+    }
   }
 
   // ── Finishing ────────────────────────────────────────────────────
@@ -2184,7 +2462,8 @@ export class UnitProducer {
   private finishPackage(
     build: PackageChunks,
     key: string,
-    emitted: { lists: Record<string, ProducedFetchList> }
+    emitted: { lists: Record<string, ProducedFetchList> },
+    onError: (message: string) => never
   ): ProducedSharedPackage {
     const dep = build.dep;
     void key;
@@ -2193,19 +2472,29 @@ export class UnitProducer {
     // closure reaches. A supplementary built only because the
     // consuming build asked (`consumerSpecifiers`) stays out: the
     // record is the same whichever consumer asked.
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-return-export-names
+    const exportsOf = (chunk: ChunkRecord): string[] | undefined =>
+      fs.existsSync(path.join(this.outputDir, chunk.location))
+        ? this.syntaxOf(() => this.chunkSyntax.exportNames(chunk.file, chunk.location), onError)
+        : undefined;
     const units: ProducedChunk[] = build.chunks
       .filter((c) => !c.consumerOnly)
-      .map((c) => ({
-      location: c.location,
-      contentHash: c.contentHash,
-      modulePaths: c.modulePaths,
-      bareImports: [
-        ...new Set(
-          c.externalEdges
-            .map((e) => SharedSetResolver.extractRootPackageName(e.specifier))
-        ),
-      ].sort(),
-    }));
+      .map((c) => {
+        const exported = exportsOf(c);
+        return {
+          location: c.location,
+          contentHash: c.contentHash,
+          modulePaths: c.modulePaths,
+          bareImports: [
+            ...new Set(
+              c.externalEdges
+                .map((e) => SharedSetResolver.extractRootPackageName(e.specifier))
+            ),
+          ].sort(),
+          ...(exported !== undefined ? { exports: exported } : {}),
+        };
+      });
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-return-export-names
     const entryUnits: Record<string, string> = {};
     for (const chunk of UnitProducer.entriesLast(
       build.chunks.filter((c) => !c.consumerOnly)
@@ -2327,6 +2616,7 @@ export class UnitProducer {
     builds: ReadonlyMap<string, PackageChunks>,
     onError: (message: string) => never
   ): ResolvedSharedDep[] {
+    // @cpt-begin:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-no-unit-cycle
     const byName = new Map(deps.map((d) => [d.name, d]));
     const importsOf = new Map(
       deps.map((d) => [
@@ -2362,6 +2652,7 @@ export class UnitProducer {
       ordered.push(byName.get(name)!);
     };
     for (const dep of deps) visit(dep.name);
+    // @cpt-end:cpt-template-shell-algo-unit-producer-output-emit-fetch-lists:p1:inst-no-unit-cycle
     return ordered;
   }
 

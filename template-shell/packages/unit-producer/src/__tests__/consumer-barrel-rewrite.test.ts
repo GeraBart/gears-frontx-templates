@@ -161,6 +161,26 @@ describe('ConsumerBarrelRewriteTransform — named, default, namespace, re-expor
     expect(record.rewrites).toBe(2);
   });
 
+  it('leaves a namespace import as written when the namespace is also used in JSX', async () => {
+    const { transform } = makeTransform();
+    const out = await transform.transform(
+      "import * as NS from 'barrel-pkg';\nNS.util('x');\nconst el = <NS.Icon />;\n",
+      '/src/view.jsx'
+    );
+    expect(out?.code ?? null).toBeNull();
+  });
+
+  it('keeps the default binding of a combined default and namespace import', async () => {
+    const { transform } = makeTransform();
+    const out = await transform.transform(
+      "import D, * as NS from 'barrel-pkg';\nNS.util('x');\nD();\n"
+    );
+    expect(out?.code).toContain("import { util as NS_util } from 'barrel-pkg/dist/utils.js';");
+    // The kept default binding then takes the named-binding rewrite.
+    expect(out?.code).toMatch(/import D from 'barrel-pkg(\/[^']*)?';/);
+    expect(out?.code).toContain('D();');
+  });
+
   it.each([
     ['passed whole', 'take(NS);'],
     ['assigned through', 'NS.Icon = 1;'],

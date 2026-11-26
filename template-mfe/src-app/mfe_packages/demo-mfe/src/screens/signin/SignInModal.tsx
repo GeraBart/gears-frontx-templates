@@ -4,7 +4,7 @@ import type { AuthLoginInput, AuthRuntime } from '@gears-frontx/react';
 import {
   FRONTX_SHARED_PROPERTY_LANGUAGE,
   FRONTX_SHARED_PROPERTY_THEME,
-} from '@gears-frontx/frontx-template-shell';
+} from '../../shellContract';
 import { Button, Input, Label } from '@gears-frontx/ui-kit';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
 import { useBridgeProperty } from '../../shared/useBridgeProperty';

@@ -1,7 +1,7 @@
 {
   "name": "@gears-frontx/unit-producer",
   "version": "0.1.0-alpha.2",
-  "description": "Shared-dependency unit producer for FrontX — bundler-parity (pinned Rollup + terser), emitting content-addressed units, packs and graph files typed against @gears-frontx/mfes ./unit-format",
+  "description": "Shared-dependency unit producer for FrontX — bundler-parity (pinned Rollup + terser), emitting content-addressed units and fetch lists typed against @gears-frontx/mfes ./unit-format",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

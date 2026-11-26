@@ -212,7 +212,11 @@ function readDist(root: string, urlBase = ''): {
   expect(end, 'fill chunk inline data is not a balanced object').toBeGreaterThan(open);
   const data = JSON.parse(source.slice(open, end + 1)) as FillData;
 
-  const sharedDir = path.join(dist, data.unitsBase.replace(/^\.\//, ''));
+  const unitsPath =
+    urlBase !== '' && data.unitsBase.startsWith(urlBase)
+      ? data.unitsBase.slice(urlBase.length)
+      : data.unitsBase.replace(/^\.?\//, '');
+  const sharedDir = path.join(dist, unitsPath);
   const emittedShared: string[] = [];
   const walk = (dir: string): void => {
     if (!fs.existsSync(dir)) return;
@@ -276,8 +280,9 @@ describe('vitePluginShell (synthetic minimal host, native boot model)', () => {
     } = readDist(root);
 
     // Chunks emitted into the host's own dist
-    // (default unitsDir), under the content-addressed package dir.
-    expect(fill.data.unitsBase).toBe('./shared/');
+    // (default unitsDir), under the content-addressed package dir; the
+    // fill requests them under the base the import map uses.
+    expect(fill.data.unitsBase).toBe('/shared/');
     expect(
       emittedShared.some((f) => /^fixture-esm@1\.0\.0\/.+\.[0-9a-f]{64}\.js$/.test(f))
     ).toBe(true);
@@ -350,7 +355,7 @@ describe('vitePluginShell (synthetic minimal host, native boot model)', () => {
     await buildFixture(root, { unitsDir: 'units' });
 
     const { fill, importMap, emittedShared } = readDist(root);
-    expect(fill.data.unitsBase).toBe('./units/');
+    expect(fill.data.unitsBase).toBe('/units/');
     expect(fs.existsSync(path.join(root, 'dist', 'units'))).toBe(true);
     expect(emittedShared.some((f) => f.endsWith('.js'))).toBe(true);
     // Lists are not files: no list document is emitted.
@@ -466,7 +471,7 @@ describe('vitePluginShell (synthetic minimal host, native boot model)', () => {
     const html = fs.readFileSync(path.join(dist, 'index.html'), 'utf-8');
     expect(html).not.toContain('cdn.example.com');
     const { fill } = readDist(root);
-    expect(fill.data.unitsBase).toBe('./shared/');
+    expect(fill.data.unitsBase).toBe('/shared/');
   });
 
   it('produces a single-entry chunk for a CJS dependency and maps its specifier', async () => {
@@ -517,6 +522,114 @@ describe('vitePluginShell (synthetic minimal host, native boot model)', () => {
     for (const url of Object.values(importMap)) {
       expect(url.startsWith('/app/shared/')).toBe(true);
     }
+    expect(fill.data.unitsBase).toBe('/app/shared/');
+  });
+
+  it.each([
+    ['./', './shared/'],
+    ['https://cdn.example.com/console/', 'https://cdn.example.com/console/shared/'],
+  ])('gives the fill the units base the import map uses for base %s', async (base, unitsBase) => {
+    const root = path.join(tmp, 'host');
+    makeFixtureHost(root, [{ name: 'fixture-esm', version: '1.0.0' }]);
+
+    await buildFixture(root, undefined, { base });
+
+    const urlBase = base === './' ? '' : base;
+    const { importMap, fill, preloads } = readDist(root, urlBase);
+    expect(fill.data.unitsBase).toBe(unitsBase);
+    for (const url of [...Object.values(importMap), ...preloads]) {
+      expect(url.startsWith(unitsBase)).toBe(true);
+    }
+  });
+
+  it('names the fill chunk after the data it carries', async () => {
+    const root = path.join(tmp, 'host');
+    makeFixtureHost(root, [{ name: 'fixture-esm', version: '1.0.0' }]);
+    await buildFixture(root);
+    const first = readDist(root).fill;
+
+    // Different shared bytes give different boot units, so different fill
+    // data, while the fill runtime stays the same code.
+    fs.writeFileSync(
+      path.join(root, 'node_modules', 'fixture-esm', 'index.js'),
+      `export const value = 42;\nexport default { value };\n`
+    );
+    await buildFixture(root);
+    const second = readDist(root).fill;
+
+    expect(second.data).not.toEqual(first.data);
+    expect(second.fileName).not.toBe(first.fileName);
+    expect(second.fileName).toMatch(/^assets\/frontx-shell-fill-[0-9a-f]+\.js$/);
+    // Only the renamed file is left in the output.
+    const fills = fs
+      .readdirSync(path.join(root, 'dist', 'assets'))
+      .filter((f) => f.startsWith('frontx-shell-fill-'));
+    expect(fills).toEqual([path.posix.basename(second.fileName)]);
+  });
+
+  it('inserts fill data containing replacement-pattern sequences verbatim', () => {
+    const source = `run(${JSON.stringify('__FRONTX_FILL_DATA__')});`;
+    const data = { unitsBase: '/a$&b$$c$\'d/', units: [], list: { units: [], ownChunks: [] } };
+    expect(ShellPlugin.injectFillData(source, data)).toBe(`run(${JSON.stringify(data)});`);
+    expect(ShellPlugin.injectFillData('run();', data)).toBeUndefined();
+  });
+
+  it('stamps the nonce on every tag it injects, from importMapNonce or html.cspNonce', async () => {
+    const root = path.join(tmp, 'host');
+    makeFixtureHost(root, [{ name: 'fixture-esm', version: '1.0.0' }]);
+    const injectedTags = (html: string): string[] => [
+      ...(html.match(/<script type="importmap"[^>]*>/g) ?? []),
+      ...(html.match(/<link\b[^>]*rel="modulepreload"[^>]*>/g) ?? []),
+      ...(html.match(/<script\b[^>]*frontx-shell-fill-[^>]*>/g) ?? []),
+    ];
+
+    await buildFixture(root, { importMapNonce: 'opt-nonce' });
+    let tags = injectedTags(readDist(root).html);
+    expect(tags.length).toBeGreaterThanOrEqual(3);
+    for (const tag of tags) expect(tag).toContain('nonce="opt-nonce"');
+
+    await build({
+      root,
+      logLevel: 'silent',
+      html: { cspNonce: 'vite-nonce' },
+      plugins: [vitePluginShell()],
+      build: { outDir: 'dist', emptyOutDir: true },
+    });
+    tags = injectedTags(readDist(root).html);
+    expect(tags.length).toBeGreaterThanOrEqual(3);
+    for (const tag of tags) expect(tag).toContain('nonce="vite-nonce"');
+  });
+
+  it.each([
+    ['string', (external: string) => external],
+    ['RegExp', (external: string) => new RegExp(`^${external}$`)],
+    ['array', (external: string) => [external]],
+    ['function', (external: string) => (id: string) => id === external],
+  ])('keeps externalizing the shared set beside a project %s external', async (_kind, toExternal) => {
+    const root = path.join(tmp, 'host');
+    makeFixtureHost(root, [{ name: 'fixture-esm', version: '1.0.0' }]);
+    fs.appendFileSync(
+      path.join(root, 'src', 'main.js'),
+      `import * as own from 'fs';\nconsole.log(own);\n`
+    );
+    await build({
+      root,
+      logLevel: 'silent',
+      plugins: [vitePluginShell()],
+      build: {
+        outDir: 'dist',
+        emptyOutDir: true,
+        rollupOptions: { external: toExternal('fs') as never },
+      },
+    });
+
+    const { importMap, chunkSources } = readDist(root);
+    // The shared package is external and mapped; the project's own
+    // external stays external too.
+    expect(importMap['fixture-esm']).toBeDefined();
+    const code = Object.values(chunkSources).join('\n');
+    expect(code).not.toContain('value = 41');
+    expect(code).toMatch(/from\s*["']fs["']/);
   });
 
   it('keeps document-relative URLs for the default base', async () => {

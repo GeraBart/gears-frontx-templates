@@ -256,14 +256,20 @@ export class ConsumerBarrelRewriteTransform {
           s.specifiers.namespaceName === local
       );
       if (stmt === undefined) continue;
-      const clauses = [...groups.entries()]
-        .map(
+      // A default binding sharing the statement (`import D, * as ns`)
+      // keeps importing from the specifier as written.
+      const defaultName = stmt.specifiers.defaultName;
+      const clauses = [
+        ...(defaultName !== undefined
+          ? [`import ${ModuleLinkageScanner.renderClause({ named: [], defaultName })} from '${specifier}';`]
+          : []),
+        ...[...groups.entries()].map(
           ([target, named]) =>
             `import ${ModuleLinkageScanner.renderClause({
               named: named.map((n) => ({ imported: n.imported, local: n.local })),
             })} from '${target}';`
-        )
-        .join('\n');
+        ),
+      ].join('\n');
       edits.push({ start: stmt.start, end: stmt.end, text: clauses });
       for (const access of entry.use.accesses) {
         edits.push({

@@ -4,21 +4,24 @@ import * as path from 'node:path';
 import { FillRequestWatcher } from '../scripts/load-matrix/FillRequestWatcher.mjs';
 import { BLANK_HOME_EXTENSION_ID, menuItemTestId } from './extensionIds.mjs';
 import { SHELL_PORT } from './ports.mjs';
+import { waitForMountedScreen } from './mountedScreen';
 
 const scheme = process.env.E2E_PROTOCOL === 'h2' ? 'https' : 'http';
 
 /**
- * Request-count measurement the number of
+ * Request-count measurement: the number of
  * HTTP requests a cold shell boot and one MFE load-to-mount put on the
  * wire, counted server-side per origin by `e2e/server.mjs`
  * (`/__e2e/requests` returns the snapshot AND resets the counters).
  * Runs under both protocols (`E2E_PROTOCOL`) and writes
- * `e2e/request-count-<protocol>.json` for the phase report.
+ * `e2e/results/request-count-<protocol>.json` for the phase report. It is a
+ * measurement, not a gate: the counts are reported, never asserted.
  */
 
 const SHELL = `${scheme}://localhost:${SHELL_PORT}`;
 const PROTOCOL = process.env.E2E_PROTOCOL === 'h2' ? 'h2' : 'http1';
-const RESULTS_FILE = path.resolve('e2e', `request-count-${PROTOCOL}.json`);
+const RESULTS_DIR = path.resolve('e2e', 'results');
+const RESULTS_FILE = path.join(RESULTS_DIR, `request-count-${PROTOCOL}.json`);
 
 /** Per-origin counts: every request, and the `fetch()`-issued shared-unit subset. */
 interface Snapshot {
@@ -43,21 +46,6 @@ function minus(a: Record<string, number>, b: Record<string, number>): Record<str
   return out;
 }
 
-async function waitForMountedScreen(page: Page, timeout = 60_000) {
-  await page.waitForFunction(
-    () => {
-      const hosts = document.querySelectorAll('[data-mfe-screen-container] [data-extension-id]');
-      for (const h of hosts) {
-        const root = (h as HTMLElement).shadowRoot ?? h;
-        if (root.childElementCount > 0) return true;
-      }
-      return false;
-    },
-    undefined,
-    { timeout },
-  );
-}
-
 test(`request count (${PROTOCOL}): requests per shell boot and per MFE load`, async ({ page }) => {
   // The snapshot resets all origin counters — bracket exactly the boot.
   await page.request.get(`${SHELL}/__e2e/requests`);
@@ -74,7 +62,7 @@ test(`request count (${PROTOCOL}): requests per shell boot and per MFE load`, as
   const bootPerOrigin = minus(bootWindow.total, bootWindow.unitFetches);
 
   await page.getByTestId(menuItemTestId(BLANK_HOME_EXTENSION_ID)).click();
-  await waitForMountedScreen(page);
+  await waitForMountedScreen(page, BLANK_HOME_EXTENSION_ID, 60_000);
   const afterMfe = (await snapshotCounts(page)).total;
 
   const result = {
@@ -84,6 +72,7 @@ test(`request count (${PROTOCOL}): requests per shell boot and per MFE load`, as
     mfeLoad: { perOrigin: afterMfe, total: sum(afterMfe) },
     measuredAt: new Date().toISOString(),
   };
+  fs.mkdirSync(RESULTS_DIR, { recursive: true });
   fs.writeFileSync(RESULTS_FILE, JSON.stringify(result, null, 2));
   console.log(
     `[${PROTOCOL}] shell boot requests=${result.boot.total} ` +

@@ -21,6 +21,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import type { ConsumerBarrelOriginRecord } from './ConsumerBarrelRewriteLedger';
 import { ContentHasher } from './ContentHasher';
 
 /** One chunk record the cache persists (pre-patch bytes + edges). */
@@ -61,6 +62,11 @@ export interface CachedPackageBuild {
   entrySpecifiers: string[];
   /** Build input module ids — the inlining guard's data on a cache hit. */
   inputs: string[];
+  /**
+   * The member respells the package's own build applied to imports of
+   * other shared packages' barrels — what turning one back needs.
+   */
+  respells?: ConsumerBarrelOriginRecord[];
 }
 
 export class PackageBuildCache {
@@ -81,7 +87,19 @@ export class PackageBuildCache {
    * `node_modules` directories do not participate: a dependency's own
    * nested copies are resolved through the shared-set walk, not bundled.
    */
-  static fingerprint(packageDir: string, mix = ''): string {
+  static fingerprint(
+    packageDir: string,
+    mix = '',
+    fileDigests: string = PackageBuildCache.fileDigests(packageDir)
+  ): string {
+    return ContentHasher.ofText(`${mix}\n${fileDigests}`);
+  }
+
+  /**
+   * One line per file of the package — its package-relative path and
+   * content hash — the part of the key that costs a read of every file.
+   */
+  static fileDigests(packageDir: string): string {
     const parts: string[] = [];
     const walk = (dir: string): void => {
       for (const name of fs.readdirSync(dir).sort()) {
@@ -98,7 +116,7 @@ export class PackageBuildCache {
       }
     };
     walk(packageDir);
-    return ContentHasher.ofText(`${mix}\n${parts.join('\n')}`);
+    return parts.join('\n');
   }
 
   /** Loads a cached build, or `undefined` on any miss. */

@@ -47,7 +47,6 @@ export default [
     ignores: [
       'dist/**',
       '**/dist/**',
-      'dist-lib/**', // tsup output of the template's own library build
       '**/.__mf__temp/**',
       '**/coverage/**',
       'node_modules/**',
@@ -392,7 +391,7 @@ export default [
     },
   },
 
-  // ============ @gears-frontx/frontx-template-shell (package root, src/) ============
+  // ============ shell shared modules (src/) ============
   // Allow unknown/object types: build utilities (vite-plugin-mfe-gts AST transforms, lazy-import-transform)
   // use unknown for dynamic module shapes and generic AST node types — architecturally required.
   {

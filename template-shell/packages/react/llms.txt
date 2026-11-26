@@ -76,8 +76,8 @@ function LayoutScreen() {
   return (
     <ExtensionDomainSlot
       registry={registry}
-      domainId="screen"
-      extensionId="home"
+      // the host type system's screen domain id
+      domainId={SCREEN_DOMAIN_ID}
       loadingComponent={<Loading />}
     />
   );

@@ -9,6 +9,9 @@
  * one record per step
  * `{status, steps: [{step, command, exitCode, durationMs, log}], summary, ...}`
  * under `e2e/results/load-gate-cells-<ISO>.json` and a markdown summary.
+ * It is a local report, not a CI gate. Without `--old-serve-root` the
+ * guards against the old rule are not judged and the status is
+ * `incomplete` (exit 1).
  *
  * CLI: `node scripts/load-gate-cells.mjs [--runs N] [--old-serve-root PATH] [--dry-run]`
  *
@@ -71,7 +74,7 @@ if (isEntryPoint) {
       console.log(markdown);
       // A dry-run prints the plan and writes NO result JSON
       // (jsonPath is null); it exits 0 because the plan was printed.
-      // A real run exits 0 on pass, 1 on fail.
+      // A real run exits 0 on pass, 1 on fail or incomplete.
       if (jsonPath) {
         console.log(`\nload-gate-cells: status=${status} → ${jsonPath}`);
         console.log(`Wrote ${results.length} gate-cell results to e2e/results/`);

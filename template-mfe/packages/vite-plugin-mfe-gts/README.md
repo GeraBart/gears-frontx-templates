@@ -21,22 +21,30 @@ settings itself:
   `minify: true`, `cssCodeSplit: true` — a user override is warned about
   (a different value would break remote loading) and ignored;
 - resolves the shared-dependency set via `@gears-frontx/unit-producer`'s
-  `SharedSetResolver` and the build graph (share-by-default from
-  `dependencies` + non-optional `peerDependencies` plus every bare package
-  the code imports, workspace-linked or aliased ones included; mutually
-  exclusive `include` / `exclude`; never a name list) and
+  `SharedSetResolver` and the build graph (every bare package the code
+  imports, workspace-linked or aliased ones included, plus `dependencies`
+  and non-optional `peerDependencies`; mutually exclusive `include` /
+  `exclude`; never a name list) and
   externalizes it by root package name, so `react-dom/client` and other
   subpaths externalize too;
 - rewrites the MFE's own named and default imports from a shared
   package's barrel to the modules that define them (`<pkg>/<module-path>`)
-  for packages declaring side-effect freedom, so roots name only the units
+  for packages declaring side-effect freedom, so the shared set names only the units
   defining used bindings; namespace, side-effect and dynamic imports keep
   the barrel, `barrelRewriteExclude` (option or `mfe.json`
   `share.barrelRewrite.exclude`) opts a package out, and a rewrite no
   produced unit answers goes back to the barrel after production;
 - rewrites lazy `import()` calls in compiled chunks to `__frontx_lazy`;
-- produces the shared units, packs and graph files under
-  `dist/<sharedOutDir>` (default `shared`); a shared unit's named imports
+- gives a shared package the MFE's own code imports dynamically by bare
+  specifier a fetch list of its own, held in the manifest under that bare
+  specifier (the key the runtime looks a bare `__frontx_lazy` argument up
+  under) and named in the `lazy` array of the list that reaches it;
+- fails the build, naming the chunk, the specifier and the names, when one of
+  the MFE's own chunks imports a name from a shared specifier that the unit
+  answering it does not export (the shared-import check);
+- produces the shared units under `dist/<sharedOutDir>` (default
+  `shared`), with the unit table and fetch lists going into the enriched
+  manifest; a shared unit's named imports
   from another shared package's barrel are rewritten to the defining
   modules by the same rules (kept on the barrel, with the reason, when
   no produced unit answers them);
@@ -79,5 +87,7 @@ export default defineConfig({
 Exposes come from the `exposes` option or, absent that, `mfe.json`'s
 `exposes` field. Options (all optional): `exposes`, `root` (where
 `package.json`/`mfe.json` are read; defaults to `process.cwd()`),
-`include`, `exclude`, `sharedOutDir`, `barrelRewriteExclude`, `typeSystem`
+`include`, `exclude`, `sharedOutDir`, `barrelRewriteExclude`, `cacheDir`
+(build-machine cache directory for the producer computation; defaults to
+`node_modules/.cache/frontx-unit-producer` in the workspace root), `typeSystem`
 (test seam).
