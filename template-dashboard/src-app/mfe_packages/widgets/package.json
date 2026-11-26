@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@gears-frontx/frontx-dashboard-root": "0.1.0-alpha.0",
-    "@gears-frontx/mfes": "0.7.0",
+    "@gears-frontx/mfes": "0.7.1",
     "@gears-frontx/ui-kit": "0.7.1",
     "lucide-react": "1.33.0",
     "markdown-it": "15.0.3",

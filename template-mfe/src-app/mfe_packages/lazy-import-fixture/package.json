@@ -17,8 +17,8 @@
     "lazy-own-kit": "file:./kits/lazy-own-kit"
   },
   "devDependencies": {
-    "@gears-frontx/gts-plugin": "0.7.0",
-    "@gears-frontx/mfes": "0.7.0",
+    "@gears-frontx/gts-plugin": "0.7.1",
+    "@gears-frontx/mfes": "0.7.1",
     "@gears-frontx/vite-plugin-mfe-gts": "0.1.0-alpha.2",
     "@module-federation/vite": "1.20.5",
     "vite": "6.4.6"

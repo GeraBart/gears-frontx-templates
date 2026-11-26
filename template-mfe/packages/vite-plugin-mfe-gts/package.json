@@ -26,12 +26,12 @@
     "test:unit:watch": "vitest --watch"
   },
   "dependencies": {
-    "@gears-frontx/gts-plugin": "0.7.0",
+    "@gears-frontx/gts-plugin": "0.7.1",
     "@gears-frontx/unit-producer": "0.1.0-alpha.2"
   },
   "devDependencies": {
-    "@gears-frontx/gts-plugin": "0.7.0",
-    "@gears-frontx/mfes": "0.7.0",
+    "@gears-frontx/gts-plugin": "0.7.1",
+    "@gears-frontx/mfes": "0.7.1",
     "@gears-frontx/unit-producer": "0.1.0-alpha.2",
     "@module-federation/vite": "1.20.5",
     "@types/node": "^24.0.0",
@@ -43,7 +43,7 @@
     "vitest": "4.1.4"
   },
   "peerDependencies": {
-    "@gears-frontx/mfes": "0.7.0",
+    "@gears-frontx/mfes": "0.7.1",
     "@module-federation/vite": "1.20.5",
     "esbuild": "0.28.2",
     "vite": "^6.0.0"

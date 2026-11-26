@@ -16,8 +16,8 @@
     "test:unit:watch": "vitest --watch"
   },
   "dependencies": {
-    "@gears-frontx/gts-plugin": "0.7.0",
-    "@gears-frontx/mfes": "0.7.0",
+    "@gears-frontx/gts-plugin": "0.7.1",
+    "@gears-frontx/mfes": "0.7.1",
     "@gears-frontx/react": "0.2.0-alpha.19",
     "@gears-frontx/routing-tanstack": "0.4.3",
     "@tanstack/react-query": "5.101.4",

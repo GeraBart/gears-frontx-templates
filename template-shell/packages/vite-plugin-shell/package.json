@@ -33,7 +33,7 @@
     "@gears-frontx/unit-producer": "0.1.0-alpha.2"
   },
   "devDependencies": {
-    "@gears-frontx/mfes": "0.7.0",
+    "@gears-frontx/mfes": "0.7.1",
     "@gears-frontx/unit-producer": "0.1.0-alpha.2",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "4.1.4",
@@ -44,7 +44,7 @@
     "vitest": "4.1.4"
   },
   "peerDependencies": {
-    "@gears-frontx/mfes": "0.7.0",
+    "@gears-frontx/mfes": "0.7.1",
     "esbuild": "0.28.2",
     "vite": "^6.0.0"
   },

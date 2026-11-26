@@ -39,7 +39,7 @@
   "devDependencies": {
     "@emotion/react": "11.14.0",
     "@emotion/styled": "11.14.1",
-    "@gears-frontx/mfes": "0.7.0",
+    "@gears-frontx/mfes": "0.7.1",
     "@hookform/resolvers": "7.0.1",
     "@mui/material": "9.5.0",
     "@reduxjs/toolkit": "2.13.0",
@@ -63,7 +63,7 @@
     "zod": "4.6.7"
   },
   "peerDependencies": {
-    "@gears-frontx/mfes": "0.7.0"
+    "@gears-frontx/mfes": "0.7.1"
   },
   "publishConfig": {
     "access": "public"
